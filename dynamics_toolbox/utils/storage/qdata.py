@@ -25,22 +25,17 @@ def get_qdata_from_data_source(data_source: str) -> Dict[str, np.ndarray]:
     if '.h5py' in data_source:
         return load_qdata_from_hdf5(data_source)
     elif '-v' in data_source:
-        return load_qdata_from_d4rl(data_source)
+        return load_from_d4rl(data_source)
     else:
         raise ValueError(f'Did not recognize {data_source} as a path to .hdf5 file or environment.')
 
 
-def load_qdata_from_hdf5(hdf5_path: str) -> Dict[str, np.ndarray]:
+def load_from_hdf5(hdf5_path: str) -> Dict[str, np.ndarray]:
     """Get qdata from a a hdf5 file.
     Args:
         hdf5_path: Path to hdf5 file.
     Returns:
-        Dictionary where keys include at least
-            * "observations"
-            * "actions"
-            * "next_observations"
-            * "rewards"
-            * "terminals"
+        Dictionary of the data in the file.
     """
     data = {}
     with h5py.File(hdf5_path, 'r') as hdata:

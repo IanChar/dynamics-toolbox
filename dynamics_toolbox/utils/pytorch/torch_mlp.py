@@ -4,13 +4,13 @@ A basic multi-layer perceptron implementation.
 Author: Ian Char
 Date: July, 11 2021
 """
-from typing import Callable, NoReturn, Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
 
 
-class MLP(torch.nn.Module):
+class TorchMlp(torch.nn.Module):
     """MLP Network."""
 
     def __init__(
@@ -22,6 +22,7 @@ class MLP(torch.nn.Module):
         out_activation: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ):
         """Constructor.
+
         Args:
             input_dim: Dimension of input data.
             output_dim: Dimension of data outputted.
@@ -49,9 +50,12 @@ class MLP(torch.nn.Module):
             net_in: torch.Tensor,
     ) -> torch.Tensor:
         """Forward pass through network.
+
         Args:
             net_in: The input to the network.
-        Returns: The output of the network."""
+
+        Returns:
+            The output of the network."""
         curr = net_in
         for layer_num in range(self.n_layers - 1):
             curr = getattr(self, 'linear_%d' % layer_num)(curr)
@@ -66,8 +70,9 @@ class MLP(torch.nn.Module):
             lin_in: int,
             lin_out: int,
             layer_num: int,
-    ) -> NoReturn:
+    ) -> None:
         """Add a linear layer to the network.
+
         Args:
             lin_in: Input dimension to the layer.
             lin_out: Output dimension of the layer.

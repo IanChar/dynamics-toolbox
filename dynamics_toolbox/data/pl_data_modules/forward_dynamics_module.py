@@ -10,7 +10,7 @@ import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
-from dynamics_toolbox.utils.storage.qdata import get_qdata_from_data_source
+from dynamics_toolbox.utils.storage.qdata import get_data_from_source
 
 
 class ForwardDynamicsDataModule(LightningDataModule):
@@ -25,8 +25,10 @@ class ForwardDynamicsDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            **kwargs,
     ):
         """Constructor.
+
         Args:
             data_source: Name of the data source, either as a string to a path or name of a d4rl env.
             batch_size: Batch size.
@@ -38,7 +40,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             seed: The seed.
         """
         super().__init__()
-        qset = get_qdata_from_data_source(data_source)
+        qset = get_data_from_source(data_source)
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
             self._xdata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])

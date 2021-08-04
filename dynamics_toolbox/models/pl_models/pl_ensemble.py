@@ -4,44 +4,47 @@ Ensemble of other pytorch models.
 Author: Ian Char
 """
 import argparse
-from typing import List, Optional, Sequence, NoReturn, Dict
+from typing import List, Optional, Sequence, Dict
 
 import numpy as np
-import torch
+from omegaconf import DictConfig
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.argparse import from_argparse_args
+import torch
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.ensemble import FiniteEnsemble
-from dynamics_toolbox.models.pl_models import PL_MODELS
+from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 
 
 class FinitePlEnsemble(LightningModule, FiniteEnsemble):
+    """An ensemble of all pytorch lightning members.
+
+    This class should be mainly used if one wants to train all members at once.
+    """
 
     def __init__(
             self,
-            member_config: argparse.Namespace,
-            members: Optional[List[AbstractPlModel]] = None,
+            member_config: DictConfig,
             sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             elite_idxs: Optional[List[int]] = None,
             num_elites: Optional[int] = None,
     ):
         """Constructor
+
         Args:
-            member_config: The hyperparameters for a member of the ensemble
-                plus the number of ensemble members.
-            members: The members of the ensemble
+            member_config: The hyperparameters for a member of the ensemble.
             sample_mode: The method to use for sampling.
-            elite_idxs: The indexes of the elite members. These are the members to sample from.
+            elite_idxs: The indexes of the elite members. These are the members
+                to sample from.
             num_elites: The number of elites to keep track of.
         """
         LightningModule.__init__(self)
-        if members is None:
-            members = [from_argparse_args(
-                PL_MODELS[member_config.model_type],
-                member_config)
-                for _ in range(member_config.num_ensemble_members)]
+        # TODO: Now the models must be constructed here because of how
+        # pytorch-lightning seems to save models, but maybe there is a better way.
+        members = [getattr(pl_models, member_config['model_type'])(**member_config)
+                   for _ in range(member_config['num_ensemble_members'])]
         for member_idx, member in enumerate(members):
             setattr(self, f'member_{member_idx}', member)
         self._num_members = len(members)
@@ -69,7 +72,7 @@ class FinitePlEnsemble(LightningModule, FiniteEnsemble):
             self,
             batch: Sequence[torch.Tensor],
             batch_idx: int,
-    ) -> NoReturn:
+    ) -> None:
         """Validation step for pytorch lightning."""
         losses = []
         for member_idx, member in enumerate(self.members):
@@ -83,7 +86,7 @@ class FinitePlEnsemble(LightningModule, FiniteEnsemble):
             self,
             batch: Sequence[torch.Tensor],
             batch_idx: int,
-    ) -> NoReturn:
+    ) -> None:
         """Validation step for pytorch lightning."""
         for member_idx, member in enumerate(self.members):
             net_out = member.get_net_out(batch)
@@ -91,15 +94,16 @@ class FinitePlEnsemble(LightningModule, FiniteEnsemble):
             self._log_stats(loss_dict, prefix=f'member{member_idx}/test')
 
     def configure_optimizers(self) -> List[torch.optim.Optimizer]:
-        """
-        Get the optimizers.
+        """Get the optimizers.
+
         Returns:
             List of the optimizers of the members.
         """
         return [member.configure_optimizers() for member in self.members]
 
-    def _log_stats(self, *args: Dict[str, float], prefix='train', **kwargs) -> NoReturn:
+    def _log_stats(self, *args: Dict[str, float], prefix='train', **kwargs) -> None:
         """Log all of the stats from dictionaries.
+
         Args:
             args: Dictionaries of torch tensors to add stats about.
             prefix: The prefix to add to the statistic string.

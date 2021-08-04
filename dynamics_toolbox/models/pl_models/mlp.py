@@ -1,5 +1,5 @@
 """
-Fully connected network dynamics model.
+Standard multi-layer perceptron dynamics model.
 
 Author: Ian Char
 """
@@ -11,10 +11,10 @@ from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.utils.misc import s2i
 from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.mlp import MLP
+from dynamics_toolbox.utils.pytorch.torch_mlp import TorchMlp
 
 
-class FcModel(AbstractPlModel):
+class MLP(AbstractPlModel):
     """Fully connected network for dynamics."""
 
     def __init__(
@@ -24,8 +24,10 @@ class FcModel(AbstractPlModel):
             hidden_sizes: str,
             learning_rate: float,
             hidden_activation: str = activations.RELU,
+            **kwargs,
     ):
         """Constructor.
+
         Args:
             input_dim: The input dimension.
             output_dim: The output dimension.
@@ -34,7 +36,7 @@ class FcModel(AbstractPlModel):
         """
         super().__init__()
         self.save_hyperparameters()
-        self._net = MLP(
+        self._net = TorchMlp(
             input_dim=input_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(hidden_sizes),
@@ -45,8 +47,10 @@ class FcModel(AbstractPlModel):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function for network
+
         Args:
             x: The input to the network.
+
         Returns:
             The output of the networ.
         """
@@ -54,8 +58,10 @@ class FcModel(AbstractPlModel):
 
     def _get_deltas_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the delta in state
+
         Args:
             net_in: The input for the network.
+
         Returns:
             The next states and dictionary of info.
         """
@@ -66,8 +72,10 @@ class FcModel(AbstractPlModel):
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
+
         Args:
             batch: The batch passed to the network.
+
         Returns:
             Dictionary of name to tensor.
         """
@@ -81,9 +89,11 @@ class FcModel(AbstractPlModel):
             batch: Sequence[torch.Tensor],
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Compute the loss function.
+
         Args:
             net_out: The output of the network.
             batch: The batch passed into the network.
+
         Returns:
             The loss and a dictionary of other statistics.
         """

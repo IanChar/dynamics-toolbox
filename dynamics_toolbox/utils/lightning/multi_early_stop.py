@@ -21,6 +21,7 @@ class MultiMonitorEarlyStopping(EarlyStopping):
     ):
         """
         Constructor.
+
         Args:
             monitors: List of quantities to monitor.
             multi_mode: Whether to wait until 'all' conditions met or 'any'.

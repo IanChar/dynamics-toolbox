@@ -1,0 +1,13 @@
+model_name: "PETS"
+model_type: "PNN"
+num_ensemble_members: 7
+sequential_train: False # TODO: If True each member is trained sequentially.
+encoder_hidden_sizes: "200_200_200"
+encoder_output_dim: 200
+mean_hidden_sizes: ""
+logvar_hidden_sizes: ""
+logvar_lower_bound: -10
+logvar_upper_bound: 0.5
+logvar_bound_loss_coef: 0.01
+learning_rate: 0.0001
+hidden_activation: "swish"

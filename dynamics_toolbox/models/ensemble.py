@@ -3,7 +3,7 @@ A dynamics model that is an ensemble of other dynamics models.
 
 Author: Ian Char
 """
-from typing import Sequence, Tuple, Dict, Any, NoReturn, Optional, List
+from typing import Sequence, Tuple, Dict, Any, Optional, List
 
 import numpy as np
 
@@ -20,6 +20,7 @@ class FiniteEnsemble(AbstractDynamicsModel):
             elite_idxs: Optional[List[int]] = None,
     ):
         """Constructor
+
         Args:
             members: The members of the ensemble
             sample_mode: The method to use for sampling.
@@ -40,15 +41,17 @@ class FiniteEnsemble(AbstractDynamicsModel):
         if elite_idxs is None:
             self._elite_idxs = list(range(len(self.members)))
 
-    def reset(self) -> NoReturn:
+    def reset(self) -> None:
         """Reset the model."""
         self._nxt_member_to_sample = np.random.choice(self._elite_idxs)
 
     def predict(self, states: np.ndarray, actions: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Predict the next state given current state and action.
+
         Args:
             states: The current states as a torch tensor.
             actions: The actions to be played as a torch tensor.
+
         Returns: The next state and give a dictionary of related quantities.
         """
         info_dict = {}
@@ -65,8 +68,9 @@ class FiniteEnsemble(AbstractDynamicsModel):
         elif self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY:
             return nxts[self._nxt_member_to_sample], info_dict
 
-    def set_member_sample_mode(self, mode: str) -> NoReturn:
+    def set_member_sample_mode(self, mode: str) -> None:
         """Set the sampling mode of each member of the ensemble.
+
         Args:
             mode: The sampling mode.
         """
@@ -79,7 +83,7 @@ class FiniteEnsemble(AbstractDynamicsModel):
         return self._sample_mode
 
     @sample_mode.setter
-    def sample_mode(self, mode: str) -> NoReturn:
+    def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
         self._sample_mode = mode
 
@@ -94,9 +98,10 @@ class FiniteEnsemble(AbstractDynamicsModel):
         return self._elite_idxs
 
     @elite_idxs.setter
-    def elite_idxs(self, idxs: List[int]) -> NoReturn:
+    def elite_idxs(self, idxs: List[int]) -> None:
         """
         The elite member indexes.
+
         Args:
             idxs: The indices of the elite members.
         """

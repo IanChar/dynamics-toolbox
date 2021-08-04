@@ -3,7 +3,7 @@ A network that outputs a Gaussian predictive distribution.
 
 Author: Ian Char
 """
-from typing import Optional, Tuple, Dict, Any, Sequence, NoReturn
+from typing import Optional, Tuple, Dict, Any, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +13,7 @@ from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.misc import s2i
 from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.mlp import MLP
+from dynamics_toolbox.utils.pytorch.torch_mlp import TorchMlp
 
 
 class PNN(AbstractPlModel):
@@ -32,10 +32,12 @@ class PNN(AbstractPlModel):
             logvar_upper_bound: Optional[float] = None,
             logvar_bound_loss_coef: float = 1e-3,
             hidden_activation: str = activations.SWISH,
-            sample_mode: str = sampling_modes.SAMPLE_FROM_DIST
+            sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
+            **kwargs,
     ):
         """
         Constructor.
+
         Args:
             input_dim: The input dimension.
             output_dim: The output dimension.
@@ -54,19 +56,19 @@ class PNN(AbstractPlModel):
         self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._encoder = MLP(
+        self._encoder = TorchMlp(
             input_dim=input_dim,
             output_dim=encoder_output_dim,
             hidden_sizes=s2i(encoder_hidden_sizes),
             hidden_activation=get_activation(hidden_activation),
         )
-        self._mean_head = MLP(
+        self._mean_head = TorchMlp(
             input_dim=encoder_output_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(mean_hidden_sizes),
             hidden_activation=get_activation(hidden_activation)
         )
-        self._logvar_head = MLP(
+        self._logvar_head = TorchMlp(
             input_dim=encoder_output_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(logvar_hidden_sizes),
@@ -89,8 +91,10 @@ class PNN(AbstractPlModel):
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
+
         Args:
             x: The input to the network.
+
         Returns:
             The output of the networ.
         """
@@ -103,8 +107,10 @@ class PNN(AbstractPlModel):
 
     def _get_deltas_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the delta in state
+
         Args:
             net_in: The input for the network.
+
         Returns:
             The next states and dictionary of info.
         """
@@ -120,8 +126,10 @@ class PNN(AbstractPlModel):
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
+
         Args:
             batch: The batch passed to the network.
+
         Returns:
             Dictionary of name to tensor.
         """
@@ -135,9 +143,11 @@ class PNN(AbstractPlModel):
             batch: Sequence[torch.Tensor],
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Compute the loss function.
+
         Args:
             net_out: The output of the network.
             batch: The batch passed into the network.
+
         Returns:
             The loss and a dictionary of other statistics.
         """
@@ -175,7 +185,7 @@ class PNN(AbstractPlModel):
         return self._sample_mode
 
     @sample_mode.setter
-    def sample_mode(self, mode: str) -> NoReturn:
+    def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
         if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST, sampling_modes.RETURN_MEAN]:
             raise ValueError(f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '

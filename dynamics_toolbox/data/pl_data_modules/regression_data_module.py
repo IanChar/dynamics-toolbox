@@ -24,8 +24,10 @@ class RegressionDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            **kwargs,
     ):
         """Constructor.
+
         Args:
             data_source: Name of the data source, either as a string to a path or name of a d4rl env.
             batch_size: Batch size.

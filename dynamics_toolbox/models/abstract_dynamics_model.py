@@ -19,10 +19,13 @@ class AbstractDynamicsModel(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def predict(self, states: np.ndarray, actions: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Predict the next state given current state and action.
+
         Args:
             states: The current states as a torch tensor.
             actions: The actions to be played as a torch tensor.
-        Returns: The next state and give a dictionary of related quantities.
+
+        Returns:
+            The next state and give a dictionary of related quantities.
         """
 
     @property

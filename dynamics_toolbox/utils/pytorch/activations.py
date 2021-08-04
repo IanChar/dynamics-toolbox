@@ -11,18 +11,28 @@ import dynamics_toolbox.constants.activations as activations
 
 def swish(x: torch.Tensor) -> torch.Tensor:
     """The swish activation function.
+
+    swish(x) = x * sigmoid(x)
+
     Args:
          x: The input.
-    Returns: Result of swish.
+
+    Returns:
+        Result of swish.
     """
     return x * torch.sigmoid(x)
 
 
 def tanh(x: torch.Tensor) -> torch.Tensor:
     """The tanh activation function.
+
+    tanh(x) = (log(1 + x) - log(1 - x)) / 2
+
     Args:
          x: The input.
-    Returns: Result of tanh.
+
+    Returns:
+        Result of tanh.
     """
     return 0.5 * (torch.log(1 + x) - torch.log(1 - x))
 
@@ -36,8 +46,11 @@ ALL_ACTIVATIONS = {
 
 def get_activation(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
     """Get activation based on name.
+
     Args:
         name: The name of the activation.
-    Returns: The activation.
+
+    Returns:
+        The activation.
     """
     return ALL_ACTIVATIONS[name]

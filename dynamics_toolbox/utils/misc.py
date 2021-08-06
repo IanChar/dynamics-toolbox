@@ -14,9 +14,9 @@ def s2i(string: str) -> Sequence[int]:
 
     Returns: List of ints.
     """
-    if ',' not in string:
+    if '_' not in string:
         if len(string) > 0:
             return [int(string)]
         else:
             return []
-    return [int(s) for s in string.split(',')]
+    return [int(s) for s in string.split('_')]

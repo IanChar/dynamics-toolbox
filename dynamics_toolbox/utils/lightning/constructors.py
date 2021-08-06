@@ -9,6 +9,8 @@ import os
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.loggers.base import LightningLoggerBase
+from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 
 from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.data import pl_data_modules
@@ -19,7 +21,7 @@ from dynamics_toolbox.utils.lightning.multi_early_stop import MultiMonitorEarlyS
 
 def construct_all_pl_components_for_training(
         cfg: DictConfig
-) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, DictConfig]:
+) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase, DictConfig]:
     """Construct all components needed for training.
 
     Args:
@@ -40,8 +42,21 @@ def construct_all_pl_components_for_training(
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
-    trainer = pl.Trainer(**cfg['trainer'], callbacks=callbacks)
-    return model, data, trainer, cfg
+    if cfg['logger'] == 'mlflow':
+        from pytorch_lightning.loggers.mlflow import MLFlowLogger
+        tracking_uri = cfg.get('tracking_uri', None)
+        logger = MLFlowLogger(
+            experiment_name=cfg['run_id'],
+            tracking_uri=tracking_uri,
+            save_dir=cfg['save_dir'],
+        )
+    else:
+        logger = TensorBoardLogger(
+                save_dir=cfg['save_dir'],
+                name=cfg['run_id'],
+        )
+    trainer = pl.Trainer(**cfg['trainer'], logger=logger, callbacks=callbacks)
+    return model, data, trainer, logger, cfg
 
 
 def construct_pl_model(cfg: DictConfig) -> AbstractPlModel:

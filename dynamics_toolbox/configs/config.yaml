@@ -1,6 +1,6 @@
-run_id: ""
 data_source: ""
 seed: 1
+logger: tensorboard
 defaults:
     - trainer: pl_trainer
     - data_module: forward_dynamics_module

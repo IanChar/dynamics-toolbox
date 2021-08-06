@@ -44,6 +44,7 @@ def train(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     save_config(trainer, cfg)
     trainer.fit(model, data)
+    return trainer.test(model, datamodule=data)[0]['test/loss']
 
 
 if __name__ == '__main__':

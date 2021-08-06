@@ -13,7 +13,7 @@ from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.misc import s2i
 from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.torch_mlp import TorchMlp
+from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 
 
 class PNN(AbstractPlModel):
@@ -56,19 +56,19 @@ class PNN(AbstractPlModel):
         self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._encoder = TorchMlp(
+        self._encoder = FCNetwork(
             input_dim=input_dim,
             output_dim=encoder_output_dim,
             hidden_sizes=s2i(encoder_hidden_sizes),
             hidden_activation=get_activation(hidden_activation),
         )
-        self._mean_head = TorchMlp(
+        self._mean_head = FCNetwork(
             input_dim=encoder_output_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(mean_hidden_sizes),
             hidden_activation=get_activation(hidden_activation)
         )
-        self._logvar_head = TorchMlp(
+        self._logvar_head = FCNetwork(
             input_dim=encoder_output_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(logvar_hidden_sizes),
@@ -105,8 +105,8 @@ class PNN(AbstractPlModel):
             logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return mean, logvar
 
-    def _get_deltas_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the delta in state
+    def _get_output_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output of the model.
 
         Args:
             net_in: The input for the network.

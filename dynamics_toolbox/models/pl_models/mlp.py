@@ -6,12 +6,13 @@ Author: Ian Char
 from typing import Sequence, NoReturn, Tuple, Dict, Any
 
 import torch
+from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.utils.misc import s2i
 from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.torch_mlp import TorchMlp
+from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 
 
 class MLP(AbstractPlModel):
@@ -36,7 +37,7 @@ class MLP(AbstractPlModel):
         """
         super().__init__()
         self.save_hyperparameters()
-        self._net = TorchMlp(
+        self._net = FCNetwork(
             input_dim=input_dim,
             output_dim=output_dim,
             hidden_sizes=s2i(hidden_sizes),
@@ -44,6 +45,11 @@ class MLP(AbstractPlModel):
         )
         self._learning_rate = learning_rate
         self._sample_mode = ''
+        # TODO: In the future we may want to pass this in as an argument.
+        self._metrics = {
+                'EV': ExplainedVariance(),
+                'IndvEV': ExplainedVariance('raw_values'),
+        }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function for network
@@ -56,7 +62,7 @@ class MLP(AbstractPlModel):
         """
         return self._net.forward(x)
 
-    def _get_deltas_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    def _get_output_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the delta in state
 
         Args:
@@ -125,3 +131,29 @@ class MLP(AbstractPlModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self._output_dim
+
+    def _get_test_and_validation_metrics(
+            self,
+            net_out: Dict[str, torch.Tensor],
+            batch: Sequence[torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
+        """Compute additional metrics to be used for validation/test only.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            A dictionary of additional metrics.
+        """
+        to_return = {}
+        pred = net_out['prediction']
+        _, yi = batch
+        for metric_name, metric in self._metrics.items():
+            metric_value = metric(pred, yi)
+            if len(metric_value.shape) > 0:
+                for dim_idx, metric_v in enumerate(metric_value):
+                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
+            else:
+                to_return[metric_name] = metric_value
+        return to_return

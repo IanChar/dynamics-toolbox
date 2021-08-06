@@ -29,7 +29,14 @@ class RegressionDataModule(LightningDataModule):
         """Constructor.
 
         Args:
-            data_source: Name of the data source, either as a string to a path or name of a d4rl env.
+            data_source: Name of the data source as a path to the hdf5 file.
+                The hdf5 file should contain:
+                    * tr_x: The training x data.
+                    * tr_y: The training y data.
+                    * val_x: The validation x data.
+                    * val_y: The validation y data.
+                    * te_x (optional): The testing x data.
+                    * te_y (optional): The testing y data.
             batch_size: Batch size.
             learn_rewards: Whether to include the rewards for learning in xdata.
             val_proportion: Proportion of data to use as validation.
@@ -40,8 +47,8 @@ class RegressionDataModule(LightningDataModule):
         """
         super().__init__()
         dataset = load_from_hdf5(data_source)
-        self._xdata = dataset['x_data']
-        self._ydata = dataset['y_data']
+        self._xdata = dataset['tr_x']
+        self._ydata = dataset['tr_y']
         self._val_proportion = val_proportion
         self._test_proportion = test_proportion
         self._batch_size = batch_size
@@ -56,6 +63,16 @@ class RegressionDataModule(LightningDataModule):
             TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
             [self._num_tr, self._num_val, self._num_te],
         )
+        if 'val_x' in dataset and 'val_y' in dataset:
+            self._val_dataset = TensorDataset(
+                    torch.Tensor(dataset['val_x']),
+                    torch.Tensor(dataset['val_y']),
+            )
+        if 'te_x' in dataset and 'te_y' in dataset:
+            self._te_dataset = TensorDataset(
+                    torch.Tensor(dataset['te_x']),
+                    torch.Tensor(dataset['te_y']),
+            )
 
     def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""

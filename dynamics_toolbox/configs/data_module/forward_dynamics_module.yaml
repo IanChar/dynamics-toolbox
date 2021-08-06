@@ -5,4 +5,3 @@ val_proportion: 0.1
 test_proportion: 0.0
 pin_memory: True
 num_workers: 1
-seed: 1

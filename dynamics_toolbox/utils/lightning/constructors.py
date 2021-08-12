@@ -44,16 +44,20 @@ def construct_all_pl_components_for_training(
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
-        tracking_uri = cfg.get('tracking_uri', None)
         logger = MLFlowLogger(
-            experiment_name=cfg['run_id'],
-            tracking_uri=tracking_uri,
+            experiment_name=cfg['experiment_name'],
+            tracking_uri=cfg.get('tracking_uri', None),
             save_dir=cfg['save_dir'],
+            run_name=cfg.get('run_name', None),
         )
     else:
+        if 'run_name' in cfg:
+            name = os.path.join(cfg['experiment_name'], cfg['run_name'])
+        else:
+            name = cfg['experiment_name']
         logger = TensorBoardLogger(
-                save_dir=cfg['save_dir'],
-                name=cfg['run_id'],
+            save_dir=cfg['save_dir'],
+            name=name,
         )
     trainer = pl.Trainer(**cfg['trainer'], logger=logger, callbacks=callbacks)
     return model, data, trainer, logger, cfg

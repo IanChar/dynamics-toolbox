@@ -1,0 +1,10 @@
+name: dynamics-toolbox
+channels:
+    - pytorch
+    - conda-forge
+dependencies:
+    - h5py
+    - hydra-core
+    - numpy
+    - pytorch
+    - pytorch-lightning=1.4.2

@@ -3,7 +3,6 @@ Main file to use for training dynamics models.
 
 Author: Ian Char
 """
-import argparse
 import os
 
 import hydra
@@ -26,7 +25,8 @@ def train(cfg: DictConfig) -> None:
     if cfg['data_source'] == '':
         raise ValueError('data_source must be specified as either a path to an hdf5 '
                          'file or as a registered d4rl environment.')
-    seed_everything(cfg['seed'])
+    if 'seed' in cfg:
+        seed_everything(cfg['seed'])
     # Alter config file and add defaults.
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']
@@ -54,7 +54,11 @@ def train(cfg: DictConfig) -> None:
     logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
     trainer.fit(model, data)
     test_dict = trainer.test(model, datamodule=data)[0]
-    return test_dict['test/loss']
+    tune_metric = cfg.get('tune_metric', 'test/loss')
+    return_val = test_dict[tune_metric]
+    if cfg.get('tune_objective', 'minimize') == 'maximize':
+        return_val *= -1
+    return return_val
 
 
 if __name__ == '__main__':

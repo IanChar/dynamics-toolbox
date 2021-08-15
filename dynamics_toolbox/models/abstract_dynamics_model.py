@@ -25,7 +25,7 @@ class AbstractDynamicsModel(metaclass=abc.ABCMeta):
             actions: The actions to be played as a torch tensor.
 
         Returns:
-            The next state and give a dictionary of related quantities.
+            The model output and give a dictionary of related quantities.
         """
 
     @property

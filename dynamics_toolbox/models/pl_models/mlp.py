@@ -3,15 +3,17 @@ Standard multi-layer perceptron dynamics model.
 
 Author: Ian Char
 """
-from typing import Sequence, NoReturn, Tuple, Dict, Any
+from typing import Sequence, NoReturn, Tuple, Dict, Any, Optional
 
 import torch
 from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
+import dynamics_toolbox.constants.losses as losses
 from dynamics_toolbox.utils.misc import s2i
 from dynamics_toolbox.utils.pytorch.activations import get_activation
+from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 
 
@@ -22,9 +24,12 @@ class MLP(AbstractPlModel):
             self,
             input_dim: int,
             output_dim: int,
-            hidden_sizes: str,
             learning_rate: float,
+            num_layers: Optional[int] = None,
+            layer_size: Optional[int] = None,
+            architecture: Optional[str] = None,
             hidden_activation: str = activations.RELU,
+            loss_type: str = losses.MSE,
             **kwargs,
     ):
         """Constructor.
@@ -33,18 +38,35 @@ class MLP(AbstractPlModel):
             input_dim: The input dimension.
             output_dim: The output dimension.
             learning_rate: The learning rate for the network.
-            hidden_sizes: String of comma separated ints for the hidden sizes. e.g. 256,256,256
+            num_layers: The number of hidden layers in the MLP.
+            layer_size: The size of each hidden layer in the MLP.
+            architecture: The architecture of the MLP described as a
+                a string of underscore separated ints e.g. 256_100_64.
+                If provided, this overrides num_layers and layer_sizes.
+            hidden_activation: Activation to use.
+            loss_type: The name of the loss function to use.
         """
         super().__init__()
         self.save_hyperparameters()
+        if architecture is not None:
+            hidden_sizes = s2i(architecture)
+        elif num_layers is not None and layer_size is not None:
+            hidden_sizes = [layer_size for _ in range(num_layers)]
+        else:
+            raise ValueError(
+                'MLP architecture not provided. Either specify architecture '
+                'argument or both num_layers and layer_size arguments.'
+            )
         self._net = FCNetwork(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_sizes=s2i(hidden_sizes),
+            hidden_sizes=hidden_sizes,
             hidden_activation=get_activation(hidden_activation),
         )
         self._learning_rate = learning_rate
         self._sample_mode = ''
+        self._loss_function = get_regression_loss(loss_type)
+        self._loss_type = loss_type
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
                 'EV': ExplainedVariance(),
@@ -104,9 +126,9 @@ class MLP(AbstractPlModel):
             The loss and a dictionary of other statistics.
         """
         _, yi = batch
-        l2 = ((net_out['prediction'] - yi) ** 2).sum(dim=1).mean()
-        stats = {'loss': l2.item()}
-        return l2, stats
+        loss = self._loss_function(net_out['prediction'], yi)
+        stats = {'loss': loss.item()}
+        return loss, stats
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer"""

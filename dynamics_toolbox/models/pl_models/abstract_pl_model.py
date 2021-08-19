@@ -44,20 +44,21 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         Args:
             states: The current states as a torch tensor.
             actions: The actions to be played as a torch tensor.
-        Returns: The next state and give a dictionary of related quantities.
+        Returns: The output of the model and give a dictionary of related quantities.
         """
+        if isinstance(actions, int) or isinstance(actions, float):
+            actions = np.array([actions]).reshape(1, 1)
         pt_states = torch.Tensor(states, device=self.device)
         pt_actions = torch.Tensor(actions, device=self.device)
         if len(states.shape) == 1:
-            pt_states = pt_states.unsqueeze(-1)
+            pt_states = pt_states.unsqueeze(0)
         if len(actions.shape) == 1:
-            pt_actions = pt_actions.unsqueeze(-1)
+            pt_actions = pt_actions.unsqueeze(int(pt_states.shape[0] != 1))
         net_in = torch.cat([pt_states, pt_actions], dim=1)
         deltas, infos = self._get_output_from_torch(net_in)
         if len(states.shape) == 1:
             deltas = deltas.flatten()
-        nxts = states + deltas.numpy()
-        return nxts, infos
+        return deltas.numpy(), infos
 
     @abc.abstractmethod
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:

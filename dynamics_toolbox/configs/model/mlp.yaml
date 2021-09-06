@@ -1,7 +1,7 @@
 model_name: "MLP"
 model_type: "MLP"
 num_ensemble_members: 1
-sequential_train: False # TODO: If True each member is trained sequentially.
-hidden_sizes: "200_200_200"
+num_layers: 3
+layer_size: 200
 learning_rate: 0.0001
-hidden_activation: "relu"
+hidden_activation: "tanh"

@@ -1,3 +1,5 @@
+experiment_name: "dynamics-toolbox"
+run_name: "test"
 data_source: ""
 seed: 1
 logger: tensorboard

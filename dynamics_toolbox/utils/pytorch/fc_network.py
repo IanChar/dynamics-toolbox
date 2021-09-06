@@ -33,7 +33,7 @@ class FCNetwork(torch.nn.Module):
         super().__init__()
         if len(hidden_sizes) == 0:
             self._add_linear_layer(input_dim, output_dim, 0)
-            self.n_layers = 1
+            self._n_layers = 1
         else:
             self._add_linear_layer(input_dim, hidden_sizes[0], 0)
             for hidx in range(len(hidden_sizes) - 1):
@@ -41,9 +41,9 @@ class FCNetwork(torch.nn.Module):
                                        hidden_sizes[hidx+1], hidx + 1)
             self._add_linear_layer(hidden_sizes[-1], output_dim,
                                    len(hidden_sizes))
-            self.n_layers = len(hidden_sizes) + 1
-        self.hidden_activation = hidden_activation
-        self.out_activation = out_activation
+            self._n_layers = len(hidden_sizes) + 1
+        self._hidden_activation = hidden_activation
+        self._out_activation = out_activation
 
     def forward(
             self,
@@ -57,13 +57,28 @@ class FCNetwork(torch.nn.Module):
         Returns:
             The output of the network."""
         curr = net_in
-        for layer_num in range(self.n_layers - 1):
+        for layer_num in range(self._n_layers - 1):
             curr = getattr(self, 'linear_%d' % layer_num)(curr)
-            curr = self.hidden_activation(curr)
-        curr = getattr(self, 'linear_%d' % (self.n_layers - 1))(curr)
-        if self.out_activation is not None:
-            return self.out_activation(curr)
+            curr = self._hidden_activation(curr)
+        curr = getattr(self, 'linear_%d' % (self._n_layers - 1))(curr)
+        if self._out_activation is not None:
+            return self._out_activation(curr)
         return curr
+
+    @property
+    def n_layers(self) -> int:
+        """Number of layers in the network."""
+        return self._n_layers
+
+    @property
+    def hidden_activation(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        """Number of layers in the network."""
+        return self._hidden_activation
+
+    @property
+    def out_activation(self) -> Callable[[torch.Tensor], torch.Tensor]:
+        """Number of layers in the network."""
+        return self._out_activation
 
     def _add_linear_layer(
             self,

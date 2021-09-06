@@ -55,7 +55,7 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         if len(actions.shape) == 1:
             pt_actions = pt_actions.unsqueeze(int(pt_states.shape[0] != 1))
         net_in = torch.cat([pt_states, pt_actions], dim=1)
-        deltas, infos = self._get_output_from_torch(net_in)
+        deltas, infos = self.sample_model_from_torch(net_in)
         if len(states.shape) == 1:
             deltas = deltas.flatten()
         return deltas.numpy(), infos
@@ -93,7 +93,7 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         return add_argparse_args(cls, parent_parser, **kwargs)
 
     @abc.abstractmethod
-    def _get_output_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    def sample_model_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the delta in state
 
         Args:

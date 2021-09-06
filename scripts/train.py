@@ -34,7 +34,7 @@ def train(cfg: DictConfig) -> None:
             cfg['save_dir'] = os.path.join(get_original_cwd(), 'trained_models')
         elif cfg['save_dir'][0] != '/':
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
-    if 'early_stopping' in cfg:
+    if 'early_stopping' in cfg and 'num_ensemble_members' in cfg['early_stopping']:
         with open_dict(cfg):
             cfg['early_stopping']['num_ensemble_members'] =\
                     cfg['model']['num_ensemble_members']

@@ -3,7 +3,7 @@ Standard multi-layer perceptron dynamics model.
 
 Author: Ian Char
 """
-from typing import Sequence, NoReturn, Tuple, Dict, Any, Optional
+from typing import Sequence, Tuple, Dict, Any, Optional
 
 import torch
 from torchmetrics import ExplainedVariance
@@ -84,7 +84,7 @@ class MLP(AbstractPlModel):
         """
         return self._net.forward(x)
 
-    def _get_output_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    def sample_model_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the delta in state
 
         Args:
@@ -140,7 +140,7 @@ class MLP(AbstractPlModel):
         return self._sample_mode
 
     @sample_mode.setter
-    def sample_mode(self, mode: str) -> NoReturn:
+    def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
         self._sample_mode = mode
 

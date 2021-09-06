@@ -6,7 +6,7 @@ Author: Ian Char
 from typing import Tuple
 import os
 
-from omegaconf import DictConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.loggers.base import LightningLoggerBase
@@ -78,9 +78,7 @@ def construct_pl_model(cfg: DictConfig) -> AbstractPlModel:
     """
     if 'model_type' not in cfg:
         raise ValueError('Configuration does not have model_type')
-    if 'num_ensemble_members' not in cfg:
-        raise ValueError('Configuration does not have num_ensemble_members')
-    if cfg['num_ensemble_members'] > 1:
+    if 'num_ensemble_members' in cfg and cfg['num_ensemble_members'] > 1:
         return FinitePlEnsemble(cfg)
     return getattr(pl_models, cfg['model_type'])(**cfg)
 
@@ -94,7 +92,7 @@ def get_early_stopping_for_val_loss(cfg: DictConfig) -> pl.callbacks.EarlyStoppi
     Returns:
         The early stopping callback to use in the trainer.
     """
-    if cfg['num_ensemble_members'] > 1:
+    if 'num_ensemble_members' in cfg and cfg['num_ensemble_members'] > 1:
         return MultiMonitorEarlyStopping(
             monitors=[f'member{i}/val/loss' for i in range(cfg['num_ensemble_members'])],
             min_delta=cfg['min_delta'],

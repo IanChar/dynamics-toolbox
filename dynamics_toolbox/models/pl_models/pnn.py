@@ -105,7 +105,7 @@ class PNN(AbstractPlModel):
             logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return mean, logvar
 
-    def _get_output_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    def sample_model_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the output of the model.
 
         Args:

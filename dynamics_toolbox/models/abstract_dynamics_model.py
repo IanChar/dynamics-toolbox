@@ -4,7 +4,7 @@ Abstract class for all dynamics models.
 Author: Ian Char
 """
 import abc
-from typing import Dict, Tuple, Any, NoReturn
+from typing import Dict, Tuple, Any
 
 import numpy as np
 
@@ -12,7 +12,7 @@ import numpy as np
 class AbstractDynamicsModel(metaclass=abc.ABCMeta):
     """Abstract model for predicting next states in dynamics."""
 
-    def reset(self) -> NoReturn:
+    def reset(self) -> None:
         """Reset the dynamics model."""
         pass
 
@@ -35,7 +35,7 @@ class AbstractDynamicsModel(metaclass=abc.ABCMeta):
 
     @sample_mode.setter
     @abc.abstractmethod
-    def sample_mode(self, mode: str) -> NoReturn:
+    def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
 
     @property

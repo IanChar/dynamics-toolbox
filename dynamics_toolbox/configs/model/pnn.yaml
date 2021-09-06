@@ -1,7 +1,6 @@
 model_name: "PNN"
 model_type: "PNN"
 num_ensemble_members: 1
-sequential_train: False # TODO: If True each member is trained sequentially.
 encoder_hidden_sizes: "200_200_200"
 encoder_output_dim: 200
 mean_hidden_sizes: ""

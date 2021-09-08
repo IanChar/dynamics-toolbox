@@ -3,7 +3,7 @@ Standard multi-layer perceptron dynamics model.
 
 Author: Ian Char
 """
-from typing import Sequence, Tuple, Dict, Any, Optional
+from typing import Sequence, Tuple, Dict, Any, Optional, Callable
 
 import torch
 from torchmetrics import ExplainedVariance
@@ -30,6 +30,7 @@ class MLP(AbstractPlModel):
             architecture: Optional[str] = None,
             hidden_activation: str = activations.RELU,
             loss_type: str = losses.MSE,
+            weight_decay: Optional[float] = 0.0,
             **kwargs,
     ):
         """Constructor.
@@ -45,6 +46,7 @@ class MLP(AbstractPlModel):
                 If provided, this overrides num_layers and layer_sizes.
             hidden_activation: Activation to use.
             loss_type: The name of the loss function to use.
+            weight_decay: The weight decay for the optimizer.
         """
         super().__init__()
         self.save_hyperparameters()
@@ -64,6 +66,7 @@ class MLP(AbstractPlModel):
             hidden_activation=get_activation(hidden_activation),
         )
         self._learning_rate = learning_rate
+        self._weight_decay = weight_decay
         self._sample_mode = ''
         self._loss_function = get_regression_loss(loss_type)
         self._loss_type = loss_type
@@ -84,14 +87,20 @@ class MLP(AbstractPlModel):
         """
         return self._net.forward(x)
 
-    def sample_model_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the delta in state
+    def sample_model_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the next state as a delta in state.
+
+        It is assumed that each input of the network should be drawn from a different
+        sample.
 
         Args:
             net_in: The input for the network.
 
         Returns:
-            The next states and dictionary of info.
+            The deltas for next states and dictionary of info.
         """
         with torch.no_grad():
             deltas = self.forward(net_in)
@@ -153,6 +162,21 @@ class MLP(AbstractPlModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self._output_dim
+
+    @property
+    def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
+        """Get the list of metric functions to compute."""
+        return self._metrics
+
+    @property
+    def learning_rate(self) -> float:
+        """Get the learning rate."""
+        return self._learning_rate
+
+    @property
+    def weight_decay(self) -> float:
+        """Get the weight decay."""
+        return self._weight_decay
 
     def _get_test_and_validation_metrics(
             self,

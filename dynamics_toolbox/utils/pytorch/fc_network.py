@@ -58,9 +58,9 @@ class FCNetwork(torch.nn.Module):
             The output of the network."""
         curr = net_in
         for layer_num in range(self._n_layers - 1):
-            curr = getattr(self, 'linear_%d' % layer_num)(curr)
+            curr = getattr(self, f'linear_{layer_num}')(curr)
             curr = self._hidden_activation(curr)
-        curr = getattr(self, 'linear_%d' % (self._n_layers - 1))(curr)
+        curr = getattr(self, f'linear_{self._n_layers - 1}')(curr)
         if self._out_activation is not None:
             return self._out_activation(curr)
         return curr

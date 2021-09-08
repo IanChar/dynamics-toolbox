@@ -1,11 +1,11 @@
 """
-MLP but instead of learning a single paramter, learn simplex of parameters.
+MLP but dropout is sampled to get different networks.
 
-Model based on https://arxiv.org/abs/2102.10472
+Model based on https://arxiv.org/abs/1506.02142
 
 Author: Ian Char
 """
-from typing import Sequence, Tuple, Dict, Any, Optional, Callable
+from typing import Sequence, Tuple, Dict, Any, Optional, List, Callable
 
 import torch
 from torchmetrics import ExplainedVariance
@@ -20,16 +20,15 @@ from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 
 
-class SimplexMLP(AbstractPlModel):
+class DropoutMLP(AbstractPlModel):
     """Fully connected network where simplex of weights are low loss."""
 
     def __init__(
             self,
-            num_vertices: int,
             input_dim: int,
             output_dim: int,
             learning_rate: float,
-            diversity_coef: float,
+            dropout_prob: float,
             num_layers: Optional[int] = None,
             layer_size: Optional[int] = None,
             architecture: Optional[str] = None,
@@ -42,11 +41,10 @@ class SimplexMLP(AbstractPlModel):
         """Constructor.
 
         Args:
-            num_vertices: The number of vertices that make up the simplex.
             input_dim: The input dimension.
             output_dim: The output dimension.
             learning_rate: The learning rate for the network.
-            diversity_coef: The coefficient for encouraging diversity.
+            dropout_prob: The probability of dropping out a connection.
             num_layers: The number of hidden layers in the MLP.
             layer_size: The size of each hidden layer in the MLP.
             architecture: The architecture of the MLP described as a
@@ -69,23 +67,25 @@ class SimplexMLP(AbstractPlModel):
                 'MLP architecture not provided. Either specify architecture '
                 'argument or both num_layers and layer_size arguments.'
             )
-        self._num_vertices = num_vertices
-        for idx in range(num_vertices):
-            setattr(self, f'vertex_{idx}', FCNetwork(
-                input_dim=input_dim,
-                output_dim=output_dim,
-                hidden_sizes=hidden_sizes,
-                hidden_activation=get_activation(hidden_activation),
-            ))
+        self._net = FCNetwork(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_activation=get_activation(hidden_activation),
+        )
+        # Instantiate dropout layers.
+        for layer in range(1, self._net.n_layers):
+            setattr(self, f'dropout_{layer}', torch.nn.Dropout(dropout_prob))
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
-        self._diversity_coef = diversity_coef
+        self._dropout_prob = dropout_prob
         self._loss_function = get_regression_loss(loss_type)
         self._loss_type = loss_type
         self._sample_mode = sample_mode
         self._curr_sample = None
-        self._simplex_dist = torch.distributions.dirichlet.Dirichlet(
-            torch.ones(num_vertices))
+        # Need this to keep the mask so that it is saved when the backprop step is
+        # done outside of the code.
+        self._dropout_dist = torch.distributions.bernoulli.Bernoulli(1 - dropout_prob)
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': ExplainedVariance(),
@@ -99,34 +99,24 @@ class SimplexMLP(AbstractPlModel):
     def forward(
             self,
             x: torch.Tensor,
-            weighting: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Forward function for network
+        """Forward function for network.
 
         Args:
             x: The input to the network.
-            weighting: The point in the simplex to use to sample. Should have
-                shape (x.shape[0], num_vertices).
 
         Returns:
             The output of the network.
         """
-        if weighting is None:
-            weighting = self._simplex_dist.sample((x.shape[0],))
-        n_layers = getattr(self, 'vertex_0').n_layers
-        hidden_activation = getattr(self, 'vertex_0').hidden_activation
-        out_activation = getattr(self, 'vertex_0').out_activation
-        curr = x
-        for layer_num in range(n_layers - 1):
-            lin_outs = torch.stack([self._get_vertex_layer(v, layer_num)(curr)
-                                    for v in range(self._num_vertices)])
-            curr = torch.mul(lin_outs.T, weighting).sum(dim=-1).T
-            curr = hidden_activation(curr)
-        lin_outs = torch.stack([self._get_vertex_layer(v, n_layers - 1)(curr)
-                                for v in range(self._num_vertices)])
-        curr = torch.mul(lin_outs.T, weighting).sum(dim=-1).T
-        if out_activation is not None:
-            return out_activation(curr)
+        curr = self._net.linear_0(x)
+        for layer in range(1, self._net.n_layers - 1):
+            curr = getattr(self, f'dropout_{layer}')(curr)
+            curr = getattr(self._net, f'linear_{layer}')(curr)
+            curr = self._net.hidden_activation(curr)
+        curr = getattr(self, f'dropout_{self._net.n_layers - 1}')(curr)
+        curr = getattr(self._net, f'linear_{self._net.n_layers - 1}')(curr)
+        if self._net.out_activation is not None:
+            return self._net.out_activation(curr)
         return curr
 
     def sample_model_from_torch(
@@ -145,16 +135,16 @@ class SimplexMLP(AbstractPlModel):
             The deltas for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),))
+                or self._curr_sample is None):
+            self._curr_sample = self._sample_dropout_mask(net_in.shape[0])
         elif len(self._curr_sample) < len(net_in):
-            self._curr_sample = torch.cat(
-                [self._curr_sample,
-                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),))],
-                dim=0)
-        weight = self._curr_sample[:len(net_in)]
-        with torch.no_grad():
-            deltas = self.forward(net_in, weight)
+            additional_masks = self._sample_dropout_mask(len(net_in)
+                                                         - len(self._curr_sample[0]))
+            self._curr_sample = [torch.cat([csamp, asamp], dim=0)
+                                 for csamp, asamp in zip(self._currsample,
+                                                         additional_masks)]
+        masks = [cs[:len(net_in)] for cs in self._curr_sample]
+        deltas = self._forward_with_specified_mask(net_in, masks)
         info = {'delta': deltas}
         return deltas, info
 
@@ -187,14 +177,8 @@ class SimplexMLP(AbstractPlModel):
         """
         _, yi = batch
         loss = self._loss_function(net_out['prediction'], yi)
-        similarity = self._get_cosine_similarity()
-        loss += self._diversity_coef * similarity
-        stats = {'loss': loss.item(), 'cosine_similarity': similarity.item()}
+        stats = {'loss': loss.item()}
         return loss, stats
-
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        """Configure the optimizer"""
-        return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
     @property
     def sample_mode(self) -> str:
@@ -231,92 +215,32 @@ class SimplexMLP(AbstractPlModel):
         """Get the weight decay."""
         return self._weight_decay
 
-    def _get_cosine_similarity(
+    def _forward_with_specified_mask(
             self,
-            weightings: Optional[torch.Tensor] = None,
+            x: torch.Tensor,
+            masks: List[torch.Tensor],
     ) -> torch.Tensor:
-        """Get cosine similarity for regularization.
+        """Forward function for network with a prespecified list of masks.
 
-        Code taken from https://github.com/apple/learning-subspaces/blob/9e4cdcf4cb928
-        35f8e66d5ed13dc01efae548f67/trainers/train_one_dim_subspaces.py
-
-        Args:
-            weightings: The two weightings to compare should be shape (2, num_verts).
-
-        Result:
-            The cosine similarity.
-        """
-        if weightings is None:
-            weightings = self._simplex_dist.sample((2,))
-        n_layers = getattr(self, 'vertex_0').n_layers
-        num = 0.0
-        normi = 0.0
-        normj = 0.0
-        for k in range(n_layers):
-            vi = self._get_interior_layer(weightings[0], k)
-            vj = self._get_interior_layer(weightings[1], k)
-            num += (vi * vj).sum()
-            normi += vi.pow(2).sum()
-            normj += vj.pow(2).sum()
-        return num.pow(2) / (normi * normj)
-
-    def _get_vertex_layer(self, vert_num: int, layer_num: int) -> torch.nn.Linear:
-        """Get a vertex layer.
+        This operation does not keep track of gradients.
 
         Args:
-            vert_num: The index of the vertex.
-            layer_num: The index of the layer.
+            x: The input to the network.
+            masks: The mask for connections for each layer and each input. The length of
+                the list must be the same as the number of layers in the network. Each
+                member of the list has shape (x.shape[0], num_inputs_at_layer).
 
         Returns:
-            The specified layer.
+            The output of the network.
         """
-        return getattr(getattr(self, f'vertex_{vert_num}'), f'linear_{layer_num}')
-
-    def _get_interior_layer(
-            self,
-            weighting: torch.Tensor,
-            layer_num: int,
-    ) -> torch.Tensor:
-        """Get the layer of a non-vertex point on the simplex.
-
-        Args:
-            weighting: The location on the simplex.
-            layer_num: The index of the layer.
-
-        Returns:
-            The specified layer.
-        """
-        layer_weights = None
-        for vertidx, weight in enumerate(weighting):
-            toadd = self._get_vertex_layer(vertidx, layer_num).weight * weight
-            if layer_weights is None:
-                layer_weights = toadd
-            else:
-                layer_weights += toadd
-        return layer_weights
-
-    def _get_test_and_validation_metrics(
-            self,
-            net_out: Dict[str, torch.Tensor],
-            batch: Sequence[torch.Tensor],
-    ) -> Dict[str, torch.Tensor]:
-        """Compute additional metrics to be used for validation/test only.
-
-        Args:
-            net_out: The output of the network.
-            batch: The batch passed into the network.
-
-        Returns:
-            A dictionary of additional metrics.
-        """
-        to_return = {}
-        pred = net_out['prediction']
-        _, yi = batch
-        for metric_name, metric in self._metrics.items():
-            metric_value = metric(pred, yi)
-            if len(metric_value.shape) > 0:
-                for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
-            else:
-                to_return[metric_name] = metric_value
-        return to_return
+        with torch.no_grad():
+            curr = self._net.linear_0(x)
+            for layer, mask in enumerate(masks[:-1]):
+                curr *= mask
+                curr = getattr(self._net, f'linear_{layer + 1}')(curr)
+                curr = self._net.hidden_activation(curr)
+            curr *= masks[-1]
+            curr = getattr(self._net, f'linear_{self._net.n_layers - 1}')(curr)
+        if self._net.out_activation is not None:
+            return self._net.out_activation(curr)
+        return curr

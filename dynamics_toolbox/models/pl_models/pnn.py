@@ -3,7 +3,7 @@ A network that outputs a Gaussian predictive distribution.
 
 Author: Ian Char
 """
-from typing import Optional, Tuple, Dict, Any, Sequence
+from typing import Optional, Tuple, Dict, Any, Sequence, Callable
 
 import torch
 import torch.nn.functional as F
@@ -33,6 +33,7 @@ class PNN(AbstractPlModel):
             logvar_bound_loss_coef: float = 1e-3,
             hidden_activation: str = activations.SWISH,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
+            weight_decay: Optional[float] = 0.0,
             **kwargs,
     ):
         """
@@ -51,6 +52,7 @@ class PNN(AbstractPlModel):
             logvar_bound_loss_coef: Coefficient on bound loss to add to loss.
             hidden_activation: Activation of the networks hidden layers.
             sample_mode: The method to use for sampling.
+            weight_decay: The weight decay for the optimizer.
         """
         super().__init__()
         self.save_hyperparameters()
@@ -75,6 +77,7 @@ class PNN(AbstractPlModel):
             hidden_activation=get_activation(hidden_activation)
         )
         self._learning_rate = learning_rate
+        self._weight_decay = weight_decay
         self._var_pinning = logvar_lower_bound is not None and logvar_upper_bound is not None
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
@@ -105,14 +108,20 @@ class PNN(AbstractPlModel):
             logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return mean, logvar
 
-    def sample_model_from_torch(self, net_in: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the output of the model.
+    def sample_model_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the next state as a delta in state.
+
+        It is assumed that each input of the network should be drawn from a different
+        sample.
 
         Args:
             net_in: The input for the network.
 
         Returns:
-            The next states and dictionary of info.
+            The deltas for next states and dictionary of info.
         """
         with torch.no_grad():
             mean_deltas, logvar_deltas = self.forward(net_in)
@@ -201,3 +210,18 @@ class PNN(AbstractPlModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self._output_dim
+
+    @property
+    def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
+        """Get the list of metric functions to compute."""
+        return {}
+
+    @property
+    def learning_rate(self) -> float:
+        """Get the learning rate."""
+        return self._learning_rate
+
+    @property
+    def weight_decay(self) -> float:
+        """Get the weight decay."""
+        return self._weight_decay

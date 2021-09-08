@@ -66,7 +66,7 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         if len(actions.shape) == 1:
             pt_actions = pt_actions.unsqueeze(int(pt_states.shape[0] != 1))
         net_in = torch.cat([pt_states, pt_actions], dim=1)
-        deltas, infos = self.sample_model_from_torch(net_in)
+        deltas, infos = self.multi_sample_model_from_torch(net_in)
         if len(states.shape) == 1:
             deltas = deltas.flatten()
         return deltas.numpy(), infos
@@ -107,7 +107,7 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         """
 
     @abc.abstractmethod
-    def sample_model_from_torch(
+    def multi_sample_model_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:

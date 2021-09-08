@@ -11,7 +11,7 @@ from torchmetrics import ExplainedVariance
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
 import dynamics_toolbox.constants.losses as losses
-from dynamics_toolbox.utils.misc import s2i
+from dynamics_toolbox.utils.misc import s2i, get_architecture
 from dynamics_toolbox.utils.pytorch.activations import get_activation
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
@@ -50,15 +50,7 @@ class MLP(AbstractPlModel):
         """
         super().__init__()
         self.save_hyperparameters()
-        if architecture is not None:
-            hidden_sizes = s2i(architecture)
-        elif num_layers is not None and layer_size is not None:
-            hidden_sizes = [layer_size for _ in range(num_layers)]
-        else:
-            raise ValueError(
-                'MLP architecture not provided. Either specify architecture '
-                'argument or both num_layers and layer_size arguments.'
-            )
+        hidden_sizes = get_architecture(num_layers, layer_size, architecture)
         self._net = FCNetwork(
             input_dim=input_dim,
             output_dim=output_dim,
@@ -87,7 +79,7 @@ class MLP(AbstractPlModel):
         """
         return self._net.forward(x)
 
-    def sample_model_from_torch(
+    def multi_sample_model_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:

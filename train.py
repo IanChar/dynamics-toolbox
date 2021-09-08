@@ -15,8 +15,7 @@ from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
 
-@hydra.main(config_path=os.path.join(os.environ['DYNAMICS_TOOLBOX_PATH'], 'configs'),
-            config_name='config')
+@hydra.main(config_path='./example_configs', config_name='config')
 def train(cfg: DictConfig) -> None:
     """Train the model."""
     if 'model' not in cfg:
@@ -31,13 +30,9 @@ def train(cfg: DictConfig) -> None:
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']
         if 'save_dir' not in cfg:
-            cfg['save_dir'] = os.path.join(get_original_cwd(), 'trained_models')
+            cfg['save_dir'] = os.path.join(get_original_cwd(), 'scripts/trained_models')
         elif cfg['save_dir'][0] != '/':
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
-    if 'early_stopping' in cfg and 'num_ensemble_members' in cfg['early_stopping']:
-        with open_dict(cfg):
-            cfg['early_stopping']['num_ensemble_members'] =\
-                    cfg['model']['num_ensemble_members']
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
     print(OmegaConf.to_yaml(cfg))
     if cfg['logger'] == 'mlflow':

@@ -119,7 +119,7 @@ class DropoutMLP(AbstractPlModel):
             return self._net.out_activation(curr)
         return curr
 
-    def sample_model_from_torch(
+    def multi_sample_model_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:

@@ -229,7 +229,8 @@ class PNN(AbstractPlModel):
     @sample_mode.setter
     def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
-        if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST, sampling_modes.RETURN_MEAN]:
+        if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST,
+                                     sampling_modes.RETURN_MEAN]:
             raise ValueError(f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '
                              f'or {sampling_modes.RETURN_MEAN}, but received {mode}.')
         self._sample_mode = mode

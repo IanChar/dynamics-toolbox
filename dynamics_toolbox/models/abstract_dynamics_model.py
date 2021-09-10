@@ -17,7 +17,11 @@ class AbstractDynamicsModel(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def predict(self, states: np.ndarray, actions: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
+    def predict(
+            self,
+            states: np.ndarray,
+            actions: np.ndarray,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Predict the next state given current state and action.
 
         Args:

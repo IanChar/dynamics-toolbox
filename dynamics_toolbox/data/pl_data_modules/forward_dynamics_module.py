@@ -74,25 +74,32 @@ class ForwardDynamicsDataModule(LightningDataModule):
 
     def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
-        return DataLoader(
-            self._val_dataset,
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=self._pin_memory,
-        )
+        if len(self._val_dataset):
+            return DataLoader(
+                self._val_dataset,
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle=False,
+                drop_last=False,
+                pin_memory=self._pin_memory,
+            )
+        else:
+            None
 
     def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
-        return DataLoader(
-            self._te_dataset,
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=self._pin_memory,
-        )
+        if len(self._te_dataset):
+            return DataLoader(
+                self._te_dataset,
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle=False,
+                drop_last=False,
+                pin_memory=self._pin_memory,
+            )
+        else:
+            None
+
 
     @property
     def input_dim(self) -> int:

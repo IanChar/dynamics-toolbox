@@ -71,7 +71,7 @@ class SimplexMLP(AbstractPlModel):
             )
         self._num_vertices = num_vertices
         for idx in range(num_vertices):
-            setattr(self, f'vertex_{idx}', FCNetwork(
+            setattr(self, f'_vertex_{idx}', FCNetwork(
                 input_dim=input_dim,
                 output_dim=output_dim,
                 hidden_sizes=hidden_sizes,
@@ -113,9 +113,9 @@ class SimplexMLP(AbstractPlModel):
         """
         if weighting is None:
             weighting = self._simplex_dist.sample((x.shape[0],))
-        n_layers = getattr(self, 'vertex_0').n_layers
-        hidden_activation = getattr(self, 'vertex_0').hidden_activation
-        out_activation = getattr(self, 'vertex_0').out_activation
+        n_layers = getattr(self, '_vertex_0').n_layers
+        hidden_activation = getattr(self, '_vertex_0').hidden_activation
+        out_activation = getattr(self, '_vertex_0').out_activation
         curr = x
         for layer_num in range(n_layers - 1):
             lin_outs = torch.stack([self._get_vertex_layer(v, layer_num)(curr)
@@ -129,14 +129,32 @@ class SimplexMLP(AbstractPlModel):
             return out_activation(curr)
         return curr
 
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
+        """Get the output for a single sample in the model.
 
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
+                or self._curr_sample is None):
+            self._curr_sample = self._simplex_dist.sample((len(net_in),))
+        weight = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
+        with torch.no_grad():
+            deltas = self.forward(net_in, weight)
+        info = {'delta': deltas}
+        return deltas, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
 
         Args:
             net_in: The input for the network.
@@ -248,7 +266,7 @@ class SimplexMLP(AbstractPlModel):
         """
         if weightings is None:
             weightings = self._simplex_dist.sample((2,))
-        n_layers = getattr(self, 'vertex_0').n_layers
+        n_layers = getattr(self, '_vertex_0').n_layers
         num = 0.0
         normi = 0.0
         normj = 0.0
@@ -270,7 +288,7 @@ class SimplexMLP(AbstractPlModel):
         Returns:
             The specified layer.
         """
-        return getattr(getattr(self, f'vertex_{vert_num}'), f'linear_{layer_num}')
+        return getattr(getattr(self, f'_vertex_{vert_num}'), f'linear_{layer_num}')
 
     def _get_interior_layer(
             self,

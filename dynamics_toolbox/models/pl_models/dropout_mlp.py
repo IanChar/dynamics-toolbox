@@ -75,7 +75,7 @@ class DropoutMLP(AbstractPlModel):
         )
         # Instantiate dropout layers.
         for layer in range(1, self._net.n_layers):
-            setattr(self, f'dropout_{layer}', torch.nn.Dropout(dropout_prob))
+            setattr(self, f'_dropout_{layer}', torch.nn.Dropout(dropout_prob))
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._dropout_prob = dropout_prob
@@ -110,23 +110,20 @@ class DropoutMLP(AbstractPlModel):
         """
         curr = self._net.linear_0(x)
         for layer in range(1, self._net.n_layers - 1):
-            curr = getattr(self, f'dropout_{layer}')(curr)
+            curr = getattr(self, f'_dropout_{layer}')(curr)
             curr = getattr(self._net, f'linear_{layer}')(curr)
             curr = self._net.hidden_activation(curr)
-        curr = getattr(self, f'dropout_{self._net.n_layers - 1}')(curr)
+        curr = getattr(self, f'_dropout_{self._net.n_layers - 1}')(curr)
         curr = getattr(self._net, f'linear_{self._net.n_layers - 1}')(curr)
         if self._net.out_activation is not None:
             return self._net.out_activation(curr)
         return curr
 
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
-
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        """Get the output for a single sample in the model.
 
         Args:
             net_in: The input for the network.
@@ -136,7 +133,28 @@ class DropoutMLP(AbstractPlModel):
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
                 or self._curr_sample is None):
-            self._curr_sample = self._sample_dropout_mask(net_in.shape[0])
+            self._curr_sample = self._sample_dropout_mask(len(net_in))
+        masks = [cs[0].repeat(len(net_in)).reshape(len(net_in), -1)
+                 for cs in self._curr_sample]
+        deltas = self._forward_with_specified_mask(net_in, masks)
+        info = {'delta': deltas}
+        return deltas, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
+                or self._curr_sample is None):
+            self._curr_sample = self._sample_dropout_mask(len(net_in))
         elif len(self._curr_sample) < len(net_in):
             additional_masks = self._sample_dropout_mask(len(net_in)
                                                          - len(self._curr_sample[0]))
@@ -214,6 +232,26 @@ class DropoutMLP(AbstractPlModel):
     def weight_decay(self) -> float:
         """Get the weight decay."""
         return self._weight_decay
+
+    def _sample_dropout_mask(
+            self,
+            num_inputs: int,
+    ) -> List[torch.Tensor]:
+        """Sample a dropout mask.
+
+        Args:
+            num_inputs: The number of inputs we should draw samples for.
+
+        Returns:
+            List of tensors of 0s and 1s with shape (num_inputs, input_layer_size).
+            Starting with the second layer.
+        """
+        masks = []
+        for lidx in range(1, self._net.n_layers):
+            masks.append(self._dropout_dist.sample((
+                num_inputs,
+                getattr(self._net, f'linear_{lidx}').in_features)))
+        return masks
 
     def _forward_with_specified_mask(
             self,

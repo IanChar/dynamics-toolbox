@@ -8,14 +8,14 @@ from typing import Optional, Callable, Any, Dict, Tuple, Union, List
 import gym
 import numpy as np
 
-from dynamics_toolbox.models.abstract_dynamics_model import AbstractDynamicsModel
+from dynamics_toolbox.models.abstract_model import AbstractModel
 
 
 class ModelEnv(gym.Env):
 
     def __init__(
             self,
-            dynamics_model: AbstractDynamicsModel,
+            dynamics_model: AbstractModel,
             start_distribution: Callable[[], np.ndarray],
             horizon: Optional[int] = None,
             penalizer: Optional[Callable[[Dict[str, Any]], float]] = None,

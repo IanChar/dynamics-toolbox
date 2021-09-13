@@ -250,7 +250,7 @@ class DropoutMLP(AbstractPlModel):
         for lidx in range(1, self._net.n_layers):
             masks.append(self._dropout_dist.sample((
                 num_inputs,
-                getattr(self._net, f'linear_{lidx}').in_features)))
+                getattr(self._net, f'linear_{lidx}').in_features))).to(self.device)
         return masks
 
     def _forward_with_specified_mask(

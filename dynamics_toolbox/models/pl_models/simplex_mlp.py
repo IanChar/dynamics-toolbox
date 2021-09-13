@@ -112,7 +112,7 @@ class SimplexMLP(AbstractPlModel):
             The output of the network.
         """
         if weighting is None:
-            weighting = self._simplex_dist.sample((x.shape[0],))
+            weighting = self._simplex_dist.sample((x.shape[0],)).to(self.device)
         n_layers = getattr(self, '_vertex_0').n_layers
         hidden_activation = getattr(self, '_vertex_0').hidden_activation
         out_activation = getattr(self, '_vertex_0').out_activation
@@ -143,7 +143,7 @@ class SimplexMLP(AbstractPlModel):
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
                 or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),))
+            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
         weight = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
         with torch.no_grad():
             deltas = self.forward(net_in, weight)
@@ -164,11 +164,11 @@ class SimplexMLP(AbstractPlModel):
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
             or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),))
+            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
         elif len(self._curr_sample) < len(net_in):
             self._curr_sample = torch.cat(
                 [self._curr_sample,
-                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),))],
+                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),)).to(self.device)],
                 dim=0)
         weight = self._curr_sample[:len(net_in)]
         with torch.no_grad():
@@ -265,7 +265,7 @@ class SimplexMLP(AbstractPlModel):
             The cosine similarity.
         """
         if weightings is None:
-            weightings = self._simplex_dist.sample((2,))
+            weightings = self._simplex_dist.sample((2,)).to(self.device)
         n_layers = getattr(self, '_vertex_0').n_layers
         num = 0.0
         normi = 0.0

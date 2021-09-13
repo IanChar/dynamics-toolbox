@@ -34,6 +34,8 @@ def train(cfg: DictConfig) -> None:
             cfg['save_dir'] = os.path.join(get_original_cwd(), 'trained_models')
         elif cfg['save_dir'][0] != '/':
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
+        if 'gpus' in cfg:
+            cfg['gpus'] = str(cfg['gpus'])
     if 'early_stopping' in cfg:
         with open_dict(cfg):
             cfg['early_stopping']['num_ensemble_members'] =\

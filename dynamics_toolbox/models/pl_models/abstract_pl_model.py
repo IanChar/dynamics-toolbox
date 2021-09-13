@@ -46,7 +46,6 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
             actions: The actions to be played as a torch tensor.
         Returns: The output of the model and give a dictionary of related quantities.
         """
-        import pudb; pudb.set_trace()
         if isinstance(actions, int) or isinstance(actions, float):
             actions = np.array([actions]).reshape(1, 1)
         pt_states = torch.Tensor(states).to(self.device)
@@ -59,7 +58,7 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         deltas, infos = self._get_output_from_torch(net_in)
         if len(states.shape) == 1:
             deltas = deltas.flatten()
-        return deltas.numpy(), infos
+        return deltas.cpu().numpy(), infos
 
     @abc.abstractmethod
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:

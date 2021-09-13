@@ -24,7 +24,7 @@ def get_data_from_source(data_source: str) -> Dict[str, np.ndarray]:
             * "rewards"
             * "terminals"
     """
-    if '.h5py' in data_source:
+    if '.hdf5' in data_source:
         return load_from_hdf5(data_source)
     elif '-v' in data_source:
         return load_qdata_from_d4rl(data_source)

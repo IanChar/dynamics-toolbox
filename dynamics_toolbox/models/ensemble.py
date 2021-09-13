@@ -30,11 +30,11 @@ class FiniteEnsemble(AbstractDynamicsModel):
         self._output_dim = members[0].output_dim
         for member in members:
             if member.input_dim != self._input_dim:
-                raise ValueError('All members must have the same input dimension but found '
-                                 f'{self._input_dim} and {member.input_dim}.')
+                raise ValueError('All members must have the same input dimension but'
+                                 f' found {self._input_dim} and {member.input_dim}.')
             if member.output_dim != self._output_dim:
-                raise ValueError('All members must have the same output dimension but found '
-                                 f'{self._output_dim} and {member.output_dim}.')
+                raise ValueError('All members must have the same output dimension but'
+                                 f' found {self._output_dim} and {member.output_dim}.')
         self._members = members
         self._sample_mode = sample_mode
         self._nxt_member_to_sample = np.random.randint(len(members))
@@ -75,7 +75,7 @@ class FiniteEnsemble(AbstractDynamicsModel):
             mode: The sampling mode.
         """
         for member in self.members:
-            self._member.sample_mode = mode
+            member.sample_mode = mode
 
     @property
     def sample_mode(self) -> str:

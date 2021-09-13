@@ -1,0 +1,8 @@
+model_name: "SimplexMLP"
+model_type: "SimplexMLP"
+num_vertices: 2
+num_layers: 3
+layer_size: 200
+learning_rate: 0.0001
+diversity_coef: 1
+hidden_activation: "tanh"

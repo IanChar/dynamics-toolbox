@@ -16,7 +16,7 @@ from pytorch_lightning import Trainer
 from dynamics_toolbox.models.abstract_dynamics_model import\
         AbstractDynamicsModel
 from dynamics_toolbox.models import pl_models
-from dynamics_toolbox.models.pl_models.pl_ensemble import FinitePlEnsemble
+from dynamics_toolbox.models.pl_models.simultaneous_ensemble import SimultaneousEnsemble
 
 
 def load_model_from_log_dir(
@@ -45,7 +45,7 @@ def load_model_from_log_dir(
         epidx = np.argmax(epochs)
     path = os.path.join(path, checkpoints[epidx])
     if cfg['model']['num_ensemble_members'] > 1:
-        return FinitePlEnsemble.load_from_checkpoint(path, member_config=cfg['model'])
+        return SimultaneousEnsemble.load_from_checkpoint(path, member_config=cfg['model'])
     else:
         return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(path)
 

@@ -13,8 +13,8 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning import Trainer
 
-from dynamics_toolbox.models.abstract_dynamics_model import\
-        AbstractDynamicsModel
+from dynamics_toolbox.models.abstract_model import\
+        AbstractModel
 from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.pl_models.simultaneous_ensemble import SimultaneousEnsemble
 
@@ -44,10 +44,8 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     path = os.path.join(path, checkpoints[epidx])
-    if cfg['model']['num_ensemble_members'] > 1:
-        return SimultaneousEnsemble.load_from_checkpoint(path, member_config=cfg['model'])
-    else:
-        return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(path)
+    return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(
+            path, **cfg['model'])
 
 
 def load_model_from_tensorboard_log(
@@ -55,7 +53,7 @@ def load_model_from_tensorboard_log(
         version: Optional[int] = None,
         epoch: Optional[int] = None,
         default_root: str = 'trained_models',
-) -> AbstractDynamicsModel:
+) -> AbstractModel:
     """Load in a model.
 
     Args:

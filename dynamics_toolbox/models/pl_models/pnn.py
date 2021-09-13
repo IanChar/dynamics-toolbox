@@ -141,14 +141,11 @@ class PNN(AbstractPlModel):
             logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return mean, logvar
 
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
-
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        """Get the output for a single sample in the model.
 
         Args:
             net_in: The input for the network.
@@ -165,6 +162,20 @@ class PNN(AbstractPlModel):
         else:
             deltas = mean_deltas
         return deltas, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        return self.single_sample_output_from_torch(net_in)
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -229,7 +240,8 @@ class PNN(AbstractPlModel):
     @sample_mode.setter
     def sample_mode(self, mode: str) -> None:
         """Set the sample mode to the appropriate mode."""
-        if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST, sampling_modes.RETURN_MEAN]:
+        if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST,
+                                     sampling_modes.RETURN_MEAN]:
             raise ValueError(f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '
                              f'or {sampling_modes.RETURN_MEAN}, but received {mode}.')
         self._sample_mode = mode

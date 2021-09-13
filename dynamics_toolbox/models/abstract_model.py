@@ -4,12 +4,12 @@ Abstract class for all dynamics models.
 Author: Ian Char
 """
 import abc
-from typing import Dict, Tuple, Any
+from typing import Dict, Tuple, Any, Optional
 
 import numpy as np
 
 
-class AbstractDynamicsModel(metaclass=abc.ABCMeta):
+class AbstractModel(metaclass=abc.ABCMeta):
     """Abstract model for predicting next states in dynamics."""
 
     def reset(self) -> None:
@@ -17,15 +17,21 @@ class AbstractDynamicsModel(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def predict(self, states: np.ndarray, actions: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Predict the next state given current state and action.
+    def predict(
+            self,
+            model_input: np.ndarray,
+            each_input_is_different_sample: Optional[bool] = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Make predictions using the currently set sampling method.
 
         Args:
-            states: The current states as a torch tensor.
-            actions: The actions to be played as a torch tensor.
+            model_input: The input to be given to the model.
+            each_input_is_different_sample: Whether each input should be treated
+                as being drawn from a different sample of the model. Note that this
+                may not have an effect on all models (e.g. PNN)
 
         Returns:
-            The model output and give a dictionary of related quantities.
+            The output of the model and give a dictionary of related quantities.
         """
 
     @property

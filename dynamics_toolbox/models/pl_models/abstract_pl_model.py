@@ -4,16 +4,16 @@ Abstract deep model for learning dynamics.
 Author: Ian Char
 """
 import abc
-from typing import Dict, Tuple, Sequence, Any, Callable
+from typing import Dict, Tuple, Sequence, Any, Callable, Optional
 
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
 
-from dynamics_toolbox.models.abstract_dynamics_model import AbstractDynamicsModel
+from dynamics_toolbox.models.abstract_model import AbstractModel
 
 
-class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCMeta):
+class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     """Abstract model for predicting next states in dynamics."""
 
     def training_step(
@@ -43,33 +43,26 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
 
     def predict(
             self,
-            states: np.ndarray,
-            actions: np.ndarray
+            model_input: np.ndarray,
+            each_input_is_different_sample: Optional[bool] = True,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Predict the next state given current state and action.
-
-        For each state-action provided, it is assumed that we want a different sample.
+        """Make predictions using the currently set sampling method.
 
         Args:
-            states: The current states as a torch tensor.
-            actions: The actions to be played as a torch tensor.
+            model_input: The input to be given to the model.
+            each_input_is_different_sample: Whether each input should be treated
+                as being drawn from a different sample of the model. Note that this
+                may not have an effect on all models (e.g. PNN)
 
         Returns:
             The output of the model and give a dictionary of related quantities.
         """
-        if isinstance(actions, int) or isinstance(actions, float):
-            actions = np.array([actions]).reshape(1, 1)
-        pt_states = torch.Tensor(states).to(self.device)
-        pt_actions = torch.Tensor(actions).to(self.device)
-        if len(states.shape) == 1:
-            pt_states = pt_states.unsqueeze(0)
-        if len(actions.shape) == 1:
-            pt_actions = pt_actions.unsqueeze(int(pt_states.shape[0] != 1))
-        net_in = torch.cat([pt_states, pt_actions], dim=1)
-        deltas, infos = self.multi_sample_model_from_torch(net_in)
-        if len(states.shape) == 1:
-            deltas = deltas.flatten()
-        return deltas.cpu().numpy(), infos
+        net_in = torch.Tensor(model_input).to(self.device)
+        if each_input_is_different_sample:
+            output, infos = self.multi_sample_output_from_torch(net_in)
+        else:
+            output, infos = self.single_sample_output_from_torch(net_in)
+        return output.numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer"""
@@ -107,14 +100,25 @@ class AbstractPlModel(LightningModule, AbstractDynamicsModel, metaclass=abc.ABCM
         """
 
     @abc.abstractmethod
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
+        """Get the output for a single sample in the model.
 
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+
+    @abc.abstractmethod
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
 
         Args:
             net_in: The input for the network.

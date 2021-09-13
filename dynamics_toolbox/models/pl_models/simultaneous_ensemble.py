@@ -39,7 +39,7 @@ class SimultaneousEnsemble(AbstractPlModel):
         """
         LightningModule.__init__(self)
         for member_idx in range(num_members):
-            setattr(self, f'member_{member_idx}',
+            setattr(self, f'_member_{member_idx}',
                     getattr(pl_models, member_config['model_type'])(**member_config))
         self._num_members = num_members
         self._sample_mode = sample_mode
@@ -60,7 +60,7 @@ class SimultaneousEnsemble(AbstractPlModel):
         """
         parameters = []
         for midx in range(self._num_members):
-            parameters += list(getattr(self, f'member_{midx}').parameters())
+            parameters += list(getattr(self, f'_member_{midx}').parameters())
         return torch.optim.Adam(parameters, lr=self.learning_rate,
                                 weight_decay=self.weight_decay)
 
@@ -75,9 +75,9 @@ class SimultaneousEnsemble(AbstractPlModel):
         """
         to_return = {}
         for member_idx in range(self._num_members):
-            member_out = getattr(self, f'member_{member_idx}').get_net_out(batch)
+            member_out = getattr(self, f'_member_{member_idx}').get_net_out(batch)
             for k, v in member_out.items():
-                to_return[f'member_{member_idx}_{k}'] = v
+                to_return[f'_member_{member_idx}_{k}'] = v
         return to_return
 
     def loss(
@@ -98,11 +98,11 @@ class SimultaneousEnsemble(AbstractPlModel):
         member_outs = {}
         for k, v in net_out.items():
             splitted = k.split('_')
-            member = f'member_{int(splitted[1])}'
+            member = f'_member_{int(splitted[2])}'
             if member in member_outs:
-                member_outs[member][''.join(splitted[2:])] = v
+                member_outs[member][''.join(splitted[3:])] = v
             else:
-                member_outs[member] = {''.join(splitted[2:]): v}
+                member_outs[member] = {''.join(splitted[3:]): v}
         # Compute loss for each member.
         loss_dict = {}
         total_loss = None
@@ -126,14 +126,39 @@ class SimultaneousEnsemble(AbstractPlModel):
         loss_dict['loss'] = total_loss.item()
         return total_loss, loss_dict
 
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
+        """Get the output for a single sample in the model.
 
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
+            self.reset()
+        if self._curr_sample is None:
+            self._curr_sample = self._draw_from_categorical(len(net_in))
+        infos = {}
+        deltas = []
+        for member_idx, member in enumerate(self.members):
+            delta, info = member.multi_sample_output_from_torch(net_in)
+            deltas.append(delta)
+            infos.update({f'_member_{member_idx}_{k}': v for k, v in info.items()})
+        deltas = torch.stack(deltas)
+        samp_idxs = self._curr_sample[0].repeat(len(net_in))
+        sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
+        infos['deltas'] = sampled_delta
+        return sampled_delta, infos
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
 
         Args:
             net_in: The input for the network.
@@ -153,9 +178,9 @@ class SimultaneousEnsemble(AbstractPlModel):
         infos = {}
         deltas = []
         for member_idx, member in enumerate(self.members):
-            delta, info = member.multi_sample_model_from_torch(net_in)
+            delta, info = member.multi_sample_output_from_torch(net_in)
             deltas.append(delta)
-            infos.update({f'member_{member_idx}_{k}': v for k, v in info.items()})
+            infos.update({f'_member_{member_idx}_{k}': v for k, v in info.items()})
         deltas = torch.stack(deltas)
         samp_idxs = self._curr_sample[:len(net_in)]
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
@@ -186,33 +211,33 @@ class SimultaneousEnsemble(AbstractPlModel):
     @property
     def input_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self.member_0.input_dim
+        return self._member_0.input_dim
 
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self.member_0.output_dim
+        return self._members_0.output_dim
 
     @property
     def members(self) -> Sequence[AbstractPlModel]:
         """The members of the ensemble."""
-        return [getattr(self, f'member_{idx}')
+        return [getattr(self, f'_member_{idx}')
                 for idx in range(self._num_members)]
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
         """Get the list of metric functions to compute."""
-        return self.member_0.metrics
+        return self._member_0.metrics
 
     @property
     def learning_rate(self) -> float:
         """Get the learning rate."""
-        return self.member_0.learning_rate
+        return self._member_0.learning_rate
 
     @property
     def weight_decay(self) -> float:
         """Get the weight decay."""
-        return self.member_0.weight_decay
+        return self._member_0.weight_decay
 
     def _get_member_pair_cosine_similarity(
             self,
@@ -232,9 +257,9 @@ class SimultaneousEnsemble(AbstractPlModel):
             The cosine similarity.
         """
         param1 = torch.nn.utils.parameters_to_vector(
-                getattr(self, f'member_{member_idx1}').parameters())
+                getattr(self, f'_member_{member_idx1}').parameters())
         param2 = torch.nn.utils.parameters_to_vector(
-                getattr(self, f'member_{member_idx2}').parameters())
+                getattr(self, f'_member_{member_idx2}').parameters())
         return self._similarity(param1, param2).pow(2)
 
     def _get_test_and_validation_metrics(

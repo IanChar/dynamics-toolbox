@@ -19,7 +19,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             self,
             data_source: str,
             batch_size: int,
-            learn_rewards: bool = True,
+            learn_rewards: bool = False,
             val_proportion: float = 0.0,
             test_proportion: float = 0.0,
             num_workers: int = 1,
@@ -43,7 +43,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
         qset = get_data_from_source(data_source)
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
-            self._xdata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])
+            self._ydata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])
         self._ydata = qset['next_observations'] - qset['observations']
         self._learn_rewards = learn_rewards
         self._val_proportion = val_proportion

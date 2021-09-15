@@ -23,7 +23,8 @@ class ModelEnv(gym.Env):
             terminal_function: Optional[Callable[[np.ndarray], bool]] = None,
             reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray], float]] = None,
             reward_is_first_dim: bool = True,
-            real_env: Optional[gym.Env] = None
+            real_env: Optional[gym.Env] = None,
+            model_output_are_deltas: Optional[bool] = True,
     ):
         """
         Constructor.
@@ -37,6 +38,8 @@ class ModelEnv(gym.Env):
             reward_function: A function taking state, action, next_state and returning
             reward_is_first_dim: Whether the first dimension of predictions from the model is rewards.
             real_env: The real environment being modelled.
+            model_output_are_deltas: Whether the model predicts delta in state or the
+                actual full state.
         """
         super().__init__()
         if not reward_is_first_dim and reward_function is None:
@@ -50,6 +53,7 @@ class ModelEnv(gym.Env):
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim
         self._real_env = real_env
+        self._model_output_are_deltas = model_output_are_deltas
         self._t = 0
         self._state = self._start_dist()
         if self._real_env is not None:
@@ -68,8 +72,8 @@ class ModelEnv(gym.Env):
             )
 
     def reset(self) -> np.ndarray:
-        """
-        Reset the dynamics.
+        """Reset the dynamics.
+
         Returns:
             The current observations.
         """
@@ -79,21 +83,30 @@ class ModelEnv(gym.Env):
         return self._state
 
     def step(self, action: Union[float, np.ndarray]) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
-        """
-        Make a step in the environment.
+        """ Make a step in the environment.
+
         Args:
             action: The action as a
 
         Returns:
-
+            - The next state.
+            - The reward for the transition.
+            - Whether a terminal state was reached.
+            - Extra information.
         """
         if type(action) is float:
             action = np.array([action])
-        nxt, model_info = self._dynamics.predict(self._state, action)
+        if len(action.shape) == 1:
+            action = action.reshape(1, -1)
+        model_out, model_info = self._dynamics.predict(np.hstack(
+            [self._state.reshape(1, -1), action]))
+        nxt = (model_out + self._state.reshape(1, -1) if self._model_output_are_deltas
+                else model_out)
         self._t += 1
         info = {}
         rew, rew_info = self._compute_reward(self._state, action, nxt, model_info)
-        info['raw_penalty'] = float(rew_info['raw_penalty'])
+        if 'raw_penalty' in rew_info:
+            info['raw_penalty'] = float(rew_info['raw_penalty'])
         # Compute terminal
         if self._terminal_function is not None:
             done = self._terminal_function(nxt)[0]
@@ -103,7 +116,7 @@ class ModelEnv(gym.Env):
             done = done or self._horizon >= self._t
         # Set nxt to current and return.
         self._state = nxt
-        return nxt, rew, done, info
+        return nxt.flatten(), float(rew), done, info
 
     def unroll_from_policy(
             self,
@@ -118,13 +131,13 @@ class ModelEnv(gym.Env):
             policy: The policy taking state and mapping to action.
             horizon: The amount of time to unroll for.
         Returns:
-            * All observations (num_starts, horizon + 1, obs_dim)
-            * The actions taken (num_starts, horizon, act_dim)
-            * The rewards received (num_starts, horizon)
-            * The terminals (num_starts, horizon)
+            - All observations (num_starts, horizon + 1, obs_dim)
+            - The actions taken (num_starts, horizon, act_dim)
+            - The rewards received (num_starts, horizon)
+            - The terminals (num_starts, horizon)
         """
-        obs = np.zeros(starts.shape[0], horizon + 1, starts.shape[1])
-        rewards = np.zeros(starts.shape[1], horizon)
+        obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
+        rewards = np.zeros((starts.shape[0], horizon))
         terminals = np.full((starts.shape[0], horizon), True)
         obs[:, 0, :] = starts
         acts = None
@@ -132,13 +145,14 @@ class ModelEnv(gym.Env):
             state = obs[:, h, :]
             act = policy(state)
             if acts is None:
-                acts = np.zeros(starts.shape[0], horizon, act.shape[1])
-                acts[:, h , :] = act
-            nxts, infos = self._dynamics.predict(state, act)
+                acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
+                acts[:, h, :] = act
+            model_out, infos = self._dynamics.predict(np.hstack([state, act]))
+            nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
-            rewards[:, h] = self._compute_reward(state, act, nxts)
+            rewards[:, h] = self._compute_reward(state, act, nxts, infos)[0]
             if self._terminal_function is None:
-                terminals[: h] = np.full(starts.shape[0], False)
+                terminals[:, h] = np.full(starts.shape[0], False)
             else:
                 terminals[:, h] = np.array([self._terminal_function(nxt) for nxt in nxts])
         return obs, acts, rewards, terminals
@@ -147,21 +161,20 @@ class ModelEnv(gym.Env):
             self,
             starts: np.ndarray,
             actions: np.ndarray,
-            horizon: int,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
         Args:
             starts: All of the states to unroll from should have shape (num_states, obs_dim).
             actions: The actions to use for unrolling should have shape (num_states, horizon, act_dim)>
-            horizon: The amount of time to unroll for.
         Returns:
-            * All observations (num_starts, horizon + 1, obs_dim)
-            * The actions taken (num_starts, horizon, act_dim)
-            * The rewards received (num_starts, horizon)
-            * The terminals (num_starts, horizon)
+            - All observations (num_starts, horizon + 1, obs_dim)
+            - The actions taken (num_starts, horizon, act_dim)
+            - The rewards received (num_starts, horizon)
+            - The terminals (num_starts, horizon)
         """
         act_idx = 0
+        horizon = actions.shape[1]
 
         def policy_wrap(state: np.ndarray):
             return actions[:, act_idx, :]
@@ -195,8 +208,8 @@ class ModelEnv(gym.Env):
             state: The states.
             action: The actions
             nxt: The next states.
-            model_info: The info outputted by the dynamics model. 
-            
+            model_info: The info outputted by the dynamics model.
+
         Returns:
             The corresponding rewards.
         """

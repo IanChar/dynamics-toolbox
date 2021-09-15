@@ -6,7 +6,7 @@ that only increases every every epoch.
 
 Author: Ian Char
 """
-from typing import List, Optional, Any
+from typing import Optional
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback
@@ -24,7 +24,6 @@ class SingleProgressBar(Callback):
 
         Args:
             num_epochs: The number of training epochs there will be.
-            track_statistics: List of statistics to display.
         """
         self._num_epochs = num_epochs
         self._pbar = None

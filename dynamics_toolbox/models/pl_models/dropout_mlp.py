@@ -157,9 +157,9 @@ class DropoutMLP(AbstractPlModel):
             self._curr_sample = self._sample_dropout_mask(len(net_in))
         elif len(self._curr_sample) < len(net_in):
             additional_masks = self._sample_dropout_mask(len(net_in)
-                                                         - len(self._curr_sample[0]))
+                                                         - len(self._curr_sample))
             self._curr_sample = [torch.cat([csamp, asamp], dim=0)
-                                 for csamp, asamp in zip(self._currsample,
+                                 for csamp, asamp in zip(self._curr_sample,
                                                          additional_masks)]
         masks = [cs[:len(net_in)] for cs in self._curr_sample]
         deltas = self._forward_with_specified_mask(net_in, masks)
@@ -211,12 +211,12 @@ class DropoutMLP(AbstractPlModel):
     @property
     def input_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._input_dim
+        return self._hparams.input_dim
 
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._output_dim
+        return self._hparams.output_dim
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
@@ -250,7 +250,7 @@ class DropoutMLP(AbstractPlModel):
         for lidx in range(1, self._net.n_layers):
             masks.append(self._dropout_dist.sample((
                 num_inputs,
-                getattr(self._net, f'linear_{lidx}').in_features))).to(self.device)
+                getattr(self._net, f'linear_{lidx}').in_features)).to(self.device))
         return masks
 
     def _forward_with_specified_mask(

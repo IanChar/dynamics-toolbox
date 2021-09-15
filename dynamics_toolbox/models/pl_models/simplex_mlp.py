@@ -227,12 +227,12 @@ class SimplexMLP(AbstractPlModel):
     @property
     def input_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._input_dim
+        return self._hparams.input_dim
 
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._output_dim
+        return self._hparams.output_dim
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:

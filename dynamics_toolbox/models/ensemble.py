@@ -11,12 +11,12 @@ from dynamics_toolbox.models.abstract_model import AbstractModel
 from dynamics_toolbox.constants import sampling_modes
 
 
-class FiniteEnsemble(AbstractModel):
+class Ensemble(AbstractModel):
 
     def __init__(
             self,
             members: List[AbstractModel],
-            sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+            sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             elite_idxs: Optional[List[int]] = None,
     ):
         """Constructor

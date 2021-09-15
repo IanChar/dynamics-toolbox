@@ -15,8 +15,6 @@ from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.data import pl_data_modules
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
-from dynamics_toolbox.models.pl_models.simultaneous_ensemble import SimultaneousEnsemble
-from dynamics_toolbox.utils.lightning.multi_early_stop import MultiMonitorEarlyStopping
 from dynamics_toolbox.utils.lightning.single_progress_bar import SingleProgressBar
 
 

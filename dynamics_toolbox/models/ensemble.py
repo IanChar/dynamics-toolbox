@@ -7,16 +7,16 @@ from typing import Sequence, Tuple, Dict, Any, Optional, List
 
 import numpy as np
 
-from dynamics_toolbox.models.abstract_dynamics_model import AbstractDynamicsModel
+from dynamics_toolbox.models.abstract_model import AbstractModel
 from dynamics_toolbox.constants import sampling_modes
 
 
-class FiniteEnsemble(AbstractDynamicsModel):
+class Ensemble(AbstractModel):
 
     def __init__(
             self,
-            members: List[AbstractDynamicsModel],
-            sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+            members: List[AbstractModel],
+            sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             elite_idxs: Optional[List[int]] = None,
     ):
         """Constructor
@@ -37,36 +37,53 @@ class FiniteEnsemble(AbstractDynamicsModel):
                                  f' found {self._output_dim} and {member.output_dim}.')
         self._members = members
         self._sample_mode = sample_mode
-        self._nxt_member_to_sample = np.random.randint(len(members))
+        self._curr_sample = None
         if elite_idxs is None:
             self._elite_idxs = list(range(len(self.members)))
 
     def reset(self) -> None:
         """Reset the model."""
-        self._nxt_member_to_sample = np.random.choice(self._elite_idxs)
+        self._curr_sample = None
 
-    def predict(self, states: np.ndarray, actions: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
-        """Predict the next state given current state and action.
+    def predict(
+            self,
+            model_input: np.ndarray,
+            each_input_is_different_sample: Optional[bool] = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Make predictions using the currently set sampling method.
 
         Args:
-            states: The current states as a torch tensor.
-            actions: The actions to be played as a torch tensor.
+            model_input: The input to be given to the model.
+            each_input_is_different_sample: Whether each input should be treated
+                as being drawn from a different sample of the model. Note that this
+                may not have an effect on all models (e.g. PNN)
 
-        Returns: The next state and give a dictionary of related quantities.
+        Returns:
+            The output of the model and give a dictionary of related quantities.
         """
         info_dict = {}
         nxts = []
         for member_idx, member in enumerate(self.members):
-            nxt, info = member.predict(states, actions)
+            nxt, info = member.predict(model_input)
             nxts.append(nxt)
             info_dict.update({f'member{member_idx}_{k}': v for k, v in info.items()})
         nxts = np.array(nxts)
         if self._sample_mode == sampling_modes.RETURN_MEAN:
             return np.mean(nxts, axis=0), info_dict
-        elif self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
-            return nxts[np.random.choice(self._elite_idxs)], info_dict
-        elif self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY:
-            return nxts[self._nxt_member_to_sample], info_dict
+        else:
+            if (self._curr_sample is None
+                    or self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP):
+                self._curr_sample = self._draw_from_categorical(len(model_input))
+            elif len(model_input) > len(self._curr_sample):
+                self._curr_sample = np.vstack([
+                    self._curr_sample,
+                    self._draw_from_categorical(len(model_input) - len(self._curr_sample)),
+                ])
+            if each_input_is_different_sample:
+                ensemble_idxs = self._curr_sample[:len(model_input)]
+            else:
+                ensemble_idxs = [self._curr_sample[0] for _ in range(len(model_input))]
+            return nxts[ensemble_idxs, np.arange(len(model_input))], info_dict
 
     def set_member_sample_mode(self, mode: str) -> None:
         """Set the sampling mode of each member of the ensemble.
@@ -88,7 +105,7 @@ class FiniteEnsemble(AbstractDynamicsModel):
         self._sample_mode = mode
 
     @property
-    def members(self) -> Sequence[AbstractDynamicsModel]:
+    def members(self) -> Sequence[AbstractModel]:
         """The members of the ensemble."""
         return self._members
 
@@ -117,3 +134,14 @@ class FiniteEnsemble(AbstractDynamicsModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self.members[0].output_dim
+
+    def _draw_from_categorical(self, num_samples) -> np.ndarray:
+        """Draw from categorical distribution.
+
+        Args:
+            num_samples: The number of samples to draw.
+
+        Returns:
+            The draws from the distribution.
+        """
+        return np.random.randint(len(self._members), size=(num_samples,))

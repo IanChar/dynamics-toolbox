@@ -71,7 +71,7 @@ class SimplexMLP(AbstractPlModel):
             )
         self._num_vertices = num_vertices
         for idx in range(num_vertices):
-            setattr(self, f'vertex_{idx}', FCNetwork(
+            setattr(self, f'_vertex_{idx}', FCNetwork(
                 input_dim=input_dim,
                 output_dim=output_dim,
                 hidden_sizes=hidden_sizes,
@@ -112,10 +112,10 @@ class SimplexMLP(AbstractPlModel):
             The output of the network.
         """
         if weighting is None:
-            weighting = self._simplex_dist.sample((x.shape[0],))
-        n_layers = getattr(self, 'vertex_0').n_layers
-        hidden_activation = getattr(self, 'vertex_0').hidden_activation
-        out_activation = getattr(self, 'vertex_0').out_activation
+            weighting = self._simplex_dist.sample((x.shape[0],)).to(self.device)
+        n_layers = getattr(self, '_vertex_0').n_layers
+        hidden_activation = getattr(self, '_vertex_0').hidden_activation
+        out_activation = getattr(self, '_vertex_0').out_activation
         curr = x
         for layer_num in range(n_layers - 1):
             lin_outs = torch.stack([self._get_vertex_layer(v, layer_num)(curr)
@@ -129,14 +129,32 @@ class SimplexMLP(AbstractPlModel):
             return out_activation(curr)
         return curr
 
-    def multi_sample_model_from_torch(
+    def single_sample_output_from_torch(
             self,
             net_in: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the next state as a delta in state.
+        """Get the output for a single sample in the model.
 
-        It is assumed that each input of the network should be drawn from a different
-        sample.
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
+                or self._curr_sample is None):
+            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
+        weight = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
+        with torch.no_grad():
+            deltas = self.forward(net_in, weight)
+        info = {'delta': deltas}
+        return deltas, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
 
         Args:
             net_in: The input for the network.
@@ -146,11 +164,11 @@ class SimplexMLP(AbstractPlModel):
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
             or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),))
+            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
         elif len(self._curr_sample) < len(net_in):
             self._curr_sample = torch.cat(
                 [self._curr_sample,
-                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),))],
+                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),)).to(self.device)],
                 dim=0)
         weight = self._curr_sample[:len(net_in)]
         with torch.no_grad():
@@ -209,12 +227,12 @@ class SimplexMLP(AbstractPlModel):
     @property
     def input_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._input_dim
+        return self._hparams.input_dim
 
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._output_dim
+        return self._hparams.output_dim
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
@@ -247,8 +265,8 @@ class SimplexMLP(AbstractPlModel):
             The cosine similarity.
         """
         if weightings is None:
-            weightings = self._simplex_dist.sample((2,))
-        n_layers = getattr(self, 'vertex_0').n_layers
+            weightings = self._simplex_dist.sample((2,)).to(self.device)
+        n_layers = getattr(self, '_vertex_0').n_layers
         num = 0.0
         normi = 0.0
         normj = 0.0
@@ -270,7 +288,7 @@ class SimplexMLP(AbstractPlModel):
         Returns:
             The specified layer.
         """
-        return getattr(getattr(self, f'vertex_{vert_num}'), f'linear_{layer_num}')
+        return getattr(getattr(self, f'_vertex_{vert_num}'), f'linear_{layer_num}')
 
     def _get_interior_layer(
             self,

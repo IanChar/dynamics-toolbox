@@ -50,12 +50,15 @@ def train(cfg: DictConfig) -> None:
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))
     logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
     trainer.fit(model, data)
-    test_dict = trainer.test(model, datamodule=data)[0]
-    tune_metric = cfg.get('tune_metric', 'test/loss')
-    return_val = test_dict[tune_metric]
-    if cfg.get('tune_objective', 'minimize') == 'maximize':
-        return_val *= -1
-    return return_val
+    if data.test_dataloader() is not None:
+        test_dict = trainer.test(model, datamodule=data)[0]
+        return_val = test_dict[tune_metric]
+        tune_metric = cfg.get('tune_metric', 'test/loss')
+        if cfg.get('tune_objective', 'minimize') == 'maximize':
+            return_val *= -1
+        return return_val
+    else:
+        return 0
 
 
 if __name__ == '__main__':

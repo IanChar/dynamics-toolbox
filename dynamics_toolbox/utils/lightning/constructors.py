@@ -15,8 +15,7 @@ from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.data import pl_data_modules
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
-from dynamics_toolbox.models.pl_models.simultaneous_ensemble import SimultaneousEnsemble
-from dynamics_toolbox.utils.lightning.multi_early_stop import MultiMonitorEarlyStopping
+from dynamics_toolbox.utils.lightning.single_progress_bar import SingleProgressBar
 
 
 def construct_all_pl_components_for_training(
@@ -45,6 +44,8 @@ def construct_all_pl_components_for_training(
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
+    max_epochs = 1000 if 'max_epochs' not in cfg['trainer'] else cfg['trainer']['max_epochs']
+    callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
         logger = MLFlowLogger(
@@ -62,7 +63,12 @@ def construct_all_pl_components_for_training(
             save_dir=cfg['save_dir'],
             name=name,
         )
-    trainer = pl.Trainer(**cfg['trainer'], logger=logger, callbacks=callbacks)
+    trainer = pl.Trainer(
+        **cfg['trainer'],
+        logger=logger,
+        callbacks=callbacks,
+        progress_bar_refresh_rate=0,
+    )
     return model, data, trainer, logger, cfg
 
 

@@ -19,7 +19,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             self,
             data_source: str,
             batch_size: int,
-            learn_rewards: bool = True,
+            learn_rewards: bool = False,
             val_proportion: float = 0.0,
             test_proportion: float = 0.0,
             num_workers: int = 1,
@@ -43,7 +43,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
         qset = get_data_from_source(data_source)
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
-            self._xdata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])
+            self._ydata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])
         self._ydata = qset['next_observations'] - qset['observations']
         self._learn_rewards = learn_rewards
         self._val_proportion = val_proportion
@@ -74,25 +74,32 @@ class ForwardDynamicsDataModule(LightningDataModule):
 
     def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
-        return DataLoader(
-            self._val_dataset,
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=self._pin_memory,
-        )
+        if len(self._val_dataset):
+            return DataLoader(
+                self._val_dataset,
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle=False,
+                drop_last=False,
+                pin_memory=self._pin_memory,
+            )
+        else:
+            None
 
     def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
-        return DataLoader(
-            self._te_dataset,
-            batch_size=self._batch_size,
-            num_workers=self._num_workers,
-            shuffle=False,
-            drop_last=False,
-            pin_memory=self._pin_memory,
-        )
+        if len(self._te_dataset):
+            return DataLoader(
+                self._te_dataset,
+                batch_size=self._batch_size,
+                num_workers=self._num_workers,
+                shuffle=False,
+                drop_last=False,
+                pin_memory=self._pin_memory,
+            )
+        else:
+            None
+
 
     @property
     def input_dim(self) -> int:

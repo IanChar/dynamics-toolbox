@@ -3,26 +3,24 @@ Utility for loading a model.
 
 Author: Ian Char
 """
-from argparse import Namespace
-from copy import deepcopy
 import os
-import pickle as pkl
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
-from omegaconf import DictConfig, OmegaConf
-from pytorch_lightning import Trainer
+from omegaconf import OmegaConf
 
-from dynamics_toolbox.models.abstract_dynamics_model import\
-        AbstractDynamicsModel
+from dynamics_toolbox.constants import sampling_modes
+from dynamics_toolbox.models.abstract_model import\
+        AbstractModel
 from dynamics_toolbox.models import pl_models
-from dynamics_toolbox.models.pl_models.simultaneous_ensemble import SimultaneousEnsemble
+from dynamics_toolbox.models.ensemble import Ensemble
+from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 
 
 def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
-):
+) -> AbstractPlModel:
     """Load a model from a log directory.
 
     Args:
@@ -44,10 +42,45 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     path = os.path.join(path, checkpoints[epidx])
-    if cfg['model']['num_ensemble_members'] > 1:
-        return SimultaneousEnsemble.load_from_checkpoint(path, member_config=cfg['model'])
-    else:
-        return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(path)
+    return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(
+            path, **cfg['model'])
+
+
+def load_ensemble_from_list_of_log_dirs(
+        paths: List[str],
+        epochs: Optional[List[int]] = None,
+        sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+) -> Ensemble:
+    """Load several models into an ensemble.
+
+    Args:
+        paths: List of paths to the log dirs.
+        epochs: Epochs of the checkpoints to load in that correspond to the paths.
+            Must be the same length as paths.
+        sample_mode: The sampling mode for the ensemble.
+    """
+    epochs = [None for _ in paths] if epochs is None else epochs
+    return Ensemble([load_model_from_log_dir(path, epoch)
+                     for path, epoch in zip(paths, epochs)], sample_mode=sample_mode)
+
+
+def load_ensemble_from_parent_dir(
+    parent_dir: str,
+    sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+) -> Ensemble:
+    """Load all the models contained in the parent directory
+
+    Args:
+        parent_dir: The directory containing other directories of members.
+        sample_mode: The sampling mode for the ensemble.
+    """
+    children = os.listdir(parent_dir)
+    paths = []
+    for child in children:
+        child = os.path.join(parent_dir, child)
+        if os.path.isdir(child) and 'config.yaml' in os.listdir(child):
+            paths.append(child)
+    return load_ensemble_from_list_of_log_dirs(paths, sample_mode=sample_mode)
 
 
 def load_model_from_tensorboard_log(
@@ -55,7 +88,7 @@ def load_model_from_tensorboard_log(
         version: Optional[int] = None,
         epoch: Optional[int] = None,
         default_root: str = 'trained_models',
-) -> AbstractDynamicsModel:
+) -> AbstractModel:
     """Load in a model.
 
     Args:

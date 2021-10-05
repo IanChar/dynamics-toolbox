@@ -30,14 +30,14 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     def validation_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
         net_out = self.get_net_out(batch)
-        loss, loss_dict = self.loss(net_out, batch)
+        loss, loss_dict = self.val_loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(loss_dict, prefix='val')
 
     def test_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
         net_out = self.get_net_out(batch)
-        loss, loss_dict = self.loss(net_out, batch)
+        loss, loss_dict = self.val_loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(loss_dict, prefix='test')
 
@@ -98,6 +98,22 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         Returns:
             The loss and a dictionary of other statistics.
         """
+
+    def val_loss(
+            self,
+            net_out: Dict[str, torch.Tensor],
+            batch: Sequence[torch.Tensor],
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Compute the validation loss function.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            The loss and a dictionary of other statistics.
+        """
+        return self.loss(net_out=net_out, batch=batch)
 
     @abc.abstractmethod
     def single_sample_output_from_torch(

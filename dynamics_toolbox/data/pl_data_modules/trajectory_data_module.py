@@ -1,25 +1,26 @@
 """
-Data module for training dynamics in forward sense (i.e. state, act -> nxt)
+Data module for training dynamics where multiple steps are given in a batch.
 
 Author: Ian Char
 """
-from typing import Dict, Union, List
+from typing import Dict, Union, List, Optional
 
 import numpy as np
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
+from dynamics_toolbox.utils.gym_util import parse_into_trajectories
 from dynamics_toolbox.utils.storage.qdata import get_data_from_source
 
 
-class ForwardDynamicsDataModule(LightningDataModule):
+class TrajectoryDataModule(LightningDataModule):
 
     def __init__(
             self,
             data_source: str,
             batch_size: int,
-            learn_rewards: bool = False,
+            snippet_size: Optional[int] = None,
             val_proportion: float = 0.0,
             test_proportion: float = 0.0,
             num_workers: int = 1,
@@ -33,7 +34,8 @@ class ForwardDynamicsDataModule(LightningDataModule):
             data_source: Name of the data source, either as a string to a path or
                 name of a d4rl env.
             batch_size: Batch size.
-            learn_rewards: Whether to include the rewards for learning in xdata.
+            snippet_size: How big each snippet from a trajectory should be. If it is
+                None, set this to the smallest trajectory length.
             val_proportion: Proportion of data to use as validation.
             val_proportion: Proportion of data to use as test.
             num_workers: Number of workers.
@@ -42,27 +44,50 @@ class ForwardDynamicsDataModule(LightningDataModule):
         """
         super().__init__()
         qset = get_data_from_source(data_source)
-        self._xdata = np.hstack([qset['observations'], qset['actions']])
-        if learn_rewards:
-            self._ydata = np.hstack([qset['rewards'].reshape(-1, 1), self._xdata])
-        self._ydata = qset['next_observations'] - qset['observations']
-        self._learn_rewards = learn_rewards
+        trajectories = parse_into_trajectories(qset)
+        traj_lengths = [len(traj['observations']) for traj in trajectories]
+        if snippet_size is None:
+            snippet_size = np.min(traj_lengths)
+        observations = []
+        actions = []
+        rewards = []
+        terminals = []
+        for traj, traj_len in zip(trajectories, traj_lengths):
+            for idx in range(traj_len + 1 - snippet_size):
+                observations.append(np.vstack([
+                    traj['observations'][[idx]],
+                    traj['next_observations'][idx:idx + snippet_size]
+                ]))
+                actions.append(traj['actions'][idx:idx + snippet_size])
+                rewards.append(traj['rewards'][idx:idx + snippet_size])
+                terminals.append(traj['terminals'][idx:idx + snippet_size])
+        self._observations = np.array(observations)
+        self._actions = np.array(actions)
+        self._rewards = np.array(rewards)
+        self._terminals = np.array(terminals)
         self._val_proportion = val_proportion
         self._test_proportion = test_proportion
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._seed = seed
-        data_size = len(self._xdata)
+        data_size = len(self._observations)
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
-            TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
+            TensorDataset(
+                torch.Tensor(self._observations),
+                torch.Tensor(self._actions),
+                torch.Tensor(self._rewards),
+                torch.Tensor(self._terminals),
+            ),
             [self._num_tr, self._num_val, self._num_te],
         )
 
-    def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def train_dataloader(
+            self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         return DataLoader(
             self._tr_dataset,
@@ -73,7 +98,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def val_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._val_dataset):
             return DataLoader(
@@ -87,7 +114,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
         else:
             None
 
-    def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def test_dataloader(
+            self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._te_dataset):
             return DataLoader(
@@ -103,13 +132,13 @@ class ForwardDynamicsDataModule(LightningDataModule):
 
 
     @property
-    def input_dim(self) -> int:
+    def observation_dim(self) -> int:
         """Observation dimension."""
-        return self._xdata.shape[1]
+        return self._observations.shape[-1]
 
     @property
-    def output_dim(self) -> int:
-        return self._ydata.shape[1]
+    def action_dim(self) -> int:
+        return self._actions.shape[-1]
 
     @property
     def num_train(self) -> int:
@@ -125,3 +154,4 @@ class ForwardDynamicsDataModule(LightningDataModule):
     def num_test(self) -> int:
         """Number of training points."""
         return self._num_te
+

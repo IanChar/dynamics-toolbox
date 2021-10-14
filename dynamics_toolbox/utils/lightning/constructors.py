@@ -44,7 +44,8 @@ def construct_all_pl_components_for_training(
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
-    max_epochs = 1000 if 'max_epochs' not in cfg['trainer'] else cfg['trainer']['max_epochs']
+    max_epochs = (1000 if 'max_epochs' not in cfg['trainer']
+                  else cfg['trainer']['max_epochs'])
     callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger

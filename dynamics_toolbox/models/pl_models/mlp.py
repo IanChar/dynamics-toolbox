@@ -110,6 +110,20 @@ class MLP(AbstractPlModel):
         """
         return self.single_sample_output_from_torch(net_in)
 
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        return self.single_sample_output_from_torch(net_in)
+
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
 

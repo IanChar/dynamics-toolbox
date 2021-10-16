@@ -1,0 +1,28 @@
+model_name: "NeuralProcess"
+model_type: "NeuralProcess"
+condition_out_dim: 128
+latent_dim: 2
+learning_rate: 0.0001
+conditioner_kwargs:
+    model_name: "Conditioner"
+    model_type: "MLP"
+    num_layers: 2
+    layer_size: 128
+    hidden_activation: "relu"
+latent_encoder_kwargs:
+    model_name: "Encoder"
+    model_type: "PNN"
+    encoder_num_layers: 3
+    encoder_layer_size: 128
+    encoder_output_dim: 128
+    mean_architecture: ""
+    logvar_architecture: ""
+    logvar_lower_bound: -10
+    logvar_upper_bound: 0.5
+    hidden_activation: "swish"
+decoder_kwargs:
+    model_name: "Decoder"
+    model_type: "MLP"
+    num_layers: 3
+    layer_size: 64
+    hidden_activation: "tanh"

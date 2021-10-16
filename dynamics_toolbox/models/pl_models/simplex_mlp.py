@@ -139,16 +139,16 @@ class SimplexMLP(AbstractPlModel):
             net_in: The input for the network.
 
         Returns:
-            The deltas for next states and dictionary of info.
+            The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
                 or self._curr_sample is None):
             self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
         weight = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
         with torch.no_grad():
-            deltas = self.forward(net_in, weight)
-        info = {'delta': deltas}
-        return deltas, info
+            predictions = self.forward(net_in, weight)
+        info = {'predictions': predictions}
+        return predictions, info
 
     def multi_sample_output_from_torch(
             self,
@@ -160,7 +160,7 @@ class SimplexMLP(AbstractPlModel):
             net_in: The input for the network.
 
         Returns:
-            The deltas for next states and dictionary of info.
+            The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
             or self._curr_sample is None):
@@ -172,9 +172,9 @@ class SimplexMLP(AbstractPlModel):
                 dim=0)
         weight = self._curr_sample[:len(net_in)]
         with torch.no_grad():
-            deltas = self.forward(net_in, weight)
-        info = {'delta': deltas}
-        return deltas, info
+            predictions = self.forward(net_in, weight)
+        info = {'predictions': predictions}
+        return poredictions, info
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

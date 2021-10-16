@@ -30,7 +30,7 @@ def train(cfg: DictConfig) -> None:
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']
         if 'save_dir' not in cfg:
-            cfg['save_dir'] = os.path.join(get_original_cwd(), 'scripts/trained_models')
+            cfg['save_dir'] = os.path.join(os.getcwd(), 'model')
         elif cfg['save_dir'][0] != '/':
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
         if 'gpus' in cfg:
@@ -52,8 +52,8 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]
-        return_val = test_dict[tune_metric]
         tune_metric = cfg.get('tune_metric', 'test/loss')
+        return_val = test_dict[tune_metric]
         if cfg.get('tune_objective', 'minimize') == 'maximize':
             return_val *= -1
         return return_val

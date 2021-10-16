@@ -136,9 +136,9 @@ class DropoutMLP(AbstractPlModel):
             self._curr_sample = self._sample_dropout_mask(len(net_in))
         masks = [cs[0].repeat(len(net_in)).reshape(len(net_in), -1)
                  for cs in self._curr_sample]
-        deltas = self._forward_with_specified_mask(net_in, masks)
-        info = {'delta': deltas}
-        return deltas, info
+        predictions = self._forward_with_specified_mask(net_in, masks)
+        info = {'predictions': predictions}
+        return predictions, info
 
     def multi_sample_output_from_torch(
             self,
@@ -162,9 +162,9 @@ class DropoutMLP(AbstractPlModel):
                                  for csamp, asamp in zip(self._curr_sample,
                                                          additional_masks)]
         masks = [cs[:len(net_in)] for cs in self._curr_sample]
-        deltas = self._forward_with_specified_mask(net_in, masks)
-        info = {'delta': deltas}
-        return deltas, info
+        predictions = self._forward_with_specified_mask(net_in, masks)
+        info = {'predictions': predictions}
+        return predictions, info
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

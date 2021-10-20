@@ -7,11 +7,7 @@ from typing import Optional, Sequence, Callable, Tuple, Any, Dict
 from argparse import Namespace
 
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
-from pytorch_lightning import LightningModule
-from pytorch_lightning.callbacks import EarlyStopping
 
 import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.constants import sampling_modes
@@ -226,7 +222,13 @@ class QuantileModel(AbstractPlModel):
 
         Returns: The loss and a dictionary of other statistics.
         """
-        loss = self._loss_function(self._quantile_network, xi, yi, q_list, self._kwargs)
+        loss = self._loss_function(
+            model=self._quantile_network,
+            x=xi,
+            y=yi,
+            q_list=q_list,
+            args=self._kwargs
+        )
         median_pred = self.forward(x=xi, q_list=torch.Tensor([0.5]))
         mse = torch.mean((median_pred - yi) ** 2)
         stats = dict(
@@ -330,7 +332,8 @@ class QuantileModel(AbstractPlModel):
 
 if __name__ == "__main__":
     # sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-    from data import synthetic_sine_heteroscedastic as data_fn
+    from torch.utils.data import DataLoader, TensorDataset
+    from uncertainty_toolbox.data import synthetic_sine_heteroscedastic as data_fn
 
     def make_synthetic_sine_dataloader(num_data, batch_size, num_workers):
         mean, std, y, x = data_fn(num_data)

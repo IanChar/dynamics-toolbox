@@ -116,11 +116,11 @@ class RegressionDataModule(LightningDataModule):
     @property
     def input_dim(self) -> int:
         """Observation dimension."""
-        return self._xdata.shape[1]
+        return self._xdata.shape[-1]
 
     @property
     def output_dim(self) -> int:
-        return self._ydata.shape[1]
+        return self._ydata.shape[-1]
 
     @property
     def num_train(self) -> int:

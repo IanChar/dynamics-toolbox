@@ -187,7 +187,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         to_return = {}
         pred = net_out['prediction']
         _, yi = batch
-        for metric_name, metric in self._metrics.items():
+        for metric_name, metric in self.metrics.items():
             metric_value = metric(pred, yi)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):

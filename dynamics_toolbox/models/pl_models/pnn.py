@@ -151,17 +151,34 @@ class PNN(AbstractPlModel):
             net_in: The input for the network.
 
         Returns:
-            The deltas for next states and dictionary of info.
+            The predictions for next states and dictionary of info.
         """
         with torch.no_grad():
-            mean_deltas, logvar_deltas = self.forward(net_in)
-        std_deltas = (0.5 * logvar_deltas).exp()
-        info = {'mean_deltas': mean_deltas, 'std_deltas': std_deltas}
+            mean_predictions, logvar_predictions = self.forward(net_in)
+        std_predictions = (0.5 * logvar_predictions).exp()
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
-            deltas = torch.randn_like(mean_deltas) * std_deltas + mean_deltas
+            predictions = (torch.randn_like(mean_predictions) * std_predictions
+                           + mean_predictions)
         else:
-            deltas = mean_deltas
-        return deltas, info
+            predictions = mean_predictions
+        info = {'predictions': predictions,
+                'mean_predictions': mean_predictions,
+                'std_predictions': std_predictions}
+        return predictions, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        return self.single_sample_output_from_torch(net_in)
 
     def multi_sample_output_from_torch(
             self,
@@ -207,7 +224,7 @@ class PNN(AbstractPlModel):
         _, labels = batch
         mean = net_out['mean']
         logvar = net_out['logvar']
-        sq_diffs = (mean - labels) ** 2
+        sq_diffs = (mean - labels).pow(2)
         mse = torch.mean(sq_diffs)
         loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar)
         stats = dict(
@@ -218,12 +235,13 @@ class PNN(AbstractPlModel):
         )
         stats['logvar/mean'] = logvar.mean().item()
         if self._var_pinning:
-            bound_loss = self._logvar_bound_loss_coef *\
+            bound_loss = self._logvar_bound_loss_coef * \
                          torch.abs(self._max_logvar - self._min_logvar).mean()
             stats['bound_loss'] = bound_loss.item()
             stats['logvar_lower_bound/mean'] = self._min_logvar.mean().item()
             stats['logvar_upper_bound/mean'] = self._max_logvar.mean().item()
-            stats['logvar_bound_difference'] = (self._max_logvar - self._min_logvar).mean().item()
+            stats['logvar_bound_difference'] = (
+                        self._max_logvar - self._min_logvar).mean().item()
             loss += bound_loss
         stats['loss'] = loss.item()
         return loss, stats
@@ -242,8 +260,9 @@ class PNN(AbstractPlModel):
         """Set the sample mode to the appropriate mode."""
         if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST,
                                      sampling_modes.RETURN_MEAN]:
-            raise ValueError(f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '
-                             f'or {sampling_modes.RETURN_MEAN}, but received {mode}.')
+            raise ValueError(
+                f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '
+                f'or {sampling_modes.RETURN_MEAN}, but received {mode}.')
         self._sample_mode = mode
 
     @property

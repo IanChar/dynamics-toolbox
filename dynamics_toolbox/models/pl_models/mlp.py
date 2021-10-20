@@ -89,12 +89,26 @@ class MLP(AbstractPlModel):
             net_in: The input for the network.
 
         Returns:
-            The deltas for next states and dictionary of info.
+            The predictions for a single function sample
         """
         with torch.no_grad():
-            deltas = self.forward(net_in)
-        info = {'delta': deltas}
-        return deltas, info
+            predictions = self.forward(net_in)
+        info = {'predictions': predictions}
+        return predictions, info
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        return self.single_sample_output_from_torch(net_in)
 
     def multi_sample_output_from_torch(
             self,

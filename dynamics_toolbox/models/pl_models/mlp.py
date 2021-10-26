@@ -48,7 +48,7 @@ class MLP(AbstractPlModel):
             loss_type: The name of the loss function to use.
             weight_decay: The weight decay for the optimizer.
         """
-        super().__init__()
+        super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
         hidden_sizes = get_architecture(num_layers, layer_size, architecture)
         self._net = FCNetwork(

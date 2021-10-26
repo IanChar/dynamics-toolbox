@@ -57,7 +57,7 @@ class NeuralProcess(AbstractPlModel):
                 when training.
             sample_mode: The method to use for sampling.
         """
-        super().__init__()
+        super().__init__(input_dim, output_dim, **kwargs)
         self._min_num_conditioning = min_num_conditioning
         self._max_num_conditioning = max_num_conditioning
         self._sample_mode = sample_mode

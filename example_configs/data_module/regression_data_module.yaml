@@ -1,6 +1,6 @@
 data_module_type: RegressionDataModule
 batch_size: 256
 val_proportion: 0.1
-test_proportion: 0.0
+test_proportion: 0.1
 pin_memory: True
 num_workers: 1

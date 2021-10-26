@@ -75,12 +75,16 @@ class TrajectoryDataModule(LightningDataModule):
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
+        print(self._observations.shape, self._actions.shape)
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
             TensorDataset(
-                torch.Tensor(self._observations),
-                torch.Tensor(self._actions),
-                torch.Tensor(self._rewards),
-                torch.Tensor(self._terminals),
+                torch.cat([
+                    torch.Tensor(self._observations)[:, :-1],
+                    torch.Tensor(self._actions)
+                ]),
+                torch.Tensor(self._observations)[:, 1:]
+                    # TODO: torch.Tensor(self._rewards),
+                    # TODO: torch.Tensor(self._terminals),
             ),
             [self._num_tr, self._num_val, self._num_te],
         )
@@ -130,15 +134,15 @@ class TrajectoryDataModule(LightningDataModule):
         else:
             None
 
+    @property
+    def input_dim(self) -> int:
+        """Input dimension."""
+        return self._observations.shape[-1] + self._actions.shape[-1]
 
     @property
-    def observation_dim(self) -> int:
-        """Observation dimension."""
+    def output_dim(self) -> int:
+        """Output dimension."""
         return self._observations.shape[-1]
-
-    @property
-    def action_dim(self) -> int:
-        return self._actions.shape[-1]
 
     @property
     def num_train(self) -> int:
@@ -154,4 +158,3 @@ class TrajectoryDataModule(LightningDataModule):
     def num_test(self) -> int:
         """Number of training points."""
         return self._num_te
-

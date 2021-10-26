@@ -40,8 +40,8 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed batch.
         """
-        new_input = (batch[0] - getattr(self, 'x_offset')) / getattr(self, 'x_scaling')
-        new_output = (batch[1] - getattr(self, 'y_offset')) / getattr(self, 'y_scaling')
+        new_input = (batch[0] - self.x_offset) / self.x_scaling
+        new_output = (batch[1] - self.y_offset) / self.y_scaling
         return [new_input, new_output] + batch[2:]
 
     def untransform_output(self, output: torch.Tensor) -> torch.Tensor:
@@ -53,5 +53,5 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed output.
         """
-        return output * getattr(self, 'y_scaling') + getattr(self, 'y_offset')
+        return output * self.y_scaling + self.y_offset
 

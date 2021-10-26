@@ -3,7 +3,7 @@ run_name: "test"
 data_source: ""
 seed: 1
 logger: tensorboard
-# normalization: "standardize"
+normalization: "standardize"
 defaults:
     - trainer: pl_trainer
     - data_module: forward_dynamics_module

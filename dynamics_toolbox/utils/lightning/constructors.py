@@ -47,10 +47,14 @@ def construct_all_pl_components_for_training(
         normalizer = None
     elif cfg['normalization'] == 'standardize':
         normalizer = Normalizer(
-                torch.Tensor(np.mean(data.input_data, axis=0)),
-                torch.Tensor(np.std(data.input_data, axis=0)),
-                torch.Tensor(np.mean(data.output_data, axis=0)),
-                torch.Tensor(np.std(data.output_data, axis=0)),
+                torch.Tensor(np.mean(
+                    data.input_data.reshape(-1, data.input_data.shape[-1]), axis=0)),
+                torch.Tensor(np.std(
+                    data.input_data.reshape(-1, data.input_data.shape[-1]), axis=0)),
+                torch.Tensor(np.mean(
+                    data.output_data.reshape(-1, data.output_data.shape[-1]), axis=0)),
+                torch.Tensor(np.std(
+                    data.output_data.reshape(-1, data.output_data.shape[-1]), axis=0)),
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')

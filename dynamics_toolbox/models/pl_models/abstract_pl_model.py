@@ -71,6 +71,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             self,
             model_input: np.ndarray,
             each_input_is_different_sample: Optional[bool] = True,
+            unnormalize_samples: bool = True,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Make predictions using the currently set sampling method.
 
@@ -88,7 +89,8 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             output, infos = self.multi_sample_output_from_torch(net_in)
         else:
             output, infos = self.single_sample_output_from_torch(net_in)
-        output = self.normalizer.untransform_output(output)
+        if unnormalize_samples:
+            output = self._unnormalize_samples(output)
         return output.numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:

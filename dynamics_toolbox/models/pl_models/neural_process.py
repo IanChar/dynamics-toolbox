@@ -30,6 +30,7 @@ class NeuralProcess(AbstractPlModel):
             conditioner_kwargs: DictConfig,
             latent_encoder_kwargs: DictConfig,
             decoder_kwargs: DictConfig,
+            beta: float = 1,
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
             min_num_conditioning: int = 3,
@@ -50,6 +51,7 @@ class NeuralProcess(AbstractPlModel):
                 should be the mean and logvar of an independent multivariate Gaussian.
             decoder_kwargs: The config for the decoder model. The output is assumed
                 to be deterministic (or more precisely, Gaussian with var=1).
+            beta: The coefficient to weight the KL divergence by.
             learning_rate: The learning rate for the network.
             weight_decay: The weight decay for the optimizer.
             min_num_conditioning: The minimum number of points to condition on
@@ -62,6 +64,7 @@ class NeuralProcess(AbstractPlModel):
         self._min_num_conditioning = min_num_conditioning
         self._max_num_conditioning = max_num_conditioning
         self._sample_mode = sample_mode
+        self._beta = beta
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._input_dim = input_dim
@@ -145,7 +148,7 @@ class NeuralProcess(AbstractPlModel):
                              - net_out['z_logvar'].exp(), dim=1))
         # This is NLL with logvar=0
         mse = (net_out['prediction'] - yi).pow(2).mean()
-        loss = kldiv + mse
+        loss = self._beta * kldiv + mse
         return loss, {'mse': mse.item(), 'kldiv': kldiv.item(), 'loss': loss.item()}
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[

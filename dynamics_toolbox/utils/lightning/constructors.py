@@ -18,7 +18,7 @@ from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.data import pl_data_modules
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.lightning.single_progress_bar import SingleProgressBar
-from dynamics_toolbox.utils.pytorch.normalizer import Normalizer
+from dynamics_toolbox.utils.pytorch.modules.normalizer import Normalizer
 
 
 def construct_all_pl_components_for_training(

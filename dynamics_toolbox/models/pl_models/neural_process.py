@@ -10,11 +10,12 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import numpy as np
 import torch
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
+from dynamics_toolbox.utils.pytorch.modules import dataset_encoder
 
 
 class NeuralProcess(AbstractPlModel):
@@ -44,7 +45,7 @@ class NeuralProcess(AbstractPlModel):
             condition_out_dim: The output dimension of the conditioning model.
             latent_dim: The dimensionality of the latent space.
             conditioner_kwargs: The config for the network that is responsible
-                for conditioning. The output should be a deterministic value.
+                for conditioning. This should be a DatasetEncoder.
             latent_encoder_kwargs: The config for the latent encoding model. The output
                 should be the mean and logvar of an independent multivariate Gaussian.
             decoder_kwargs: The config for the decoder model. The output is assumed
@@ -70,27 +71,26 @@ class NeuralProcess(AbstractPlModel):
         self._curr_sample = None
         self._posterior_mean = torch.zeros(latent_dim)
         self._posterior_logvar = torch.zeros(latent_dim)
-        with open_dict(conditioner_kwargs):
-            conditioner_kwargs['input_dim'] = input_dim + output_dim
-            conditioner_kwargs['output_dim'] = condition_out_dim
-            conditioner_kwargs['learning_rate'] = learning_rate
-        with open_dict(latent_encoder_kwargs):
-            latent_encoder_kwargs['input_dim'] = condition_out_dim
-            latent_encoder_kwargs['output_dim'] = latent_dim
-            latent_encoder_kwargs['learning_rate'] = learning_rate
-        with open_dict(decoder_kwargs):
-            decoder_kwargs['input_dim'] = input_dim + latent_dim
-            decoder_kwargs['output_dim'] = output_dim
-            decoder_kwargs['learning_rate'] = learning_rate
         setattr(self, '_conditioner',
-                getattr(pl_models,
-                        conditioner_kwargs['model_type'])(**conditioner_kwargs))
+                getattr(dataset_encoder, conditioner_kwargs['model_type'])(
+                    input_dim=input_dim + output_dim,
+                    output_dim=condition_out_dim,
+                    **conditioner_kwargs
+                ))
         setattr(self, '_encoder',
                 getattr(pl_models,
-                        latent_encoder_kwargs['model_type'])(**latent_encoder_kwargs))
+                        latent_encoder_kwargs['model_type'])(
+                    input_dim=condition_out_dim,
+                    output_dim=latent_dim,
+                    **latent_encoder_kwargs
+                ))
         setattr(self, '_decoder',
                 getattr(pl_models,
-                        decoder_kwargs['model_type'])(**decoder_kwargs))
+                        decoder_kwargs['model_type'])(
+                    input_dim=input_dim + latent_dim,
+                    output_dim=output_dim,
+                    **decoder_kwargs
+                ))
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -118,7 +118,7 @@ class NeuralProcess(AbstractPlModel):
             )
             cond_idxs = torch.randperm(xi.shape[1] - 1)[:num_conditions]
             conditions = torch.cat([xi[:, cond_idxs, :], yi[:, cond_idxs, :]], dim=-1)
-            condition_out = self._conditioner.forward(conditions).mean(dim=1)
+            condition_out = self._conditioner.encode_dataset(conditions)
             latent_out = self._encoder.get_net_out([condition_out, None])
             z_mu, z_logvar = latent_out['mean'], latent_out['logvar']
         else:
@@ -212,10 +212,9 @@ class NeuralProcess(AbstractPlModel):
         Returns:
             The mean and logvariance of the latent posterior.
         """
-        condition_in = torch.cat([conditions_x, conditions_y], dim=1)
+        condition_in = torch.cat([conditions_x, conditions_y], dim=1).unsqueeze(0)
         with torch.no_grad():
-            condition_out = self._conditioner.forward(condition_in)
-            condition_out = condition_out.mean(dim=0).reshape(1, -1)
+            condition_out = self._conditioner.encode_dataset(condition_in)
             latent_out = self._encoder.get_net_out([condition_out, None])
         self._posterior_mean = latent_out['mean']
         self._posterior_logvar = latent_out['logvar']

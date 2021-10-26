@@ -24,7 +24,7 @@ class MLP(AbstractPlModel):
             self,
             input_dim: int,
             output_dim: int,
-            learning_rate: float,
+            learning_rate: float = 1e-3,
             num_layers: Optional[int] = None,
             layer_size: Optional[int] = None,
             architecture: Optional[str] = None,

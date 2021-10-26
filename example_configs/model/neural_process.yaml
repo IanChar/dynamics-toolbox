@@ -5,10 +5,19 @@ latent_dim: 2
 learning_rate: 0.0001
 conditioner_kwargs:
     model_name: "Conditioner"
-    model_type: "MLP"
-    num_layers: 3
-    layer_size: 256
-    hidden_activation: "relu"
+    model_type: "SelfAttentionDatasetEncoder"
+    query_net_kwargs:
+        num_layers: 3
+        layer_size: 256
+        hidden_activation: "relu"
+    value_net_kwargs:
+        num_layers: 3
+        layer_size: 256
+        hidden_activation: "relu"
+    key_net_kwargs:
+        num_layers: 3
+        layer_size: 256
+        hidden_activation: "relu"
 latent_encoder_kwargs:
     model_name: "Encoder"
     model_type: "PNN"

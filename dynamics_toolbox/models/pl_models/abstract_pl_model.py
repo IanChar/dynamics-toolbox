@@ -11,7 +11,7 @@ import torch
 from pytorch_lightning import LightningModule
 
 from dynamics_toolbox.models.abstract_model import AbstractModel
-from dynamics_toolbox.utils.pytorch.normalizer import Normalizer
+from dynamics_toolbox.utils.pytorch.modules.normalizer import Normalizer
 
 
 class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):

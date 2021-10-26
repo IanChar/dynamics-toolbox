@@ -20,6 +20,7 @@ class TrajectoryDataModule(LightningDataModule):
             self,
             data_source: str,
             batch_size: int,
+            learn_rewards: bool = False,
             snippet_size: Optional[int] = None,
             val_proportion: float = 0.0,
             test_proportion: float = 0.0,
@@ -34,6 +35,7 @@ class TrajectoryDataModule(LightningDataModule):
             data_source: Name of the data source, either as a string to a path or
                 name of a d4rl env.
             batch_size: Batch size.
+            learn_rewards: Whether to include the rewards for learning in xdata.
             snippet_size: How big each snippet from a trajectory should be. If it is
                 None, set this to the smallest trajectory length.
             val_proportion: Proportion of data to use as validation.
@@ -65,6 +67,11 @@ class TrajectoryDataModule(LightningDataModule):
         self._actions = np.array(actions)
         self._rewards = np.array(rewards)
         self._terminals = np.array(terminals)
+        self._xdata = np.concatenate([self._observations[:, :-1], self._actions],
+                                     axis=-1)
+        self._ydata = self._observations[:, 1:]
+        if learn_rewards:
+            self._ydata = np.concatenate([self._rewards, self._ydata], axis=-1)
         self._val_proportion = val_proportion
         self._test_proportion = test_proportion
         self._batch_size = batch_size
@@ -75,17 +82,8 @@ class TrajectoryDataModule(LightningDataModule):
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
-        print(self._observations.shape, self._actions.shape)
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
-            TensorDataset(
-                torch.cat([
-                    torch.Tensor(self._observations)[:, :-1],
-                    torch.Tensor(self._actions)
-                ]),
-                torch.Tensor(self._observations)[:, 1:]
-                    # TODO: torch.Tensor(self._rewards),
-                    # TODO: torch.Tensor(self._terminals),
-            ),
+            TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
             [self._num_tr, self._num_val, self._num_te],
         )
 
@@ -133,6 +131,16 @@ class TrajectoryDataModule(LightningDataModule):
             )
         else:
             None
+
+    @property
+    def input_data(self) -> np.array:
+        """The input data.."""
+        return self._xdata
+
+    @property
+    def output_data(self) -> np.array:
+        """The output data."""
+        return self._ydata
 
     @property
     def input_dim(self) -> int:

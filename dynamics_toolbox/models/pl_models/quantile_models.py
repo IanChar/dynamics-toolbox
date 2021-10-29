@@ -15,20 +15,7 @@ from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.misc import get_architecture
 from dynamics_toolbox.utils.pytorch.activations import get_activation
 from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
-from dynamics_toolbox.utils.pytorch.quantile_losses import (
-    batch_cali_loss,
-    batch_qr_loss,
-    batch_interval_loss,
-)
-
-
-def _get_loss_function(loss_function):
-    if loss_function == "calibration":
-        return batch_cali_loss
-    elif loss_function == "pinball":
-        return batch_qr_loss
-    elif loss_function == "interval":
-        return batch_interval_loss
+from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 
 
 class QuantileModel(AbstractPlModel):
@@ -87,17 +74,14 @@ class QuantileModel(AbstractPlModel):
         )
 
         # Get loss function and optimizer fields
-        self._loss_function = _get_loss_function(loss_function)
+        self._loss_function = get_regression_loss(loss_function)
         self._num_quantile_draws = num_quantile_draws
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._sample_mode = sample_mode
         self._kwargs = kwargs
 
-        if "fixed_q_list" in self._kwargs:
-            self._fixed_q_list = self._kwargs.get("fixed_q_list")
-        else:
-            self._fixed_q_list = None
+        self._fixed_q_list = self._kwargs.get("fixed_q_list", None)
 
     def get_q_list(self):
         """Get a flat tensor of quantile levels.
@@ -112,6 +96,52 @@ class QuantileModel(AbstractPlModel):
         return q_list
 
     def forward(
+        self,
+        x: torch.Tensor,
+        q_list: torch.Tensor = None,
+        recal_model: Any = None,
+        recal_type: str = None,
+    ) -> torch.Tensor:
+        """Get output for given list of quantiles
+
+        Args:
+            x: tensor, of size (num_x, dim_x)
+            q_list: flat tensor of quantiles, if None, is set to [0.01, ..., 0.99]
+            recal_model: a recalibration model #TODO
+            recal_type: recalibration type  #TODO
+
+        Returns:
+            Given N input (x) points and K quantiles, outputs a NxK tensor
+        """
+
+        if q_list is None:
+            q_list = torch.linspace(0.01, 0.99, 99)
+        else:
+            q_list = q_list.flatten()
+
+        import pdb; pdb.set_trace()
+        # handle recalibration
+        if recal_model is not None:
+            if recal_type == "torch":
+                recal_model.cpu()  # keep recal model on cpu
+                with torch.no_grad():
+                    q_list = recal_model(q_list.reshape(-1, 1)).item().flatten()
+            elif recal_type == "sklearn":
+                q_list = recal_model.predict(q_list).flatten()
+            else:
+                raise ValueError("recal_type incorrect")
+
+        num_pts = x.shape[0]
+        num_q = q_list.shape[0]
+
+        q_rep = q_list.view(-1, 1).repeat(1, num_pts).view(-1, 1)
+        x_stacked = x.repeat(num_q, 1)
+        model_in = torch.cat([x_stacked, q_rep], dim=1)  # note input is [x, p]
+        q_pred = self._quantile_network(model_in)
+        assert q_pred.shape == (num_pts, num_q)
+        return q_pred
+
+    def orig_forward(
         self,
         x: torch.Tensor,
         q_list: torch.Tensor = None,
@@ -161,15 +191,33 @@ class QuantileModel(AbstractPlModel):
         return pred_mat
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
-        """This function is not used for quantile models, hence, returns an empty dict.
+        """Get the output of the network and organize into dictionary.
 
         Args:
             batch: The batch passed to the network.
 
         Returns:
-            Dictionary of name to tensor; in this case, an empty dict.
+            Dictionary of name to tensor.
         """
-        return {}
+        xi, _ = batch
+        q_list = self.get_q_list()
+        q_pred = self.forward(x=xi, q_list=q_list, recal_model=None, recal_type=None)
+
+        return {'q_list': q_list, 'q_pred': q_pred}
+
+    def get_val_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Get the validation output of the network and organize into dictionary.
+
+        Args:
+            batch: The batch passed to the network.
+
+        Returns:
+            Dictionary of name to tensor.
+        """
+        xi, _ = batch
+        q_pred = self.forward(x=xi, q_list=None, recal_model=None, recal_type=None)
+
+        return {'q_list': torch.linspace(0.01, 0.99, 99), 'q_pred': q_pred}
 
     def loss(
             self,
@@ -185,9 +233,12 @@ class QuantileModel(AbstractPlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        xi, yi = batch
-        q_list = self.get_q_list()
-        return self._compute_quantile_model_loss_stats(q_list=q_list, xi=xi, yi=yi)
+        _, yi = batch
+        q_list = net_out['q_list']
+        q_pred = net_out['q_pred']
+        return self._compute_quantile_model_loss_stats(
+            yi=yi, q_pred=q_pred, q_list=q_list
+        )
 
     def val_loss(
             self,
@@ -204,14 +255,20 @@ class QuantileModel(AbstractPlModel):
             The loss and a dictionary of other statistics.
         """
         xi, yi = batch
-        q_list = torch.linspace(0.01, 0.99, 99)
-        return self._compute_quantile_model_loss_stats(q_list=q_list, xi=xi, yi=yi)
+        q_list = net_out['q_list']
+        q_pred = net_out['q_pred']
+        assert q_list.shape == (99,)
+        assert torch.max(q_list - torch.linspace(0.01, 0.99, 99)) < 1e-10
+        return self._compute_quantile_model_loss_stats(
+            xi=xi, yi=yi, q_pred=q_pred, q_list=q_list
+        )
 
     def _compute_quantile_model_loss_stats(
             self,
-            q_list: torch.Tensor,
             xi: torch.Tensor,
             yi: torch.Tensor,
+            q_pred: torch.Tensor,
+            q_list: torch.Tensor,
         ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Given a list of quantile levels and a batch of data, compute the loss, stats.
 
@@ -223,14 +280,14 @@ class QuantileModel(AbstractPlModel):
         Returns: The loss and a dictionary of other statistics.
         """
         loss = self._loss_function(
-            model=self._quantile_network,
-            x=xi,
             y=yi,
+            q_pred=q_pred,
             q_list=q_list,
-            args=self._kwargs
+            args=self._kwargs,
         )
         median_pred = self.forward(x=xi, q_list=torch.Tensor([0.5]))
         mse = torch.mean((median_pred - yi) ** 2)
+        #TODO: add in more quantities...like what though?
         stats = dict(
             quantile_model_loss=loss.item(),
             mse=mse.item()

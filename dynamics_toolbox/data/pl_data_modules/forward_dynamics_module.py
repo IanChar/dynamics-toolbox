@@ -101,15 +101,24 @@ class ForwardDynamicsDataModule(LightningDataModule):
         else:
             None
 
+    @property
+    def input_data(self) -> np.array:
+        """The input data.."""
+        return self._xdata
+
+    @property
+    def output_data(self) -> np.array:
+        """The output data."""
+        return self._ydata
 
     @property
     def input_dim(self) -> int:
         """Observation dimension."""
-        return self._xdata.shape[1]
+        return self._xdata.shape[-1]
 
     @property
     def output_dim(self) -> int:
-        return self._ydata.shape[1]
+        return self._ydata.shape[-1]
 
     @property
     def num_train(self) -> int:

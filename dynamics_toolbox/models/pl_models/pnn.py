@@ -7,6 +7,7 @@ from typing import Optional, Tuple, Dict, Any, Sequence, Callable
 
 import torch
 import torch.nn.functional as F
+from torchmetrics import ExplainedVariance
 
 import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.constants import sampling_modes
@@ -75,7 +76,7 @@ class PNN(AbstractPlModel):
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
         """
-        super().__init__()
+        super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
@@ -124,6 +125,10 @@ class PNN(AbstractPlModel):
             self._max_logvar = None
         self._logvar_bound_loss_coef = logvar_bound_loss_coef
         self._sample_mode = sample_mode
+        self._metrics = {
+                'EV': ExplainedVariance(),
+                'IndvEV': ExplainedVariance('raw_values'),
+        }
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
@@ -278,7 +283,7 @@ class PNN(AbstractPlModel):
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
         """Get the list of metric functions to compute."""
-        return {}
+        return self._metrics
 
     @property
     def learning_rate(self) -> float:
@@ -295,4 +300,14 @@ class PNN(AbstractPlModel):
             net_out: Dict[str, torch.Tensor],
             batch: Sequence[torch.Tensor],
     ) -> Dict[str, torch.Tensor]:
-        return {}
+        to_return = {}
+        pred = net_out['mean']
+        _, yi = batch
+        for metric_name, metric in self._metrics.items():
+            metric_value = metric(pred, yi)
+            if len(metric_value.shape) > 0:
+                for dim_idx, metric_v in enumerate(metric_value):
+                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
+            else:
+                to_return[metric_name] = metric_value
+        return to_return

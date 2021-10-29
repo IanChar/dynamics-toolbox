@@ -8,3 +8,8 @@ MAE = 'mae'
 
 # DISTRIBUTIONAL LOSSES
 NLL = 'nll'
+
+# QUANTILE LOSSES
+PB = 'pinball'
+CALI = 'calibration'
+INT = 'interval'

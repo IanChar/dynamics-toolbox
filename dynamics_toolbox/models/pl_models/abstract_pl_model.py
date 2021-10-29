@@ -54,7 +54,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     def validation_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
         batch = self.normalizer.transform_batch(batch)
-        net_out = self.get_net_out(batch)
+        net_out = self.get_val_net_out(batch)
         loss, loss_dict = self.val_loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(loss_dict, prefix='val')
@@ -62,7 +62,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     def test_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
         batch = self.normalizer.transform_batch(batch)
-        net_out = self.get_net_out(batch)
+        net_out = self.get_val_net_out(batch)
         loss, loss_dict = self.val_loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(loss_dict, prefix='test')
@@ -111,6 +111,17 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         Returns:
             Dictionary of name to tensor.
         """
+
+    def get_val_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Get the validation output of the network and organize into dictionary.
+
+        Args:
+            batch: The batch passed to the network.
+
+        Returns:
+            Dictionary of name to tensor.
+        """
+        return self.get_net_out(batch=batch)
 
     @abc.abstractmethod
     def loss(

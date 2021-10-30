@@ -69,7 +69,7 @@ class TrajectoryDataModule(LightningDataModule):
         self._terminals = np.array(terminals)
         self._xdata = np.concatenate([self._observations[:, :-1], self._actions],
                                      axis=-1)
-        self._ydata = self._observations[:, 1:]
+        self._ydata = self._observations[:, 1:] - self._observations[:, :-1]
         if learn_rewards:
             self._ydata = np.concatenate([self._rewards, self._ydata], axis=-1)
         self._val_proportion = val_proportion

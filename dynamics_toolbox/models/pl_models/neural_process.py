@@ -113,7 +113,7 @@ class NeuralProcess(AbstractPlModel):
         if len(xi.shape) == 2:
             xi = xi.unsqueeze(1)
             yi = yi.unsqueeze(1)
-        pred_x, pred_y = xi[:, -1, :], yi[:, -1, :]
+        pred_x = xi[:, -1, :]
         if xi.shape[1] > 1:
             num_conditions = np.random.randint(
                 min(self._min_num_conditioning, xi.shape[1] - 1),
@@ -149,7 +149,12 @@ class NeuralProcess(AbstractPlModel):
         # This is NLL with logvar=0
         mse = (net_out['prediction'] - yi).pow(2).mean()
         loss = self._beta * kldiv + mse
-        return loss, {'mse': mse.item(), 'kldiv': kldiv.item(), 'loss': loss.item()}
+        return loss, {
+            'mse': mse.item(),
+            'kldiv': kldiv.item(),
+            'loss': loss.item(),
+            'latent_std_magnitude': (0.5 * net_out['z_logvar']).exp().mean().item(),
+        }
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
         torch.Tensor, Dict[str, Any]]:
@@ -190,11 +195,11 @@ class NeuralProcess(AbstractPlModel):
                  self._draw_from_posterior((len(net_in)
                      - len(self._curr_sample))).to(self.device)],
                 dim=0)
-        decoder_in = torch.cat([net_in, self._current_sample[:len(net_in)]], dim=1)
+        decoder_in = torch.cat([net_in, self._curr_sample[:len(net_in)]], dim=1)
         with torch.no_grad():
             predictions = self._decoder.forward(decoder_in)
         info = {'predictions': predictions,
-                'latents': self._current_sample[:len(net_in)]}
+                'latents': self._curr_sample[:len(net_in)]}
         return predictions, info
 
     def reset(self) -> None:

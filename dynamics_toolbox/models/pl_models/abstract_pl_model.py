@@ -84,13 +84,14 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         Returns:
             The output of the model and give a dictionary of related quantities.
         """
-        net_in = torch.Tensor(model_input).to(self.device)
+        net_in = self.normalizer.transform_input(
+            torch.Tensor(model_input).to(self.device))
         if each_input_is_different_sample:
             output, infos = self.multi_sample_output_from_torch(net_in)
         else:
             output, infos = self.single_sample_output_from_torch(net_in)
         if unnormalize_samples:
-            output = self._unnormalize_samples(output)
+            output = self.normalizer.untransform_output(output)
         return output.numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:

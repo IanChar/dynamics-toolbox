@@ -5,13 +5,13 @@ Author: Ian Char
 """
 from typing import Optional, Sequence, Dict, Callable, Tuple, Any
 
+import hydra.utils
 import numpy as np
 from omegaconf import DictConfig
 from pytorch_lightning import LightningModule
 import torch
 
 from dynamics_toolbox.constants import sampling_modes
-from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 
 
@@ -24,7 +24,7 @@ class SimultaneousEnsemble(AbstractPlModel):
     def __init__(
             self,
             num_members: int,
-            member_config: DictConfig,
+            member_cfg: DictConfig,
             sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             diversity_coef: Optional[float] = 0.0,
             **kwargs,
@@ -33,14 +33,14 @@ class SimultaneousEnsemble(AbstractPlModel):
 
         Args:
             num_members: The number of members in the ensemble.
-            member_config: The hyperparameters for a member of the ensemble.
+            member_cfg: The hyperparameters for a member of the ensemble.
             sample_mode: The method to use for sampling.
             diversity_coef: Coefficient of diversity to add to loss.
         """
         LightningModule.__init__(self)
         for member_idx in range(num_members):
             setattr(self, f'_member_{member_idx}',
-                    getattr(pl_models, member_config['model_type'])(**member_config))
+                    hydra.utils.instantiate(member_cfg, _recursive_=False))
         self._num_members = num_members
         self._sample_mode = sample_mode
         self._diversity_coef = diversity_coef

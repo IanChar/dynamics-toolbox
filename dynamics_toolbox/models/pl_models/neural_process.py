@@ -8,14 +8,13 @@ Author: Ian Char
 """
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
+import hydra.utils
 import numpy as np
 import torch
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
-from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
-from dynamics_toolbox.utils.pytorch.modules import dataset_encoder
 
 
 class NeuralProcess(AbstractPlModel):
@@ -27,9 +26,9 @@ class NeuralProcess(AbstractPlModel):
             output_dim: int,
             condition_out_dim: int,
             latent_dim: int,
-            conditioner_kwargs: DictConfig,
-            latent_encoder_kwargs: DictConfig,
-            decoder_kwargs: DictConfig,
+            conditioner_cfg: DictConfig,
+            latent_encoder_cfg: DictConfig,
+            decoder_cfg: DictConfig,
             beta: float = 1,
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
@@ -45,11 +44,11 @@ class NeuralProcess(AbstractPlModel):
             output_dim: The output dimension.
             condition_out_dim: The output dimension of the conditioning model.
             latent_dim: The dimensionality of the latent space.
-            conditioner_kwargs: The config for the network that is responsible
+            conditioner_cfg: The config for the network that is responsible
                 for conditioning. This should be a DatasetEncoder.
-            latent_encoder_kwargs: The config for the latent encoding model. The output
+            latent_encoder_cfg: The config for the latent encoding model. The output
                 should be the mean and logvar of an independent multivariate Gaussian.
-            decoder_kwargs: The config for the decoder model. The output is assumed
+            decoder_cfg: The config for the decoder model. The output is assumed
                 to be deterministic (or more precisely, Gaussian with var=1).
             beta: The coefficient to weight the KL divergence by.
             learning_rate: The learning rate for the network.
@@ -74,26 +73,24 @@ class NeuralProcess(AbstractPlModel):
         self._curr_sample = None
         self._posterior_mean = torch.zeros(latent_dim)
         self._posterior_logvar = torch.zeros(latent_dim)
-        setattr(self, '_conditioner',
-                getattr(dataset_encoder, conditioner_kwargs['model_type'])(
-                    input_dim=input_dim + output_dim,
-                    output_dim=condition_out_dim,
-                    **conditioner_kwargs
-                ))
-        setattr(self, '_encoder',
-                getattr(pl_models,
-                        latent_encoder_kwargs['model_type'])(
-                    input_dim=condition_out_dim,
-                    output_dim=latent_dim,
-                    **latent_encoder_kwargs
-                ))
-        setattr(self, '_decoder',
-                getattr(pl_models,
-                        decoder_kwargs['model_type'])(
-                    input_dim=input_dim + latent_dim,
-                    output_dim=output_dim,
-                    **decoder_kwargs
-                ))
+        self._conditioner = hydra.utils.instantiate(
+            conditioner_cfg,
+            input_dim=input_dim + output_dim,
+            output_dim=condition_out_dim,
+            _recursive_=False,
+        )
+        self._encoder = hydra.utils.instantiate(
+            latent_encoder_cfg,
+            input_dim=condition_out_dim,
+            output_dim=latent_dim,
+            _recursive_=False,
+        )
+        self._decoder = hydra.utils.instantiate(
+            decoder_cfg,
+            input_dim=input_dim + latent_dim,
+            output_dim=output_dim,
+            _recursive_=False,
+        )
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

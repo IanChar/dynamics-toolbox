@@ -6,10 +6,9 @@ Date: 10/26/2021
 """
 import abc
 
+import hydra.utils
 import torch
 from omegaconf import DictConfig
-
-from dynamics_toolbox.models.pl_models import MLP
 
 
 class DatasetEncoder(torch.nn.Module):
@@ -32,20 +31,21 @@ class MLPDatasetEncoder(DatasetEncoder):
             self,
             input_dim: int,
             output_dim: int,
-            mlp_kwargs: DictConfig,
+            mlp_cfg: DictConfig,
             **kwargs):
         """Constructor.
 
         Args:
             input_dim: The input dimension of each data point.
             output_dim: The dimension of the output encoding.
-            mlp_kwargs: The configuration for the MLP to do the encoding.
+            mlp_cfg: The configuration for the MLP to do the encoding.
         """
         super().__init__()
-        self._encode_net = MLP(
+        self._encode_net = hydra.utils.instantiate(
+            mlp_cfg,
             input_dim=input_dim,
             output_dim=output_dim,
-            **mlp_kwargs
+            _recursive_=False,
         )
 
     def encode_dataset(self, net_in: torch.Tensor) -> torch.Tensor:
@@ -67,9 +67,9 @@ class SelfAttentionDatasetEncoder(DatasetEncoder):
             self,
             input_dim: int,
             output_dim: int,
-            query_net_kwargs: DictConfig,
-            key_net_kwargs: DictConfig,
-            value_net_kwargs: DictConfig,
+            query_net_cfg: DictConfig,
+            key_net_cfg: DictConfig,
+            value_net_cfg: DictConfig,
             **kwargs
     ):
         """Constructor.
@@ -77,25 +77,28 @@ class SelfAttentionDatasetEncoder(DatasetEncoder):
         Args:
             input_dim: The input dimension of each data point.
             output_dim: The dimension of the output encoding.
-            query_net_kwargs: Configuration for an MLP for the query network.
-            key_net_kwargs: Configuration for an MLP for the key network.
-            value_net_kwargs: Configuration for an MLP for the value network.
+            query_net_cfg: Configuration for an MLP for the query network.
+            key_net_cfg: Configuration for an MLP for the key network.
+            value_net_cfg: Configuration for an MLP for the value network.
         """
         super().__init__()
-        self._query_net = MLP(
+        self._query_net = hydra.utils.instantiate(
+            query_net_cfg,
             input_dim=input_dim,
             output_dim=output_dim,
-            **query_net_kwargs
+            _recursive_=False,
         )
-        self._key_net = MLP(
+        self._key_net = hydra.utils.instantiate(
+            key_net_cfg,
             input_dim=input_dim,
             output_dim=output_dim,
-            **key_net_kwargs
+            _recursive_=False,
         )
-        self._value_net = MLP(
+        self._value_net = hydra.utils.instantiate(
+            value_net_cfg,
             input_dim=input_dim,
             output_dim=output_dim,
-            **value_net_kwargs
+            _recursive_=False,
         )
 
     def encode_dataset(self, net_in: torch.Tensor) -> torch.Tensor:

@@ -6,6 +6,7 @@ Author: Ian Char
 from typing import Tuple
 import os
 
+import hydra.utils
 import numpy as np
 from omegaconf import DictConfig, open_dict
 import pytorch_lightning as pl
@@ -58,7 +59,8 @@ def construct_all_pl_components_for_training(
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
-    model = construct_pl_model(cfg['model'], normalizer=normalizer)
+    model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
+                                    _recursive_=False)
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
@@ -89,22 +91,6 @@ def construct_all_pl_components_for_training(
         progress_bar_refresh_rate=0,
     )
     return model, data, trainer, logger, cfg
-
-
-def construct_pl_model(cfg: DictConfig, **kwargs) -> AbstractPlModel:
-    """Construct a pytorch lightning model.
-
-    Args:
-        cfg: The configuration to create. Must have the following
-            - model_type: the model type as registered in
-              dynamics_toolbox/models/__init__.py
-
-    Returns:
-        The pytorch lightning model.
-    """
-    if 'model_type' not in cfg:
-        raise ValueError('Configuration does not have model_type')
-    return getattr(pl_models, cfg['model_type'])(**cfg, **kwargs)
 
 
 def get_early_stopping_for_val_loss(cfg: DictConfig) -> pl.callbacks.EarlyStopping:

@@ -16,6 +16,7 @@ from dynamics_toolbox.utils.misc import get_architecture
 from dynamics_toolbox.utils.pytorch.activations import get_activation
 from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
+import dynamics_toolbox.constants.losses as losses
 
 
 class QuantileModel(AbstractPlModel):
@@ -28,7 +29,7 @@ class QuantileModel(AbstractPlModel):
         encoder_num_layers: Optional[int] = None,
         encoder_layer_size: Optional[int] = None,
         encoder_architecture: Optional[str] = None,
-        loss_function: str = "calibration",
+        loss_function: str = losses.CALI,
         num_quantile_draws: int = 30,
         learning_rate: float = 1e-3,
         hidden_activation: str = activations.RELU,

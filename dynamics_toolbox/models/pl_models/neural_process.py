@@ -125,7 +125,8 @@ class NeuralProcess(AbstractPlModel):
             condition_out = torch.zeros((xi.shape[0], self._condition_out_dim))
             z_mu, z_logvar = [torch.zeros((xi.shape[0], self._latent_dim))
                               for _ in range(2)]
-        z_sample = torch.randn_like(z_mu) * (0.5 * z_logvar).exp() + z_mu
+        z_sample = torch.randn_like(z_mu).to(self.device) * (0.5 * z_logvar).exp() \
+                   + z_mu
         decoder_in = torch.cat([pred_x, z_sample], dim=1)
         prediction = self._decoder.forward(decoder_in)
         return {
@@ -164,7 +165,7 @@ class NeuralProcess(AbstractPlModel):
             The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
+                or self._curr_sample is None):
             self._curr_sample = self._draw_from_posterior(1).to(self.device)
         latents = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
         decoder_in = torch.cat([net_in, latents], dim=1)
@@ -184,13 +185,13 @@ class NeuralProcess(AbstractPlModel):
             The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
+                or self._curr_sample is None):
             self._curr_sample = self._draw_from_posterior(len(net_in)).to(self.device)
         elif len(self._curr_sample) < len(net_in):
             self._curr_sample = torch.cat(
                 [self._curr_sample,
                  self._draw_from_posterior((len(net_in)
-                     - len(self._curr_sample))).to(self.device)],
+                                            - len(self._curr_sample))).to(self.device)],
                 dim=0)
         decoder_in = torch.cat([net_in, self._curr_sample[:len(net_in)]], dim=1)
         with torch.no_grad():
@@ -227,8 +228,8 @@ class NeuralProcess(AbstractPlModel):
 
     def clear_condition(self) -> None:
         """Clear the latent posterior and set back to the prior."""
-        self._posterior_mean = torch.zeros(self._latent_dim)
-        self._posterior_logvar = torch.zeros(self._latent_dim)
+        self._posterior_mean = torch.zeros(self._latent_dim).to(self.device)
+        self._posterior_logvar = torch.zeros(self._latent_dim).to(self.device)
 
     def _draw_from_posterior(self, num_draws: int) -> torch.Tensor:
         """Draw samples from the latent posterior.
@@ -239,7 +240,7 @@ class NeuralProcess(AbstractPlModel):
         Returns:
             Tensor of the draws.
         """
-        return (torch.randn((num_draws, self._latent_dim))
+        return (torch.randn((num_draws, self._latent_dim)).to(self.device)
                 * (0.5 * self._posterior_logvar).exp() + self._posterior_mean)
 
     @property

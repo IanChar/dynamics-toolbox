@@ -174,7 +174,7 @@ class SimplexMLP(AbstractPlModel):
         with torch.no_grad():
             predictions = self.forward(net_in, weight)
         info = {'predictions': predictions}
-        return poredictions, info
+        return predictions, info
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

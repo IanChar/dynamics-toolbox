@@ -191,8 +191,6 @@ class PNN(AbstractPlModel):
         stats = dict(
             nll=loss.item(),
             mse=mse.item(),
-            dynamics_mse=torch.mean((mean[:, 1:] - labels[:, 1:]) ** 2).item(),
-            rewards_mse=torch.mean((mean[:, 0] - labels[:, 0]) ** 2).item(),
         )
         stats['logvar/mean'] = logvar.mean().item()
         if self._var_pinning:
@@ -256,14 +254,16 @@ class PNN(AbstractPlModel):
             net_out: Dict[str, torch.Tensor],
             batch: Sequence[torch.Tensor],
     ) -> Dict[str, torch.Tensor]:
-        to_return = {}
-        pred = net_out['mean']
-        _, yi = batch
-        for metric_name, metric in self._metrics.items():
-            metric_value = metric(pred, yi)
-            if len(metric_value.shape) > 0:
-                for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
-            else:
-                to_return[metric_name] = metric_value
-        return to_return
+        """Compute additional metrics to be used for validation/test only.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            A dictionary of additional metrics.
+        """
+        return super()._get_test_and_validation_metrics(
+            {'prediction': net_out['mean']},
+            batch,
+        )

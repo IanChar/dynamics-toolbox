@@ -1,24 +1,27 @@
 """
-Data module for doing regression.
+Data module for training dynamics where multiple steps are given in a batch.
 
 Author: Ian Char
 """
-from typing import Dict, Union, List, Sequence
+from typing import Dict, Union, List, Optional, Sequence
 
 import numpy as np
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
-from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
+from dynamics_toolbox.utils.gym_util import parse_into_trajectories
+from dynamics_toolbox.utils.storage.qdata import get_data_from_source
 
 
-class RegressionDataModule(LightningDataModule):
+class SequentialDataModule(LightningDataModule):
 
     def __init__(
             self,
             data_source: str,
             batch_size: int,
+            learn_rewards: bool = False,
+            snippet_size: Optional[int] = None,
             val_proportion: float = 0.0,
             test_proportion: float = 0.0,
             num_workers: int = 1,
@@ -29,16 +32,12 @@ class RegressionDataModule(LightningDataModule):
         """Constructor.
 
         Args:
-            data_source: Name of the data source as a path to the hdf5 file.
-                The hdf5 file should contain:
-                    * tr_x: The training x data.
-                    * tr_y: The training y data.
-                    * val_x: The validation x data.
-                    * val_y: The validation y data.
-                    * te_x (optional): The testing x data.
-                    * te_y (optional): The testing y data.
+            data_source: Name of the data source, either as a string to a path or
+                name of a d4rl env.
             batch_size: Batch size.
             learn_rewards: Whether to include the rewards for learning in xdata.
+            snippet_size: How big each snippet from a trajectory should be. If it is
+                None, set this to the smallest trajectory length.
             val_proportion: Proportion of data to use as validation.
             val_proportion: Proportion of data to use as test.
             num_workers: Number of workers.
@@ -46,16 +45,40 @@ class RegressionDataModule(LightningDataModule):
             seed: The seed.
         """
         super().__init__()
-        dataset = load_from_hdf5(data_source)
-        self._xdata = dataset['tr_x']
-        self._ydata = dataset['tr_y']
+        qset = get_data_from_source(data_source)
+        trajectories = parse_into_trajectories(qset)
+        traj_lengths = [len(traj['observations']) for traj in trajectories]
+        if snippet_size is None:
+            snippet_size = np.min(traj_lengths)
+        observations = []
+        actions = []
+        rewards = []
+        terminals = []
+        for traj, traj_len in zip(trajectories, traj_lengths):
+            for idx in range(traj_len + 1 - snippet_size):
+                observations.append(np.vstack([
+                    traj['observations'][[idx]],
+                    traj['next_observations'][idx:idx + snippet_size]
+                ]))
+                actions.append(traj['actions'][idx:idx + snippet_size])
+                rewards.append(traj['rewards'][idx:idx + snippet_size])
+                terminals.append(traj['terminals'][idx:idx + snippet_size])
+        self._observations = np.array(observations)
+        self._actions = np.array(actions)
+        self._rewards = np.array(rewards)
+        self._terminals = np.array(terminals)
+        self._xdata = np.concatenate([self._observations[:, :-1], self._actions],
+                                     axis=-1)
+        self._ydata = self._observations[:, 1:] - self._observations[:, :-1]
+        if learn_rewards:
+            self._ydata = np.concatenate([self._rewards, self._ydata], axis=-1)
         self._val_proportion = val_proportion
         self._test_proportion = test_proportion
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._seed = seed
-        data_size = len(self._xdata)
+        data_size = len(self._observations)
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
@@ -63,18 +86,10 @@ class RegressionDataModule(LightningDataModule):
             TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
             [self._num_tr, self._num_val, self._num_te],
         )
-        if 'val_x' in dataset and 'val_y' in dataset:
-            self._val_dataset = TensorDataset(
-                    torch.Tensor(dataset['val_x']),
-                    torch.Tensor(dataset['val_y']),
-            )
-        if 'te_x' in dataset and 'te_y' in dataset:
-            self._te_dataset = TensorDataset(
-                    torch.Tensor(dataset['te_x']),
-                    torch.Tensor(dataset['te_y']),
-            )
 
-    def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def train_dataloader(
+            self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         return DataLoader(
             self._tr_dataset,
@@ -85,7 +100,9 @@ class RegressionDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def val_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._val_dataset):
             return DataLoader(
@@ -99,7 +116,9 @@ class RegressionDataModule(LightningDataModule):
         else:
             None
 
-    def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def test_dataloader(
+            self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._te_dataset):
             return DataLoader(
@@ -131,12 +150,12 @@ class RegressionDataModule(LightningDataModule):
     @property
     def input_dim(self) -> int:
         """Input dimension."""
-        return self._xdata.shape[-1]
+        return self._observations.shape[-1] + self._actions.shape[-1]
 
     @property
     def output_dim(self) -> int:
         """Output dimension."""
-        return self._ydata.shape[-1]
+        return self._observations.shape[-1]
 
     @property
     def num_train(self) -> int:

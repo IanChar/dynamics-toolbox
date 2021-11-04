@@ -11,7 +11,7 @@ import torch
 from pytorch_lightning import LightningModule
 
 from dynamics_toolbox.models.abstract_model import AbstractModel
-from dynamics_toolbox.utils.pytorch.modules.normalizer import Normalizer
+from dynamics_toolbox.utils.pytorch.modules.normalizer import Normalizer, NoNormalizer
 
 
 class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
@@ -32,11 +32,10 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             normalizer: Normalizer for the model.
         """
         super().__init__()
+        self._input_dim = input_dim
+        self._output_dim = output_dim
         if normalizer is None:
-            normalizer = Normalizer(
-                    torch.zeros(input_dim), torch.ones(input_dim),
-                    torch.zeros(output_dim), torch.ones(output_dim),
-            )
+            normalizer = NoNormalizer()
         self.normalizer = normalizer
 
     def training_step(
@@ -45,7 +44,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             batch_idx: int,
     ) -> torch.Tensor:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.transform_batch(batch)
+        batch = self.normalizer.normalize_batch(batch)
         net_out = self.get_net_out(batch)
         loss, loss_dict = self.loss(net_out, batch)
         self._log_stats(loss_dict, prefix='train')
@@ -53,7 +52,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
 
     def validation_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.transform_batch(batch)
+        batch = self.normalizer.normalize_batch(batch)
         net_out = self.get_net_out(batch)
         loss, loss_dict = self.loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
@@ -61,7 +60,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
 
     def test_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.transform_batch(batch)
+        batch = self.normalizer.normalize_batch(batch)
         net_out = self.get_net_out(batch)
         loss, loss_dict = self.loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
@@ -71,7 +70,6 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             self,
             model_input: np.ndarray,
             each_input_is_different_sample: Optional[bool] = True,
-            unnormalize_samples: bool = True,
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Make predictions using the currently set sampling method.
 
@@ -84,14 +82,11 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         Returns:
             The output of the model and give a dictionary of related quantities.
         """
-        net_in = self.normalizer.transform_input(
-            torch.Tensor(model_input).to(self.device))
+        model_input = torch.Tensor(model_input).to(self.device)
         if each_input_is_different_sample:
-            output, infos = self.multi_sample_output_from_torch(net_in)
+            output, infos = self.multi_sample_output_from_torch(model_input)
         else:
-            output, infos = self.single_sample_output_from_torch(net_in)
-        if unnormalize_samples:
-            output = self.normalizer.untransform_output(output)
+            output, infos = self.single_sample_output_from_torch(model_input)
         return output.numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:

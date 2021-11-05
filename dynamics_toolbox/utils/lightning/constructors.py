@@ -11,6 +11,7 @@ import numpy as np
 from omegaconf import DictConfig, open_dict
 import pytorch_lightning as pl
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers.base import LightningLoggerBase
 from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 import torch
@@ -58,6 +59,8 @@ def construct_all_pl_components_for_training(
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
     max_epochs = (1000 if 'max_epochs' not in cfg['trainer']
                   else cfg['trainer']['max_epochs'])
+    if data_module.num_validation > 0:
+        callbacks.append(ModelCheckpoint(monitor='val/loss'))
     callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger

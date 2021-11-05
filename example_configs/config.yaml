@@ -7,4 +7,4 @@ logger: tensorboard
 defaults:
     - trainer: pl_trainer
     - data_module: forward_dynamics_data_module
-      # - early_stopping: default
+    - early_stopping: default

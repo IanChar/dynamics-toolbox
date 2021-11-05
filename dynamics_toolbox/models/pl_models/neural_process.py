@@ -9,12 +9,13 @@ Author: Ian Char
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import hydra.utils
-import numpy as np
 import torch
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
+from dynamics_toolbox.utils.pytorch.condition_sampler import ConditionSampler
+from dynamics_toolbox.utils.pytorch.modules.dataset_encoder import DatasetEncoder
 
 
 class NeuralProcess(AbstractPlModel):
@@ -29,11 +30,10 @@ class NeuralProcess(AbstractPlModel):
             conditioner_cfg: DictConfig,
             latent_encoder_cfg: DictConfig,
             decoder_cfg: DictConfig,
+            condition_sampler_cfg: DictConfig,
             beta: float = 1,
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
-            min_num_conditioning: int = 3,
-            max_num_conditioning: int = 30,
             sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             **kwargs
     ):
@@ -50,6 +50,8 @@ class NeuralProcess(AbstractPlModel):
                 should be the mean and logvar of an independent multivariate Gaussian.
             decoder_cfg: The config for the decoder model. The output is assumed
                 to be deterministic (or more precisely, Gaussian with var=1).
+            condition_sampler_cfg: The config for the condition sampling. Must be
+                a config for a ConditionSampler.
             beta: The coefficient to weight the KL divergence by.
             learning_rate: The learning rate for the network.
             weight_decay: The weight decay for the optimizer.
@@ -60,8 +62,6 @@ class NeuralProcess(AbstractPlModel):
             sample_mode: The method to use for sampling.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self._min_num_conditioning = min_num_conditioning
-        self._max_num_conditioning = max_num_conditioning
         self._sample_mode = sample_mode
         self._beta = beta
         self._learning_rate = learning_rate
@@ -79,6 +79,8 @@ class NeuralProcess(AbstractPlModel):
             output_dim=condition_out_dim,
             _recursive_=False,
         )
+        assert isinstance(self._conditioner, DatasetEncoder), \
+            'Conditioner must be a DatasetEncoder.'
         self._encoder = hydra.utils.instantiate(
             latent_encoder_cfg,
             input_dim=condition_out_dim,
@@ -91,6 +93,12 @@ class NeuralProcess(AbstractPlModel):
             output_dim=output_dim,
             _recursive_=False,
         )
+        self._condition_sampler = hydra.utils.instantiate(
+            condition_sampler_cfg,
+            _recursive_=False,
+        )
+        assert isinstance(self._condition_sampler, ConditionSampler), \
+            'Condition sampler must be a ConditionSampler.j'
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -106,24 +114,14 @@ class NeuralProcess(AbstractPlModel):
         Returns:
             Dictionary of name to tensor.
         """
-        xi, yi = batch
-        if len(xi.shape) == 2:
-            xi = xi.unsqueeze(1)
-            yi = yi.unsqueeze(1)
-        pred_x = xi[:, -1, :]
-        if xi.shape[1] > 1:
-            num_conditions = np.random.randint(
-                min(self._min_num_conditioning, xi.shape[1] - 1),
-                min(self._max_num_conditioning, xi.shape[1] - 1)
-            )
-            cond_idxs = torch.randperm(xi.shape[1] - 1)[:num_conditions]
-            conditions = torch.cat([xi[:, cond_idxs, :], yi[:, cond_idxs, :]], dim=-1)
+        conditions, pred_x, pred_y = self._condition_sampler.split_batch(batch)
+        if conditions is not None:
             condition_out = self._conditioner.encode_dataset(conditions)
             latent_out = self._encoder.get_net_out([condition_out, None])
             z_mu, z_logvar = latent_out['mean'], latent_out['logvar']
         else:
-            condition_out = torch.zeros((xi.shape[0], self._condition_out_dim))
-            z_mu, z_logvar = [torch.zeros((xi.shape[0], self._latent_dim))
+            condition_out = torch.zeros((batch[0].shape[0], self._condition_out_dim))
+            z_mu, z_logvar = [torch.zeros((batch[0].shape[0], self._latent_dim))
                               for _ in range(2)]
         z_sample = torch.randn_like(z_mu).to(self.device) * (0.5 * z_logvar).exp() \
                    + z_mu
@@ -134,11 +132,12 @@ class NeuralProcess(AbstractPlModel):
             'condition_out': condition_out,
             'z_mu': z_mu,
             'z_logvar': z_logvar,
+            'label': pred_y,
         }
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        _, yi = batch
+        yi = net_out['label']
         if len(yi.shape) > 2:
             yi = yi[:, -1, :]
         kldiv = torch.mean(

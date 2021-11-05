@@ -50,3 +50,16 @@ decoder_cfg:
     num_layers: 3
     layer_size: 200
     hidden_activation: "tanh"
+condition_sampler_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.condition_sampler.MixtureConditionSampler
+    sampler_cfgs:
+        -
+          _target_: dynamics_toolbox.utils.pytorch.condition_sampler.HistoryConditionSampler
+          min_num_conditioning: 3
+          max_num_conditioning: 30
+        -
+          _target_: dynamics_toolbox.utils.pytorch.condition_sampler.SelfConditionSampler
+    sampler_probabilities:
+        - 0.9
+        - 0.1
+

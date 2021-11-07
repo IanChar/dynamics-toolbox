@@ -155,8 +155,8 @@ class RPNN(AbstractSequentialRlModel):
                              f' {net_in.shape[0]}.')
         with torch.no_grad():
             encoded = self._encoder(net_in)
-            mem_out, hidden_out = self._memeory_unit(encoded.unsqueeze(0),
-                                                     self._hidden_state)
+            mem_out, hidden_out = self._memory_unit(encoded.unsqueeze(0),
+                                                    self._hidden_state)
             if self._record_history:
                 self._hidden_state = hidden_out
         return self._decoder.single_sample_output_from_torch(mem_out.squeeze(0))

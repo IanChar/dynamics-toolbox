@@ -36,24 +36,27 @@ class RandomSubsetConditionSampler(ConditionSampler):
 
     def __init__(
             self,
+            num_predictions: int,
             min_num_conditioning: int,
             max_num_conditioning: int,
-            input_is_last_in_batch: bool = False,
+            predictions_are_last: bool = False,
             input_can_be_conditioned: bool = False,
     ):
         """Constructor.
 
         Args:
+            num_predictions: The number of prediction points to make per prediction.
             min_num_conditioning: The minimum number of points to condition on.
             max_num_conditioning: The maximum number of points to condition on.
-            input_is_last_in_batch: Whether the input point should always be the last
-                point in the batch or whether it should be
+            predictions_are_last: Whether the point(s) to predict point should always
+                be the ones at the end of the trajectory.
             input_can_be_conditioned: Whether or not the input of the network can
                 also be a point conditioned on.
         """
+        self._num_predictions = num_predictions
         self._min_num_conditioning = min_num_conditioning
         self._max_num_conditioning = max_num_conditioning
-        self._input_is_last_in_batch = input_is_last_in_batch
+        self._predictions_are_last = predictions_are_last
         self._input_can_be_conditioned = input_can_be_conditioned
 
     def split_batch(self, batch: Sequence[torch.Tensor]) \
@@ -73,22 +76,27 @@ class RandomSubsetConditionSampler(ConditionSampler):
         xi, yi = batch
         if len(xi.shape) == 2:
             if self._input_can_be_conditioned:
-                return torch.cat([xi, yi], dim=1), xi, yi
+                return torch.cat([xi, yi], dim=1).unsqueeze(0), xi, yi
             return None, xi, yi
-        pred_idx = xi.shape[1] - 1 if self._input_is_last_in_batch \
-            else np.random.randint(xi.shape[1])
-        pred_x, pred_y = xi[:, pred_idx, :], yi[:, pred_idx, :]
+        idxs_to_choose = list(range(xi.shape[1]))
+        if not self._predictions_are_last:
+            np.random.shuffle(idxs_to_choose)
+        pred_idxs = idxs_to_choose[-self._num_predictions:]
+        pred_x = xi[:, pred_idxs, :].reshape(-1, xi.shape[-1])
+        pred_y = yi[:, pred_idxs, :].reshape(-1, yi.shape[-1])
+        if not self._input_can_be_conditioned:
+            idxs_to_choose = idxs_to_choose[:-self._num_predictions]
+        np.random.shuffle(idxs_to_choose)
         num_conditions = np.random.randint(
-            min(self._min_num_conditioning, xi.shape[1] - 1),
-            min(self._max_num_conditioning, xi.shape[1] - 1)
+            min(self._min_num_conditioning, len(idxs_to_choose)),
+            min(self._max_num_conditioning, len(idxs_to_choose)),
         )
         if num_conditions == 0:
             return None, pred_x, pred_y
-        condition_idxs = np.random.shuffle(
-            [i for i in range(len(xi.shape[1])) if i != pred_idx]
-        )[:num_conditions]
+        condition_idxs = idxs_to_choose[:num_conditions]
         conditions = torch.cat([xi[:, condition_idxs, :], yi[:, condition_idxs, :]],
                                dim=-1)
+        conditions = conditions.repeat_interleave(self._num_predictions, dim=0)
         return conditions, pred_x, pred_y
 
 
@@ -96,21 +104,24 @@ class HistoryConditionSampler(ConditionSampler):
 
     def __init__(
             self,
+            num_predictions: int,
             min_num_conditioning: int,
             max_num_conditioning: int,
-            input_is_last_in_batch: bool = False,
+            predictions_are_last: bool = False,
     ):
         """Constructor.
 
         Args:
+            num_predictions: The number of prediction points to make per prediction.
             min_num_conditioning: The minimum number of points to condition on.
             max_num_conditioning: The maximum number of points to condition on.
-            input_is_last_in_batch: Whether the input point should always be the last
+            predictions_are_last: Whether the input point should always be the last
                 point in the batch or whether it should be
         """
+        self._num_predictions = num_predictions
         self._min_num_conditioning = min_num_conditioning
         self._max_num_conditioning = max_num_conditioning
-        self._input_is_last_in_batch = input_is_last_in_batch
+        self._predictions_are_last = predictions_are_last
 
     def split_batch(self, batch: Sequence[torch.Tensor]) \
             -> Tuple[Union[torch.Tensor, None], torch.Tensor, torch.Tensor]:
@@ -130,17 +141,22 @@ class HistoryConditionSampler(ConditionSampler):
         if len(xi.shape) == 2:
             return None, xi, yi
         num_conditions = np.random.randint(
-            min(self._min_num_conditioning, xi.shape[1] - 1),
-            min(self._max_num_conditioning, xi.shape[1] - 1)
+            min(self._min_num_conditioning, xi.shape[1] - self._num_predictions),
+            min(self._max_num_conditioning, xi.shape[1] - self._num_predictions)
         )
-        pred_idx = xi.shape[1] - 1 if self._input_is_last_in_batch \
-            else np.random.randint(num_conditions, xi.shape[1])
-        pred_x, pred_y = xi[:, pred_idx, :], yi[:, pred_idx, :]
+        if self._predictions_are_last:
+            split_idx = xi.shape[1] - self._num_predictions
+        else:
+            split_idx = np.random.randint(
+                    num_conditions, xi.shape[1] + 1 - self._num_predictions)
+        pred_idxs = np.arange(split_idx, split_idx + self._num_predictions)
+        pred_x = xi[:, pred_idxs, :].reshape(-1, xi.shape[-1])
+        pred_y = yi[:, pred_idxs, :].reshape(-1, yi.shape[-1])
         if num_conditions == 0:
             return None, pred_x, pred_y
-        conditions = torch.cat([xi[:, pred_idx - num_conditions:pred_idx, :],
-                                yi[:, pred_idx - num_conditions:pred_idx, :]],
-                               dim=-1)
+        cond_idxs = np.arange(split_idx - num_conditions, split_idx)
+        conditions = torch.cat([xi[:, cond_idxs, :], yi[:, cond_idxs, :]], dim=-1)
+        conditions = conditions.repeat_interleave(self._num_predictions, dim=0)
         return conditions, pred_x, pred_y
 
 
@@ -148,15 +164,15 @@ class SelfConditionSampler(ConditionSampler):
 
     def __init__(
             self,
-            input_is_last_in_batch: bool = False,
+            predictions_are_last: bool = False,
     ):
         """Constructor.
 
         Args:
-            input_is_last_in_batch: Whether the input point should always be the last
+            predictions_are_last: Whether the input point should always be the last
                 point in the batch or whether it should be
         """
-        self._input_is_last_in_batch = input_is_last_in_batch
+        self._predictions_are_last = predictions_are_last
 
     def split_batch(self, batch: Sequence[torch.Tensor]) \
             -> Tuple[Union[torch.Tensor, None], torch.Tensor, torch.Tensor]:
@@ -174,10 +190,14 @@ class SelfConditionSampler(ConditionSampler):
         """
         xi, yi = batch
         if len(xi.shape) == 2:
-            return torch.cat([xi, yi], dim=1), xi, yi
-        pred_idx = xi.shape[1] - 1 if self._input_is_last_in_batch \
-            else np.random.randint(xi.shape[1])
-        pred_x, pred_y = xi[:, pred_idx, :], yi[:, pred_idx, :]
+            return torch.cat([xi, yi], dim=1).unsqueeze(0), xi, yi
+        if self._predictions_ar_last:
+            pred_idxs = np.arange(xi.shape[1] - self._num_predictions, xi.shape[1])
+        else:
+            pred_idxs = np.arange(xi.shape[1])
+            np.random.shuffle(pred_idxs)
+            pred_idxs = pred_idxs[:self._num_predictions]
+        pred_x, pred_y = xi[:, pred_idxs, :], yi[:, pred_idxs, :]
         conditions = torch.cat([pred_x, pred_y], dim=1).unsqueeze(1)
         return conditions, pred_x, pred_y
 

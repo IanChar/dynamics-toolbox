@@ -6,8 +6,9 @@ Author: Ian Char
 import os
 from typing import Optional, List
 
-import numpy as np
+import hydra
 from omegaconf import OmegaConf
+import numpy as np
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.abstract_model import\
@@ -42,8 +43,8 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     path = os.path.join(path, checkpoints[epidx])
-    return getattr(pl_models, cfg['model']['model_type']).load_from_checkpoint(
-            path, **cfg['model'])
+    model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
+    return model.load_from_checkpoint(checkpoint_path=path, **cfg['model'])
 
 
 def load_ensemble_from_list_of_log_dirs(

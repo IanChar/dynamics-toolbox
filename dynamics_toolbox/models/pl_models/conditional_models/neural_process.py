@@ -13,12 +13,13 @@ import torch
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
-from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
+from dynamics_toolbox.models.pl_models.conditional_models.abstract_conditional_model import \
+    AbstractConditionalModel
 from dynamics_toolbox.utils.pytorch.condition_sampler import ConditionSampler
 from dynamics_toolbox.utils.pytorch.modules.dataset_encoder import DatasetEncoder
 
 
-class NeuralProcess(AbstractPlModel):
+class NeuralProcess(AbstractConditionalModel):
     """A neural process model."""
 
     def __init__(
@@ -55,10 +56,6 @@ class NeuralProcess(AbstractPlModel):
             beta: The coefficient to weight the KL divergence by.
             learning_rate: The learning rate for the network.
             weight_decay: The weight decay for the optimizer.
-            min_num_conditioning: The minimum number of points to condition on
-                when training.
-            max_num_conditioning: The maximum number of points to condition on
-                when training.
             sample_mode: The method to use for sampling.
         """
         super().__init__(input_dim, output_dim, **kwargs)

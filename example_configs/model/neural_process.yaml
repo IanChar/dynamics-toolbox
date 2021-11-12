@@ -1,4 +1,4 @@
-_target_: dynamics_toolbox.models.pl_models.neural_process.conditional_models.NeuralProcess
+_target_: dynamics_toolbox.models.pl_models.conditional_models.neural_process.NeuralProcess
 condition_out_dim: 256
 latent_dim: 2
 learning_rate: 0.0001
@@ -35,12 +35,12 @@ latent_encoder_cfg:
        hidden_activation: "relu"
     mean_net_cfg:
        _target_: dynamics_toolbox.models.pl_models.mlp.MLP
-       num_layers: 0
+       num_layers: 2
        layer_size: 200
        hidden_activation: "relu"
     logvar_net_cfg:
        _target_: dynamics_toolbox.models.pl_models.mlp.MLP
-       num_layers: 0
+       num_layers: 2
        layer_size: 200
        hidden_activation: "relu"
     logvar_lower_bound: -10

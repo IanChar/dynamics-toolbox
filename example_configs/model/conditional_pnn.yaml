@@ -1,6 +1,6 @@
 _target_: dynamics_toolbox.models.pl_models.conditional_models.conditional_pnn.ConditionalPNN
-latent_mean_dim: 64
-latent_logvar_dim: 64
+latent_mean_dim: 16
+latent_logvar_dim: 16
 conditioner_cfg:
    _target_: dynamics_toolbox.utils.pytorch.modules.dataset_encoder.SelfAttentionDatasetEncoder
    query_net_cfg:

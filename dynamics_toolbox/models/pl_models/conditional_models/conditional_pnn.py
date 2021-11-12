@@ -8,6 +8,7 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import hydra.utils
 import torch
+import torch.nn.functional as F
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
@@ -133,6 +134,7 @@ class ConditionalPNN(AbstractConditionalModel):
         mean_prediction = self._mean_net(torch.cat([pred_x, mean_condition], dim=1))
         logvar_prediction = self._logvar_net(
             torch.cat([pred_x, logvar_condition], dim=1))
+        logvar_prediction = self._pin_logvar(logvar_prediction)
         return {
             'mean': mean_prediction,
             'logvar': logvar_prediction,
@@ -183,6 +185,7 @@ class ConditionalPNN(AbstractConditionalModel):
                 net_in,
                 self._logvar_condition.reshape(1, -1).repeat(len(net_in), 1)], dim=1)
             )
+            logvar_predictions = self._pin_logvar(logvar_predictions)
         std_predictions = (0.5 * logvar_predictions).exp()
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
             predictions = (torch.randn_like(mean_predictions) * std_predictions
@@ -255,6 +258,20 @@ class ConditionalPNN(AbstractConditionalModel):
     @property
     def output_dim(self) -> int:
         return self._output_dim
+
+    def _pin_logvar(self, logvar: torch.Tensor) -> torch.Tensor:
+        """If applicable, to logvar pinning.
+
+        Args:
+            logvar: The logvar to be pinned.
+
+        Returns:
+            The pinned logvar.
+        """
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
+        return logvar
 
     def _get_test_and_validation_metrics(
             self,

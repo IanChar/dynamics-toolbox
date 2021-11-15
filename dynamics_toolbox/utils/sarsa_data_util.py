@@ -38,6 +38,7 @@ def parse_into_snippet_datasets(
         snippet_size: Optional[int] = None,
         val_proportion: float = 0.0,
         test_proportion: float = 0.0,
+        allow_padding: bool = False,
 ) -> List[Dict[str, np.ndarray]]:
     """Parse into a sarsa dataset into snippets of rollouts.
 
@@ -48,6 +49,8 @@ def parse_into_snippet_datasets(
             default to the smallest trajectory size in the dataset.
         val_proportion: Proportion of the trajectories to be used for validation.
         test_proportion: Proportion of the trajectories to be used for testing.
+        allow_padding: Whether to allow padding of 0s if trajectory length is smaller
+            than snippet_size.
 
     Returns:
         Three dictionaries, one for each train, validation, and testing. Each contains
@@ -56,6 +59,8 @@ def parse_into_snippet_datasets(
             * next_observations: ndarray of shape (num_snippets, snippet_size, obs_dim)
             * rewards: ndarray of shape (num_snippets, snippet_size)
             * terminals: ndarray of shape (num_snippets, snippet_size)
+            * is_real: ndarray of 0s or 1s (num_snippets, snippet_size). This comes
+                into play if allow_padding is True.
     """
     if val_proportion + test_proportion > 1:
         raise ValueError('Invalid validation and test proportions: '
@@ -66,9 +71,9 @@ def parse_into_snippet_datasets(
     if snippet_size is None:
         snippet_size = min_trajectory_length
     else:
-        if snippet_size > min_trajectory_length:
-            raise ValueError(f'Cannot have snippet size ({snippet_size} greater '
-                             f'than min trajectory length ({min_trajectory_length})')
+        if snippet_size > min_trajectory_length and not allow_padding:
+            raise ValueError(f'Cannot have snippet size ({snippet_size}) greater '
+                             f'than min trajectory length ({min_trajectory_length}).')
     num_te = int(test_proportion * len(trajectories))
     te_trajectories, trajectories = trajectories[:num_te], trajectories[num_te:]
     num_val = int(val_proportion * len(trajectories))
@@ -79,15 +84,29 @@ def parse_into_snippet_datasets(
         'next_observations': [],
         'rewards': [],
         'terminals': [],
+        'is_real': [],
     } for _ in range(3)]
     for dataset, trajectory_group in zip(datasets,
                                          [trajectories, val_trajectories,
                                           te_trajectories]):
         for traj in trajectory_group:
-            traj_len = len(traj)
-            for idx in range(traj_len + 1 - snippet_size):
-                for k, arr in dataset.items():
-                    arr.append(traj[k][idx:idx + snippet_size])
+            traj_len = len(traj['observations'])
+            if traj_len < snippet_size:
+                for k, arr in traj.items():
+                    if k in dataset:
+                        arr_shape = list(arr.shape)
+                        arr_shape[0] = snippet_size
+                        padded = np.zeros(arr_shape)
+                        padded[:traj_len] = arr
+                        dataset[k].append(padded)
+                dataset['is_real'].append(np.array([1 if i < traj_len else 0
+                                                    for i in range(snippet_size)]))
+            else:
+                for idx in range(traj_len + 1 - snippet_size):
+                    for k, arr in dataset.items():
+                        if k in traj:
+                            arr.append(traj[k][idx:idx + snippet_size])
+                    dataset['is_real'].append(np.ones(snippet_size))
         for k, arr in dataset.items():
             dataset[k] = np.array(arr)
     return datasets

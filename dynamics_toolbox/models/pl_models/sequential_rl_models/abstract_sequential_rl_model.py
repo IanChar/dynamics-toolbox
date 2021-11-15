@@ -47,9 +47,18 @@ class AbstractSequentialRlModel(AbstractPlModel, metaclass=abc.ABCMeta):
         """
         to_return = {}
         pred = net_out['prediction']
+        one_step_pred = pred[:, 0, ...]
         pred = pred.reshape(-1, pred.shape[-1])
-        _, _, yi, _, _ = batch
+        yi = batch[3]
+        one_step_yi = yi[:, 0, ...]
         yi = yi.reshape(-1, yi.shape[-1])
+        for metric_name, metric in self.metrics.items():
+            metric_value = metric(one_step_pred, one_step_yi)
+            if len(metric_value.shape) > 0:
+                for dim_idx, metric_v in enumerate(metric_value):
+                    to_return[f'{metric_name}_dim{dim_idx}_OneStep'] = metric_v
+            else:
+                to_return[f'{metric_name}_OneStep'] = metric_value
         for metric_name, metric in self.metrics.items():
             metric_value = metric(pred, yi)
             if len(metric_value.shape) > 0:

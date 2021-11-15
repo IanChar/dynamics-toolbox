@@ -99,7 +99,9 @@ class RPNN(AbstractSequentialRlModel):
         Returns:
             Dictionary of name to tensor.
         """
-        obs, acts, _, _, _ = batch
+        assert len(batch) == 6, 'Need SARS + is_real in batch.'
+        obs, acts = batch[:2]
+        is_real = batch[-1]
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(1)
             acts = acts.unsqueeze(1)
@@ -112,6 +114,8 @@ class RPNN(AbstractSequentialRlModel):
             encoded = self._encoder(net_in)
             mem_out, hidden = self._memory_unit(encoded.unsqueeze(0), hidden)
             mean_pred, logvar_pred = self._decoder(mem_out.squeeze(0))
+            mean_pred *= is_real[:, t].unsqueeze(-1)
+            logvar_pred *= is_real[:, t].unsqueeze(-1)
             mean_predictions.append(mean_pred)
             logvar_predictions.append(logvar_pred)
             curr = (curr + mean_pred + torch.randn_like(curr).to(self.device)

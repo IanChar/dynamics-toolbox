@@ -92,12 +92,14 @@ class RNN(AbstractSequentialRlModel):
 
         Args:
             batch: The batch passed into the network. This is expected to be a tuple
-                with (obs, acts, nxts, rews, terminals).
+                with (obs, acts, nxts, rews, terminals, is_padding).
 
         Returns:
             Dictionary of name to tensor.
         """
-        obs, acts, _, _, _ = batch
+        assert len(batch) == 6, 'Need SARS + is_real in batch.'
+        obs, acts = batch[:2]
+        is_real = batch[-1]
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(1)
             acts = acts.unsqueeze(1)
@@ -109,7 +111,8 @@ class RNN(AbstractSequentialRlModel):
             net_in = torch.cat([curr, acts[:, t]], dim=1)
             encoded = self._encoder(net_in)
             mem_out, hidden = self._memory_unit(encoded.unsqueeze(0), hidden)
-            predictions.append(self._decoder(mem_out.squeeze(0)))
+            predictions.append(self._decoder(mem_out.squeeze(0))
+                               * is_real[:, t].unsqueeze(-1))
             curr = curr + predictions[-1]
             if self.training and self._autoregress_noise > 0:
                 curr += torch.randn_like(curr).to(self.device) * self._autoregress_noise
@@ -127,7 +130,7 @@ class RNN(AbstractSequentialRlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        _, _, nxts, _, _ = batch
+        nxts = batch[3]
         loss = self._loss_function(net_out['prediction'], nxts)
         stats = {'loss': loss.item()}
         return loss, stats

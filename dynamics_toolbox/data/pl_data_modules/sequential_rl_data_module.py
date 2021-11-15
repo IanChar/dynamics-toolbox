@@ -28,6 +28,7 @@ class SequentialRlDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            allow_padding: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -44,6 +45,8 @@ class SequentialRlDataModule(LightningDataModule):
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.
+            allow_padding: Whether to allow padding of 0s if trajectory length is
+                smaller than snippet_size.
         """
         super().__init__()
         qset = get_data_from_source(data_source)
@@ -52,6 +55,7 @@ class SequentialRlDataModule(LightningDataModule):
             snippet_size=snippet_size,
             val_proportion=val_proportion,
             test_proportion=test_proportion,
+            allow_padding=allow_padding,
         )
         if te_data_source is not None:
             te_qset = get_data_from_source(te_data_source)
@@ -60,14 +64,16 @@ class SequentialRlDataModule(LightningDataModule):
                 snippet_size=snippet_size,
                 val_proportion=0,
                 test_proportion=0,
+                allow_padding=allow_padding,
             )[0]
         self._tr_dataset, self._val_dataset, self._te_dataset = [
             TensorDataset(
                 torch.Tensor(ds['observations']),
                 torch.Tensor(ds['actions']),
-                torch.Tensor(ds['next_observations'] - ds['observations']),
                 torch.Tensor(ds['rewards']),
-                torch.Tensor(ds['terminals'])
+                torch.Tensor(ds['next_observations'] - ds['observations']),
+                torch.Tensor(ds['terminals']),
+                torch.Tensor(ds['is_real'])
             ) for ds in self._snippets]
         self._batch_size = batch_size
         self._num_workers = num_workers

@@ -4,7 +4,6 @@ Utility for loss functions.
 from typing import Callable
 
 import torch
-import torch.nn.functional as F
 
 import dynamics_toolbox.constants.losses as losses
 

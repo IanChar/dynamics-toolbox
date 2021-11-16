@@ -5,7 +5,6 @@ from typing import Callable, Union
 from argparse import Namespace
 
 import torch
-import torch.nn.functional as F
 
 import dynamics_toolbox.constants.losses as losses
 
@@ -118,13 +117,12 @@ def pinball_loss(
     """
     num_pts = y.size(0)
     num_q = q_list.size(0)
-    assert num_q.shape == (num_q,)
-    q_rep = q_list.view(-1, 1).repeat(1, num_pts).view(-1, 1)
+    assert q_list.shape == (num_q,)
+    q_rep = q_list.view(-1, 1).repeat(1, num_pts).T
 
-    import pdb; pdb.set_trace()
-    y_mat = y.repeat(num_q, 1).T
+    # import pdb; pdb.set_trace()
+    y_mat = y.repeat(1, num_q)
     assert y_mat.shape == (num_pts, num_q)
-    # y_mat = y_stacked.T
 
     diff = q_pred - y_mat
     mask = (diff.ge(0).float() - q_rep).detach()

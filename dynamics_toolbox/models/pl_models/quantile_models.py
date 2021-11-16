@@ -4,17 +4,19 @@ A network that takes in the input vector and quantile levels and outputs
 
 import os, sys
 from typing import Optional, Sequence, Callable, Tuple, Any, Dict
-from argparse import Namespace
 
+import hydra.utils
+from argparse import Namespace
 import torch
 import pytorch_lightning as pl
+from omegaconf import DictConfig
 
 import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.misc import get_architecture
-from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
+# from dynamics_toolbox.utils.pytorch.activations import get_activation
+# from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 import dynamics_toolbox.constants.losses as losses
 
@@ -26,13 +28,10 @@ class QuantileModel(AbstractPlModel):
         self,
         input_dim: int,
         output_dim: int,
-        encoder_num_layers: Optional[int] = None,
-        encoder_layer_size: Optional[int] = None,
-        encoder_architecture: Optional[str] = None,
+        encoder_cfg: DictConfig,
         loss_function: str = losses.CALI,
         num_quantile_draws: int = 30,
         learning_rate: float = 1e-3,
-        hidden_activation: str = activations.RELU,
         sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
         weight_decay: float = 0.0,
         args: Namespace = None,  #TODO: get rid of:?
@@ -63,15 +62,11 @@ class QuantileModel(AbstractPlModel):
 
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._quantile_network = FCNetwork(
-            input_dim=input_dim,
+        self._quantile_network = hydra.utils.instantiate(
+            encoder_cfg,
+            input_dim=input_dim+1,
             output_dim=output_dim,
-            hidden_sizes=get_architecture(
-                encoder_num_layers,
-                encoder_layer_size,
-                encoder_architecture,
-            ),
-            hidden_activation=get_activation(hidden_activation),
+            _recursive=False,
         )
 
         # Get loss function and optimizer fields
@@ -120,7 +115,6 @@ class QuantileModel(AbstractPlModel):
         else:
             q_list = q_list.flatten()
 
-        import pdb; pdb.set_trace()
         # handle recalibration
         if recal_model is not None:
             if recal_type == "torch":
@@ -138,7 +132,7 @@ class QuantileModel(AbstractPlModel):
         q_rep = q_list.view(-1, 1).repeat(1, num_pts).view(-1, 1)
         x_stacked = x.repeat(num_q, 1)
         model_in = torch.cat([x_stacked, q_rep], dim=1)  # note input is [x, p]
-        q_pred = self._quantile_network(model_in)
+        q_pred = self._quantile_network(model_in).reshape(num_q, num_pts).T
         assert q_pred.shape == (num_pts, num_q)
         return q_pred
 
@@ -218,7 +212,11 @@ class QuantileModel(AbstractPlModel):
         xi, _ = batch
         q_pred = self.forward(x=xi, q_list=None, recal_model=None, recal_type=None)
 
-        return {'q_list': torch.linspace(0.01, 0.99, 99), 'q_pred': q_pred}
+        return {
+            'q_list': torch.linspace(0.01, 0.99, 99),
+            'q_pred': q_pred,
+            'median': q_pred[:, [49]]
+        }
 
     def loss(
             self,
@@ -234,11 +232,11 @@ class QuantileModel(AbstractPlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        _, yi = batch
+        xi, yi = batch
         q_list = net_out['q_list']
         q_pred = net_out['q_pred']
         return self._compute_quantile_model_loss_stats(
-            yi=yi, q_pred=q_pred, q_list=q_list
+            xi=xi, yi=yi, q_pred=q_pred, q_list=q_list
         )
 
     def val_loss(
@@ -375,6 +373,25 @@ class QuantileModel(AbstractPlModel):
     def weight_decay(self) -> float:
         """Get the weight decay."""
         return self._weight_decay
+
+    def _get_test_and_validation_metrics(
+            self,
+            net_out: Dict[str, torch.Tensor],
+            batch: Sequence[torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
+        """Compute additional metrics to be used for validation/test only.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            A dictionary of additional metrics.
+        """
+        return super()._get_test_and_validation_metrics(
+            {'prediction': net_out['median']},
+            batch,
+        )
 
     def print_device(self):
         device_list = []

@@ -1,0 +1,14 @@
+_target_: dynamics_toolbox.models.pl_models.sequential_rl_models.rnn.RNN
+encode_dim: 512
+num_layers: 2
+hidden_size: 512
+encoder_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 2
+   layer_size: 512
+   hidden_activation: "relu"
+decoder_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 0
+   layer_size: 512
+   hidden_activation: "relu"

@@ -3,7 +3,7 @@ Data module for doing regression.
 
 Author: Ian Char
 """
-from typing import Dict, Union, List
+from typing import Dict, Union, List, Sequence
 
 import numpy as np
 import torch
@@ -112,6 +112,11 @@ class RegressionDataModule(LightningDataModule):
             )
         else:
             None
+
+    @property
+    def data(self) -> Sequence[np.array]:
+        """Get all of the data."""
+        return self._xdata, self._ydata
 
     @property
     def input_data(self) -> np.array:

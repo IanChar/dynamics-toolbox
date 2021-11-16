@@ -3,34 +3,29 @@ Classes for normalizing data.
 
 Author: Ian Char
 """
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import torch
+
 
 class Normalizer(torch.nn.Module):
 
     def __init__(
             self,
-            x_offset: torch.Tensor,
-            x_scaling: torch.Tensor,
-            y_offset: torch.Tensor,
-            y_scaling: torch.Tensor,
+            norm_infos: Sequence[Tuple[torch.Tensor, torch.Tensor]],
     ):
         """Constructor.
 
         Args:
-            x_offset: The x offset to apply.
-            x_offset: The x scaling to apply.
-            y_offset: The y offset to apply.
-            y_offset: The y scaling to apply.
+            norm_infos: Sequence of tuples of (offset, scaling) for each item
+                that appears in a batch for learning.
         """
         super().__init__()
-        self.register_buffer('x_offset', x_offset.reshape(1, -1))
-        self.register_buffer('x_scaling', x_scaling.reshape(1, -1))
-        self.register_buffer('y_offset', y_offset.reshape(1, -1))
-        self.register_buffer('y_scaling', y_scaling.reshape(1, -1))
+        for batch_idx, norm_pair in enumerate(norm_infos):
+            self.register_buffer(f'{batch_idx}_offset', norm_pair[0].reshape(1, -1))
+            self.register_buffer(f'{batch_idx}_scaling', norm_pair[1].reshape(1, -1))
 
-    def transform_batch(self, batch: Sequence[torch.Tensor]) ->\
+    def normalize_batch(self, batch: Sequence[torch.Tensor]) -> \
             Sequence[torch.Tensor]:
         """Transform a batch into normalized space.
 
@@ -40,18 +35,77 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed batch.
         """
-        new_input = (batch[0] - self.x_offset) / self.x_scaling
-        new_output = (batch[1] - self.y_offset) / self.y_scaling
-        return [new_input, new_output] + batch[2:]
+        return [self.normalize(elem, bidx) for bidx, elem in enumerate(batch)]
 
-    def untransform_output(self, output: torch.Tensor) -> torch.Tensor:
-        """Untransform the output.
+    def normalize(
+            self,
+            x: torch.Tensor,
+            batch_idx: int,
+    ) -> torch.Tensor:
+        """Normalize an element in the batch.
 
         Args:
-            output: The output to transform.
+            x: The input to normalize.
+            batch_idx: The position this quantity appears in for the batch.
 
         Returns:
-            The transformed output.
+            The transformed input.
         """
-        return output * self.y_scaling + self.y_offset
+        return ((x - getattr(self, f'{batch_idx}_offset'))
+                / getattr(self, f'{batch_idx}_scaling'))
 
+    def unnormalize(
+            self,
+            x: torch.Tensor,
+            batch_idx: int,
+    ) -> torch.Tensor:
+        """Unnormalize an element in the batch.
+
+        Args:
+            x: The input to unnormalize.
+            batch_idx: The position this quantity appears in for the batch.
+
+        Returns:
+            The transformed input.
+        """
+        return x * getattr(self, f'{batch_idx}_scaling') \
+               + getattr(self, f'{batch_idx}_offset')
+
+class NoNormalizer(Normalizer):
+
+    def __init__(self):
+        """Constructor."""
+        super().__init__([])
+
+
+    def normalize(
+            self,
+            x: torch.Tensor,
+            batch_idx: int,
+    ) -> torch.Tensor:
+        """Normalize an element in the batch.
+
+        Args:
+            x: The input to normalize.
+            batch_idx: The position this quantity appears in for the batch.
+
+        Returns:
+            The transformed input.
+        """
+        return x
+
+    def unnormalize(
+            self,
+            x: torch.Tensor,
+            batch_idx: int,
+    ) -> torch.Tensor:
+        """Unnormalize an element in the batch.
+
+        Args:
+            x: The input to unnormalize.
+            batch_idx: The position this quantity appears in for the batch.
+
+        Returns:
+            The transformed input.
+        """
+        return x

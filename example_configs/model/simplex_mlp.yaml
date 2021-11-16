@@ -1,5 +1,4 @@
-model_name: "SimplexMLP"
-model_type: "SimplexMLP"
+_target_: dynamics_toolbox.models.pl_models.simplex_mlp.SimplexMLP
 num_vertices: 2
 num_layers: 3
 layer_size: 200

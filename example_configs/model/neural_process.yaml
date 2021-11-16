@@ -1,37 +1,58 @@
-model_name: "NeuralProcess"
-model_type: "NeuralProcess"
+_target_: dynamics_toolbox.models.pl_models.conditional_models.neural_process.NeuralProcess
 condition_out_dim: 256
 latent_dim: 2
 learning_rate: 0.0001
-conditioner_kwargs:
-    model_name: "Conditioner"
-    model_type: "SelfAttentionDatasetEncoder"
-    query_net_kwargs:
-        num_layers: 3
-        layer_size: 256
-        hidden_activation: "relu"
-    value_net_kwargs:
-        num_layers: 3
-        layer_size: 256
-        hidden_activation: "relu"
-    key_net_kwargs:
-        num_layers: 3
-        layer_size: 256
-        hidden_activation: "relu"
-latent_encoder_kwargs:
-    model_name: "Encoder"
-    model_type: "PNN"
-    encoder_num_layers: 5
-    encoder_layer_size: 200
+conditioner_cfg:
+    #  _target_: dynamics_toolbox.util.pytorch.modules.dataset_encoder.MLPDatasetEncoder
+    #  mlp_kwargs:
+    #     _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+    #     num_layers: 3
+    #     layer_size: 200
+    #     hidden_activation: "relu"
+   _target_: dynamics_toolbox.utils.pytorch.modules.dataset_encoder.SelfAttentionDatasetEncoder
+   query_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 200
+       hidden_activation: "relu"
+   key_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 200
+       hidden_activation: "relu"
+   value_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 200
+       hidden_activation: "relu"
+latent_encoder_cfg:
+    _target_: dynamics_toolbox.models.pl_models.pnn.PNN
     encoder_output_dim: 200
-    mean_architecture: ""
-    logvar_architecture: ""
+    encoder_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 200
+       hidden_activation: "relu"
+    mean_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 2
+       layer_size: 200
+       hidden_activation: "relu"
+    logvar_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 2
+       layer_size: 200
+       hidden_activation: "relu"
     logvar_lower_bound: -10
     logvar_upper_bound: 0.5
-    hidden_activation: "swish"
-decoder_kwargs:
-    model_name: "Decoder"
-    model_type: "MLP"
+decoder_cfg:
+    _target_: dynamics_toolbox.models.pl_models.mlp.MLP
     num_layers: 3
-    layer_size: 128
+    layer_size: 200
     hidden_activation: "tanh"
+condition_sampler_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.condition_sampler.RandomSubsetConditionSampler
+    num_predictions: 16
+    min_num_conditioning: 3
+    max_num_conditioning: 30
+    input_can_be_conditioned: True

@@ -5,16 +5,14 @@ Author: Ian Char
 """
 from typing import Optional, Tuple, Dict, Any, Sequence, Callable
 
+import hydra.utils
 import torch
 import torch.nn.functional as F
+from omegaconf import DictConfig
 from torchmetrics import ExplainedVariance
 
-import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
-from dynamics_toolbox.utils.misc import get_architecture
-from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
 
 
 class PNN(AbstractPlModel):
@@ -25,20 +23,13 @@ class PNN(AbstractPlModel):
             input_dim: int,
             output_dim: int,
             encoder_output_dim: int,
-            encoder_num_layers: Optional[int] = None,
-            encoder_layer_size: Optional[int] = None,
-            encoder_architecture: Optional[str] = None,
-            mean_num_layers: Optional[int] = None,
-            mean_layer_size: Optional[int] = None,
-            mean_architecture: Optional[str] = None,
-            logvar_num_layers: Optional[int] = None,
-            logvar_layer_size: Optional[int] = None,
-            logvar_architecture: Optional[str] = None,
+            encoder_cfg: DictConfig,
+            mean_net_cfg: DictConfig,
+            logvar_net_cfg: DictConfig,
             learning_rate: float = 1e-3,
             logvar_lower_bound: Optional[float] = None,
             logvar_upper_bound: Optional[float] = None,
             logvar_bound_loss_coef: float = 1e-3,
-            hidden_activation: str = activations.SWISH,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             **kwargs,
@@ -50,22 +41,12 @@ class PNN(AbstractPlModel):
             input_dim: The input dimension.
             output_dim: The output dimension.
             encoder_output_dim: The dimension of the encoder to output.
-            encoder_num_layers: The number of hidden layers in the encoder.
-            encoder_layer_size: The size of each hidden layer in the encoder.
-            encoder_architecture: The architecture of the encoder described as a
-                a string of underscore separated ints e.g. 256_100_64.
-                If provided, this overrides num_layers and layer_sizes.
-            mean_num_layers: The number of hidden layers in the mean.
-            mean_layer_size: The size of each hidden layer in the mean.
-            mean_architecture: The architecture of the mean described as a
-                a string of underscore separated ints e.g. 256_100_64.
-                If provided, this overrides num_layers and layer_sizes.
-            logvar_num_layers: The number of hidden layers in the logvar.
-            logvar_layer_size: The size of each hidden layer in the logvar.
-            logvar_architecture: The architecture of the logvar described as a
-                a string of underscore separated ints e.g. 256_100_64.
-                If provided, this overrides num_layers and layer_sizes.
-            logvar_hidden_sizes: Hidden layer sizes for logvar head.
+            encoder_cfg: Configuration for the encoder. The object created must have
+                a forward method.
+            mean_net_cfg: Configuration for the mean. The object created must have
+                a forward method.
+            logvar_net_cfg: Configuration for the logvar. The object created must have
+                a forward method.
             learning_rate: The learning rate for the network.
             logvar_lower_bound: Lower bound on the log variance.
                 If none there is no bound.
@@ -80,35 +61,23 @@ class PNN(AbstractPlModel):
         self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._encoder = FCNetwork(
+        self._encoder = hydra.utils.instantiate(
+            encoder_cfg,
             input_dim=input_dim,
             output_dim=encoder_output_dim,
-            hidden_sizes=get_architecture(
-                encoder_num_layers,
-                encoder_layer_size,
-                encoder_architecture,
-            ),
-            hidden_activation=get_activation(hidden_activation),
+            _recursive_=False,
         )
-        self._mean_head = FCNetwork(
+        self._mean_head = hydra.utils.instantiate(
+            mean_net_cfg,
             input_dim=encoder_output_dim,
             output_dim=output_dim,
-            hidden_sizes=get_architecture(
-                mean_num_layers,
-                mean_layer_size,
-                mean_architecture,
-            ),
-            hidden_activation=get_activation(hidden_activation)
+            _recursive_=False,
         )
-        self._logvar_head = FCNetwork(
+        self._logvar_head = hydra.utils.instantiate(
+            logvar_net_cfg,
             input_dim=encoder_output_dim,
             output_dim=output_dim,
-            hidden_sizes=get_architecture(
-                logvar_num_layers,
-                logvar_layer_size,
-                logvar_architecture,
-            ),
-            hidden_activation=get_activation(hidden_activation)
+            _recursive_=False,
         )
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
@@ -139,8 +108,9 @@ class PNN(AbstractPlModel):
         Returns:
             The output of the networ.
         """
-        encoded = self._encoder(x)
-        mean, logvar = self._mean_head(encoded), self._logvar_head(encoded)
+        encoded = self._encoder.forward(x)
+        mean = self._mean_head.forward(encoded)
+        logvar = self._logvar_head.forward(encoded)
         if self._var_pinning:
             logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
             logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
@@ -170,20 +140,6 @@ class PNN(AbstractPlModel):
                 'mean_predictions': mean_predictions,
                 'std_predictions': std_predictions}
         return predictions, info
-
-    def multi_sample_output_from_torch(
-            self,
-            net_in: torch.Tensor
-    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        """Get the output where each input is assumed to be from a different sample.
-
-        Args:
-            net_in: The input for the network.
-
-        Returns:
-            The deltas for next states and dictionary of info.
-        """
-        return self.single_sample_output_from_torch(net_in)
 
     def multi_sample_output_from_torch(
             self,
@@ -235,8 +191,6 @@ class PNN(AbstractPlModel):
         stats = dict(
             nll=loss.item(),
             mse=mse.item(),
-            dynamics_mse=torch.mean((mean[:, 1:] - labels[:, 1:]) ** 2).item(),
-            rewards_mse=torch.mean((mean[:, 0] - labels[:, 0]) ** 2).item(),
         )
         stats['logvar/mean'] = logvar.mean().item()
         if self._var_pinning:
@@ -300,14 +254,16 @@ class PNN(AbstractPlModel):
             net_out: Dict[str, torch.Tensor],
             batch: Sequence[torch.Tensor],
     ) -> Dict[str, torch.Tensor]:
-        to_return = {}
-        pred = net_out['mean']
-        _, yi = batch
-        for metric_name, metric in self._metrics.items():
-            metric_value = metric(pred, yi)
-            if len(metric_value.shape) > 0:
-                for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
-            else:
-                to_return[metric_name] = metric_value
-        return to_return
+        """Compute additional metrics to be used for validation/test only.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            A dictionary of additional metrics.
+        """
+        return super()._get_test_and_validation_metrics(
+            {'prediction': net_out['mean']},
+            batch,
+        )

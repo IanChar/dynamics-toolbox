@@ -1,0 +1,39 @@
+_target_: dynamics_toolbox.models.pl_models.conditional_models.conditional_pnn.ConditionalPNN
+latent_mean_dim: 16
+latent_logvar_dim: 16
+conditioner_cfg:
+   _target_: dynamics_toolbox.utils.pytorch.modules.dataset_encoder.SelfAttentionDatasetEncoder
+   query_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 256
+       hidden_activation: "relu"
+   key_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 256
+       hidden_activation: "relu"
+   value_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 256
+       hidden_activation: "relu"
+mean_net_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 3
+   layer_size: 256
+   hidden_activation: "swish"
+logvar_net_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 3
+   layer_size: 256
+   hidden_activation: "swish"
+condition_sampler_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.condition_sampler.RandomSubsetConditionSampler
+    num_predictions: 16
+    min_num_conditioning: 3
+    max_num_conditioning: 30
+    input_can_be_conditioned: True
+logvar_lower_bound: -10
+logvar_upper_bound: 0.5
+learning_rate: 0.0001

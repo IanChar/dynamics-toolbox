@@ -2,8 +2,14 @@ model_name: "QuantileModel"
 model_type: "QuantileModel"
 encoder_architecture: "200_200_200"
 loss_function: "pinball"
-num_quantile_draws: 30
+num_quantile_draws: 20
 learning_rate: 0.0001
 hidden_activation: "swish"
-input_dim: 1
+input_dim: 2
 output_dim: 1
+_target_: dynamics_toolbox.models.pl_models.quantile_models.QuantileModel
+encoder_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 3
+   layer_size: 200
+   hidden_activation: "swish"

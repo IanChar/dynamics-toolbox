@@ -1,4 +1,4 @@
-data_module_type: ForwardDynamicsDataModule
+_target_: dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module.ForwardDynamicsDataModule
 batch_size: 256
 learn_rewards: False
 val_proportion: 0.1

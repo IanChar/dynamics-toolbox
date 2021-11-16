@@ -11,10 +11,10 @@ from torchmetrics import ExplainedVariance
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
 import dynamics_toolbox.constants.losses as losses
-from dynamics_toolbox.utils.misc import s2i, get_architecture
+from dynamics_toolbox.utils.misc import get_architecture
 from dynamics_toolbox.utils.pytorch.activations import get_activation
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
-from dynamics_toolbox.utils.pytorch.fc_network import FCNetwork
+from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
 
 class MLP(AbstractPlModel):

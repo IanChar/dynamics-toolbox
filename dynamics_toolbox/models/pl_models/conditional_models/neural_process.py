@@ -8,17 +8,18 @@ Author: Ian Char
 """
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
-import numpy as np
+import hydra.utils
 import torch
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
-from dynamics_toolbox.models import pl_models
-from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
-from dynamics_toolbox.utils.pytorch.modules import dataset_encoder
+from dynamics_toolbox.models.pl_models.conditional_models.abstract_conditional_model import \
+    AbstractConditionalModel
+from dynamics_toolbox.utils.pytorch.condition_sampler import ConditionSampler
+from dynamics_toolbox.utils.pytorch.modules.dataset_encoder import DatasetEncoder
 
 
-class NeuralProcess(AbstractPlModel):
+class NeuralProcess(AbstractConditionalModel):
     """A neural process model."""
 
     def __init__(
@@ -27,14 +28,13 @@ class NeuralProcess(AbstractPlModel):
             output_dim: int,
             condition_out_dim: int,
             latent_dim: int,
-            conditioner_kwargs: DictConfig,
-            latent_encoder_kwargs: DictConfig,
-            decoder_kwargs: DictConfig,
+            conditioner_cfg: DictConfig,
+            latent_encoder_cfg: DictConfig,
+            decoder_cfg: DictConfig,
+            condition_sampler_cfg: DictConfig,
             beta: float = 1,
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
-            min_num_conditioning: int = 3,
-            max_num_conditioning: int = 30,
             sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             **kwargs
     ):
@@ -45,24 +45,20 @@ class NeuralProcess(AbstractPlModel):
             output_dim: The output dimension.
             condition_out_dim: The output dimension of the conditioning model.
             latent_dim: The dimensionality of the latent space.
-            conditioner_kwargs: The config for the network that is responsible
+            conditioner_cfg: The config for the network that is responsible
                 for conditioning. This should be a DatasetEncoder.
-            latent_encoder_kwargs: The config for the latent encoding model. The output
+            latent_encoder_cfg: The config for the latent encoding model. The output
                 should be the mean and logvar of an independent multivariate Gaussian.
-            decoder_kwargs: The config for the decoder model. The output is assumed
+            decoder_cfg: The config for the decoder model. The output is assumed
                 to be deterministic (or more precisely, Gaussian with var=1).
+            condition_sampler_cfg: The config for the condition sampling. Must be
+                a config for a ConditionSampler.
             beta: The coefficient to weight the KL divergence by.
             learning_rate: The learning rate for the network.
             weight_decay: The weight decay for the optimizer.
-            min_num_conditioning: The minimum number of points to condition on
-                when training.
-            max_num_conditioning: The maximum number of points to condition on
-                when training.
             sample_mode: The method to use for sampling.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self._min_num_conditioning = min_num_conditioning
-        self._max_num_conditioning = max_num_conditioning
         self._sample_mode = sample_mode
         self._beta = beta
         self._learning_rate = learning_rate
@@ -74,26 +70,32 @@ class NeuralProcess(AbstractPlModel):
         self._curr_sample = None
         self._posterior_mean = torch.zeros(latent_dim)
         self._posterior_logvar = torch.zeros(latent_dim)
-        setattr(self, '_conditioner',
-                getattr(dataset_encoder, conditioner_kwargs['model_type'])(
-                    input_dim=input_dim + output_dim,
-                    output_dim=condition_out_dim,
-                    **conditioner_kwargs
-                ))
-        setattr(self, '_encoder',
-                getattr(pl_models,
-                        latent_encoder_kwargs['model_type'])(
-                    input_dim=condition_out_dim,
-                    output_dim=latent_dim,
-                    **latent_encoder_kwargs
-                ))
-        setattr(self, '_decoder',
-                getattr(pl_models,
-                        decoder_kwargs['model_type'])(
-                    input_dim=input_dim + latent_dim,
-                    output_dim=output_dim,
-                    **decoder_kwargs
-                ))
+        self._conditioner = hydra.utils.instantiate(
+            conditioner_cfg,
+            input_dim=input_dim + output_dim,
+            output_dim=condition_out_dim,
+            _recursive_=False,
+        )
+        assert isinstance(self._conditioner, DatasetEncoder), \
+            'Conditioner must be a DatasetEncoder.'
+        self._encoder = hydra.utils.instantiate(
+            latent_encoder_cfg,
+            input_dim=condition_out_dim,
+            output_dim=latent_dim,
+            _recursive_=False,
+        )
+        self._decoder = hydra.utils.instantiate(
+            decoder_cfg,
+            input_dim=input_dim + latent_dim,
+            output_dim=output_dim,
+            _recursive_=False,
+        )
+        self._condition_sampler = hydra.utils.instantiate(
+            condition_sampler_cfg,
+            _recursive_=False,
+        )
+        assert isinstance(self._condition_sampler, ConditionSampler), \
+            'Condition sampler must be a ConditionSampler.j'
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -109,26 +111,17 @@ class NeuralProcess(AbstractPlModel):
         Returns:
             Dictionary of name to tensor.
         """
-        xi, yi = batch
-        if len(xi.shape) == 2:
-            xi = xi.unsqueeze(1)
-            yi = yi.unsqueeze(1)
-        pred_x, pred_y = xi[:, -1, :], yi[:, -1, :]
-        if xi.shape[1] > 1:
-            num_conditions = np.random.randint(
-                min(self._min_num_conditioning, xi.shape[1] - 1),
-                min(self._max_num_conditioning, xi.shape[1] - 1)
-            )
-            cond_idxs = torch.randperm(xi.shape[1] - 1)[:num_conditions]
-            conditions = torch.cat([xi[:, cond_idxs, :], yi[:, cond_idxs, :]], dim=-1)
+        conditions, pred_x, pred_y = self._condition_sampler.split_batch(batch)
+        if conditions is not None:
             condition_out = self._conditioner.encode_dataset(conditions)
             latent_out = self._encoder.get_net_out([condition_out, None])
             z_mu, z_logvar = latent_out['mean'], latent_out['logvar']
         else:
-            condition_out = torch.zeros((xi.shape[0], self._condition_out_dim))
-            z_mu, z_logvar = [torch.zeros((xi.shape[0], self._latent_dim))
+            condition_out = torch.zeros((batch[0].shape[0], self._condition_out_dim))
+            z_mu, z_logvar = [torch.zeros((batch[0].shape[0], self._latent_dim))
                               for _ in range(2)]
-        z_sample = torch.randn_like(z_mu) * (0.5 * z_logvar).exp() + z_mu
+        z_sample = torch.randn_like(z_mu).to(self.device) * (0.5 * z_logvar).exp() \
+                   + z_mu
         decoder_in = torch.cat([pred_x, z_sample], dim=1)
         prediction = self._decoder.forward(decoder_in)
         return {
@@ -136,11 +129,12 @@ class NeuralProcess(AbstractPlModel):
             'condition_out': condition_out,
             'z_mu': z_mu,
             'z_logvar': z_logvar,
+            'label': pred_y,
         }
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        _, yi = batch
+        yi = net_out['label']
         if len(yi.shape) > 2:
             yi = yi[:, -1, :]
         kldiv = torch.mean(
@@ -149,7 +143,12 @@ class NeuralProcess(AbstractPlModel):
         # This is NLL with logvar=0
         mse = (net_out['prediction'] - yi).pow(2).mean()
         loss = self._beta * kldiv + mse
-        return loss, {'mse': mse.item(), 'kldiv': kldiv.item(), 'loss': loss.item()}
+        return loss, {
+            'mse': mse.item(),
+            'kldiv': kldiv.item(),
+            'loss': loss.item(),
+            'latent_std_magnitude': (0.5 * net_out['z_logvar']).exp().mean().item(),
+        }
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
         torch.Tensor, Dict[str, Any]]:
@@ -162,7 +161,7 @@ class NeuralProcess(AbstractPlModel):
             The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
+                or self._curr_sample is None):
             self._curr_sample = self._draw_from_posterior(1).to(self.device)
         latents = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
         decoder_in = torch.cat([net_in, latents], dim=1)
@@ -182,19 +181,19 @@ class NeuralProcess(AbstractPlModel):
             The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
+                or self._curr_sample is None):
             self._curr_sample = self._draw_from_posterior(len(net_in)).to(self.device)
         elif len(self._curr_sample) < len(net_in):
             self._curr_sample = torch.cat(
                 [self._curr_sample,
                  self._draw_from_posterior((len(net_in)
-                     - len(self._curr_sample))).to(self.device)],
+                                            - len(self._curr_sample))).to(self.device)],
                 dim=0)
-        decoder_in = torch.cat([net_in, self._current_sample[:len(net_in)]], dim=1)
+        decoder_in = torch.cat([net_in, self._curr_sample[:len(net_in)]], dim=1)
         with torch.no_grad():
             predictions = self._decoder.forward(decoder_in)
         info = {'predictions': predictions,
-                'latents': self._current_sample[:len(net_in)]}
+                'latents': self._curr_sample[:len(net_in)]}
         return predictions, info
 
     def reset(self) -> None:
@@ -225,8 +224,8 @@ class NeuralProcess(AbstractPlModel):
 
     def clear_condition(self) -> None:
         """Clear the latent posterior and set back to the prior."""
-        self._posterior_mean = torch.zeros(self._latent_dim)
-        self._posterior_logvar = torch.zeros(self._latent_dim)
+        self._posterior_mean = torch.zeros(self._latent_dim).to(self.device)
+        self._posterior_logvar = torch.zeros(self._latent_dim).to(self.device)
 
     def _draw_from_posterior(self, num_draws: int) -> torch.Tensor:
         """Draw samples from the latent posterior.
@@ -237,7 +236,7 @@ class NeuralProcess(AbstractPlModel):
         Returns:
             Tensor of the draws.
         """
-        return (torch.randn((num_draws, self._latent_dim))
+        return (torch.randn((num_draws, self._latent_dim)).to(self.device)
                 * (0.5 * self._posterior_logvar).exp() + self._posterior_mean)
 
     @property

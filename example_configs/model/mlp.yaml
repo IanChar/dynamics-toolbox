@@ -1,5 +1,4 @@
-model_name: "MLP"
-model_type: "MLP"
+_target_: dynamics_toolbox.models.pl_models.mlp.MLP
 num_layers: 3
 layer_size: 200
 learning_rate: 0.0001

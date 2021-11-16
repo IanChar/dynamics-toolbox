@@ -13,7 +13,7 @@ class AbstractModel(metaclass=abc.ABCMeta):
     """Abstract model for predicting next states in dynamics."""
 
     def reset(self) -> None:
-        """Reset the dynamics model."""
+        """Reset the model."""
         pass
 
     @abc.abstractmethod

@@ -15,7 +15,7 @@ import dynamics_toolbox.constants.activations as activations
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 from dynamics_toolbox.utils.misc import get_architecture
-from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
+from dynamics_toolbox.utils.pytorch.losses import get_quantile_loss
 import dynamics_toolbox.constants.losses as losses
 
 
@@ -60,7 +60,7 @@ class QuantileModel(AbstractPlModel):
             _recursive=False,
         )
         # Get loss function and optimizer fields
-        self._loss_function = get_regression_loss(loss_function)
+        self._loss_function = get_quantile_loss(loss_function)
         self._num_quantile_draws = num_quantile_draws
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay

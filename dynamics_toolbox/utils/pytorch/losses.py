@@ -144,7 +144,7 @@ def get_pinball_loss(**kwargs) \
     return pinball_loss
 
 
-def get_interval loss(**kwargs) \
+def get_interval_loss(**kwargs) \
         -> Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor]:
     """Get the interval loss.
 

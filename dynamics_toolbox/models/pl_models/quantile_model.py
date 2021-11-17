@@ -193,7 +193,6 @@ class QuantileModel(AbstractPlModel):
             y=yi,
             q_pred=q_pred,
             q_list=q_list,
-            args=self._kwargs,
         )
         median_pred = self.forward(x=xi, q_list=torch.Tensor([0.5]))
         mse = torch.mean((median_pred - yi) ** 2)

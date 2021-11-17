@@ -39,6 +39,7 @@ def parse_into_snippet_datasets(
         val_proportion: float = 0.0,
         test_proportion: float = 0.0,
         allow_padding: bool = False,
+        shuffle: bool = True,
 ) -> List[Dict[str, np.ndarray]]:
     """Parse into a sarsa dataset into snippets of rollouts.
 
@@ -51,6 +52,7 @@ def parse_into_snippet_datasets(
         test_proportion: Proportion of the trajectories to be used for testing.
         allow_padding: Whether to allow padding of 0s if trajectory length is smaller
             than snippet_size.
+        shuffle: Whether to shuffle the trajectories.
 
     Returns:
         Three dictionaries, one for each train, validation, and testing. Each contains
@@ -66,7 +68,8 @@ def parse_into_snippet_datasets(
         raise ValueError('Invalid validation and test proportions: '
                          f'{val_proportion} and {test_proportion}.')
     trajectories = parse_into_trajectories(qset)
-    np.random.shuffle(trajectories)
+    if shuffle:
+        np.random.shuffle(trajectories)
     min_trajectory_length = np.min([len(traj['observations']) for traj in trajectories])
     if snippet_size is None:
         snippet_size = min_trajectory_length

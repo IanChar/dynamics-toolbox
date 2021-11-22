@@ -11,7 +11,12 @@ import torch
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 
 
-class AbstractSequentialRlModel(AbstractPlModel, metaclass=abc.ABCMeta):
+class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
+
+    @property
+    @abc.abstractmethod
+    def warm_up_period(self) -> int:
+        """Amount of data to take in before starting to predict"""
 
     @property
     @abc.abstractmethod
@@ -47,10 +52,10 @@ class AbstractSequentialRlModel(AbstractPlModel, metaclass=abc.ABCMeta):
         """
         to_return = {}
         pred = net_out['prediction']
-        one_step_pred = pred[:, 0, ...]
+        one_step_pred = pred[:, self._warm_up_period, ...]
         pred = pred.reshape(-1, pred.shape[-1])
         yi = batch[3]
-        one_step_yi = yi[:, 0, ...]
+        one_step_yi = yi[:, self._warm_up_period, ...]
         yi = yi.reshape(-1, yi.shape[-1])
         for metric_name, metric in self.metrics.items():
             metric_value = metric(one_step_pred, one_step_yi)

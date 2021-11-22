@@ -12,12 +12,12 @@ from omegaconf import DictConfig
 from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.constants import losses
-from dynamics_toolbox.models.pl_models.sequential_rl_models.abstract_sequential_rl_model import \
-    AbstractSequentialRlModel
+from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model import \
+    AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 
 
-class RNN(AbstractSequentialRlModel):
+class DynamicsRNN(AbstractSequentialModel):
     """RNN network."""
 
     def __init__(
@@ -29,6 +29,7 @@ class RNN(AbstractSequentialRlModel):
             hidden_size: int,
             encoder_cfg: DictConfig,
             decoder_cfg: DictConfig,
+            warm_up_period: int = 0,
             learning_rate: float = 1e-3,
             loss_type: str = losses.MSE,
             weight_decay: Optional[float] = 0.0,
@@ -45,6 +46,8 @@ class RNN(AbstractSequentialRlModel):
             hidden_size: The number hidden units in the memory unit.
             encoder_cfg: The configuration for the encoder network.
             decoder_cfg: The configuration for the decoder network.
+            warm_up_period: The amount of data to take in before predictions begin to
+                be made.
             learning_rate: The learning rate for the network.
             loss_type: The name of the loss function to use.
             weight_decay: The weight decay for the optimizer.
@@ -73,6 +76,7 @@ class RNN(AbstractSequentialRlModel):
         self._encode_dim = encode_dim
         self._hidden_size = hidden_size
         self._num_layers = num_layers
+        self._warm_up_period = warm_up_period
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._autoregress_noise = autoregress_noise
@@ -97,7 +101,7 @@ class RNN(AbstractSequentialRlModel):
         Returns:
             Dictionary of name to tensor.
         """
-        assert len(batch) == 6, 'Need SARS + is_real in batch.'
+        assert len(batch) == 6, 'Need SARS + terminal + is_real in batch.'
         obs, acts = batch[:2]
         is_real = batch[-1]
         if len(obs.shape) == 2:
@@ -113,9 +117,13 @@ class RNN(AbstractSequentialRlModel):
             mem_out, hidden = self._memory_unit(encoded.unsqueeze(0), hidden)
             predictions.append(self._decoder(mem_out.squeeze(0))
                                * is_real[:, t].unsqueeze(-1))
-            curr = curr + predictions[-1]
-            if self.training and self._autoregress_noise > 0:
-                curr += torch.randn_like(curr).to(self.device) * self._autoregress_noise
+            if t < self._warm_up_period:
+                curr = obs[:, t + 1, :]
+            else:
+                curr = curr + predictions[-1]
+                if self.training and self._autoregress_noise > 0:
+                    curr += (torch.randn_like(curr).to(self.device)
+                             * self._autoregress_noise)
         return {'prediction': torch.stack(predictions, dim=1)}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
@@ -131,7 +139,10 @@ class RNN(AbstractSequentialRlModel):
             The loss and a dictionary of other statistics.
         """
         nxts = batch[3]
-        loss = self._loss_function(net_out['prediction'], nxts)
+        loss = self._loss_function(
+            net_out['prediction'][:, self._warm_up_period:, :],
+            nxts[:, self._warm_up_period:, :],
+        )
         stats = {'loss': loss.item()}
         return loss, stats
 
@@ -207,6 +218,11 @@ class RNN(AbstractSequentialRlModel):
     def record_history(self, mode: bool) -> None:
         """Set whether to keep track of quantities being fed into the neural net."""
         self._record_history = mode
+
+    @property
+    def warm_up_period(self) -> int:
+        """Amount of data to take in before starting to predict"""
+        return self._warm_up_period
 
     def clear_history(self) -> None:
         """Clear the history."""

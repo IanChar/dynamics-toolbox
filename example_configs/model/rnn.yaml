@@ -1,4 +1,4 @@
-_target_: dynamics_toolbox.models.pl_models.sequential_rl_models.rnn.RNN
+_target_: dynamics_toolbox.models.pl_models.sequential_dynamics_models.rnn.RNN
 encode_dim: 512
 num_layers: 2
 hidden_size: 512

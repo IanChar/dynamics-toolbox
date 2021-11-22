@@ -1,25 +1,22 @@
 """
-Recurrent network that returns Gaussian distribution of next point.
+A recurrent version of quantile regression.
 
 Author: Ian Char
-Date: 11/4/2021
+Date: 11/22/2021
 """
-from typing import Dict, Callable, Tuple, Any, Sequence, Optional
+from typing import Optional, Dict, Sequence, Tuple, Any, Callable
 
-import hydra.utils
+import hydra
 import torch
 from omegaconf import DictConfig
-from torchmetrics import ExplainedVariance
 
-from dynamics_toolbox.constants import losses, sampling_modes
-from dynamics_toolbox.models.pl_models import PNN
+from dynamics_toolbox.constants import sampling_modes
+from dynamics_toolbox.models.pl_models import QuantileModel
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model import \
     AbstractSequentialModel
-from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 
 
-class DynammicsRPNN(AbstractSequentialModel):
-    """Recurrent network that outputs gaussian distribution."""
+class RecurrentQuantile(AbstractSequentialModel):
 
     def __init__(
             self,
@@ -29,7 +26,7 @@ class DynammicsRPNN(AbstractSequentialModel):
             num_layers: int,
             hidden_size: int,
             encoder_cfg: DictConfig,
-            pnn_decoder_cfg: DictConfig,
+            quantile_decoder_cfg: DictConfig,
             warm_up_period: int = 0,
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
@@ -45,15 +42,16 @@ class DynammicsRPNN(AbstractSequentialModel):
             num_layers: Number of layers in the memory unit.
             hidden_size: The number hidden units in the memory unit.
             encoder_cfg: The configuration for the encoder network.
-            pnn_decoder_cfg: The configuration for the decoder network. This must be
-                a PNN.
+            qauntile_decoder_cfg: The configuration for the decoder network.
+                This must be a quantile model.
             warm_up_period: The amount of data to take in before predictions begin to
                 be made.
             learning_rate: The learning rate for the network.
+            loss_type: The name of the loss function to use.
             weight_decay: The weight decay for the optimizer.
             sample_mode: The method to use for sampling.
         """
-        super().__init__(input_dim, output_dim, **kwargs)
+        super().__init__(input_dim, output_dim)
         self.save_hyperparameters()
         self._encoder = hydra.utils.instantiate(
             encoder_cfg,
@@ -62,12 +60,12 @@ class DynammicsRPNN(AbstractSequentialModel):
             _recursive_=False,
         )
         self._decoder = hydra.utils.instantiate(
-            pnn_decoder_cfg,
+            quantile_decoder_cfg,
             input_dim=encode_dim,
             output_dim=output_dim,
             _recursive_=False,
         )
-        assert isinstance(self._decoder, PNN), 'Decoder must be a PNN.'
+        assert isinstance(self._decoder, QuantileModel), 'Decoder must be a PNN.'
         self._memory_unit = torch.nn.GRU(encode_dim, hidden_size,
                                          num_layers=num_layers,
                                          device=self.device)
@@ -83,50 +81,32 @@ class DynammicsRPNN(AbstractSequentialModel):
         self._decoder.sample_mode = sample_mode
         self._record_history = True
         self._hidden_state = None
-        # TODO: In the future we may want to pass this in as an argument.
-        self._metrics = {
-            'EV': ExplainedVariance(),
-            'IndvEV': ExplainedVariance('raw_values'),
-        }
+        self._eval_q_list = torch.linspace(0.01, 0.99, 99).to(self.device)
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
 
         Args:
-            batch: The batch passed into the network. This is expected to be a tuple
-                with (obs, acts, nxts, rews, terminals).
+            batch: The batch passed into the network. This is expected to be
+                sequential data.
 
         Returns:
             Dictionary of name to tensor.
         """
-        assert len(batch) == 6, 'Need SARS + terminal + is_real in batch.'
-        obs, acts = batch[:2]
-        is_real = batch[-1]
-        if len(obs.shape) == 2:
-            obs = obs.unsqueeze(1)
-            acts = acts.unsqueeze(1)
-        mean_predictions, logvar_predictions = [], []
-        hidden = torch.zeros(self._num_layers, obs.shape[0], self._encode_dim,
-                             device=self.device)
-        curr = obs[:, 0, :]
-        for t in range(obs.shape[1]):
-            net_in = torch.cat([curr, acts[:, t]], dim=1)
-            encoded = self._encoder(net_in)
-            mem_out, hidden = self._memory_unit(encoded.unsqueeze(0), hidden)
-            mean_pred, logvar_pred = self._decoder(mem_out.squeeze(0))
-            mean_pred *= is_real[:, t].unsqueeze(-1)
-            logvar_pred *= is_real[:, t].unsqueeze(-1)
-            mean_predictions.append(mean_pred)
-            logvar_predictions.append(logvar_pred)
-            if t < self._warm_up_period:
-                curr = obs[:, t + 1, :]
-            else:
-                curr = (curr + mean_pred + torch.randn_like(curr).to(self.device)
-                        * (logvar_pred * 0.5).exp())
-        return {
-            'mean': torch.stack(mean_predictions, dim=1),
-            'logvar': torch.stack(logvar_predictions, dim=1),
-        }
+        return self._generic_net_out(batch, self._decoder.get_q_list())
+
+    def get_eval_net_out(self, batch: Sequence[torch.Tensor]) \
+            -> Dict[str, torch.Tensor]:
+        """Get the validation output of the network and organize into dictionary.
+
+        Args:
+            batch: The batch passed into the network. This is expected to be
+                sequential data.
+
+        Returns:
+            Dictionary of name to tensor.
+        """
+        return self._generic_net_out(batch, q_list=self._eval_q_list)
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -134,17 +114,17 @@ class DynammicsRPNN(AbstractSequentialModel):
 
         Args:
             net_out: The output of the network.
-            batch: The batch passed into the network. This is expected to be a tuple with
-                (obs, acts, nxts, rews, terminals).
+            batch: The batch passed into the network. This is expected to be
+                sequential data.
 
         Returns:
             The loss and a dictionary of other statistics.
         """
-        _, _, nxts, _, _ = batch
+        _, yi = batch
         return self._decoder.loss(
-            {'mean': net_out['mean'][:, self._warm_up_period:, :],
-             'logvar': net_out['logvar'][:, self._warm_up_period:, :]},
-            [None, nxts[:, self._warm_up_period:, :]]
+            {'q_pred': net_out['q_pred'][:, self._warm_up_period:, :],
+             'q_list': net_out['q_list']},
+            [None, yi[:, self._warm_up_period:, :]]
         )
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
@@ -186,7 +166,7 @@ class DynammicsRPNN(AbstractSequentialModel):
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
-        return self._metrics
+        return {}
 
     @property
     def learning_rate(self) -> float:
@@ -237,6 +217,39 @@ class DynammicsRPNN(AbstractSequentialModel):
     def clear_history(self) -> None:
         """Clear the history."""
         self._hidden_state = None
+
+    def _generic_net_out(
+            self,
+            batch: Sequence[torch.Tensor],
+            q_list: torch.Tensor,
+    ) -> Dict[str, torch.Tensor]:
+        """Get net out for a generic q_list.
+
+        Args:
+            batch: The batch passed into the network. This is expected to be
+                sequential data.
+            q_list: flat tensor of quantiles.
+
+        Returns:
+            Dictionary of name to tensor.
+        """
+        x_pts = batch[0]
+        assert len(x_pts.shape) == 3, 'Data must be sequential.'
+        predictions = []
+        hidden = torch.zeros(self._num_layers, x_pts.shape[0], self._encode_dim,
+                             device=self.device)
+        curr = x_pts[:, 0, :]
+        for t in range(x_pts.shape[1]):
+            encoded = self._encoder(curr)
+            mem_out, hidden = self._memory_unit(encoded.unsqueeze(0), hidden)
+            predictions.append(self._decoder.forward(mem_out, q_list=q_list))
+            if t < x_pts.shape[1]:
+                curr = x_pts[:, t + 1, :]
+        predictions = torch.stack(predictions, dim=1)
+        return {
+            'q_pred': torch.stack(predictions, dim=1),
+            'q_list': q_list,
+        }
 
     def _get_test_and_validation_metrics(
             self,

@@ -18,7 +18,7 @@ from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_mod
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 
 
-class DynammicsRPNN(AbstractSequentialModel):
+class DynamicsRPNN(AbstractSequentialModel):
     """Recurrent network that outputs gaussian distribution."""
 
     def __init__(
@@ -99,7 +99,9 @@ class DynammicsRPNN(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        assert len(batch) == 6, 'Need SARS + terminal + is_real in batch.'
+        assert len(batch) == 6, (
+                'Need SARS + terminal + is_real in batch.'
+                f'But provided with batch of length {len(batch)}')
         obs, acts = batch[:2]
         is_real = batch[-1]
         if len(obs.shape) == 2:
@@ -140,7 +142,7 @@ class DynammicsRPNN(AbstractSequentialModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        _, _, nxts, _, _ = batch
+        nxts = batch[3]
         return self._decoder.loss(
             {'mean': net_out['mean'][:, self._warm_up_period:, :],
              'logvar': net_out['logvar'][:, self._warm_up_period:, :]},

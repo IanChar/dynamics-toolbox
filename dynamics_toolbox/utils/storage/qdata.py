@@ -44,6 +44,8 @@ def load_from_hdf5(hdf5_path: str) -> Dict[str, np.ndarray]:
     data = {}
     with h5py.File(hdf5_path, 'r') as hdata:
         for k, v in hdata.items():
+            if not isinstance(v, h5py._hl.dataset.Dataset):
+                continue
             data[k] = v[()]
     return data
 

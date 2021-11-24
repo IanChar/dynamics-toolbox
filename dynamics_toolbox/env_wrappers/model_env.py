@@ -146,7 +146,7 @@ class ModelEnv(gym.Env):
             act = policy(state)
             if acts is None:
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
-                acts[:, h, :] = act
+            acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
@@ -177,7 +177,10 @@ class ModelEnv(gym.Env):
         horizon = actions.shape[1]
 
         def policy_wrap(state: np.ndarray):
-            return actions[:, act_idx, :]
+            nonlocal act_idx
+            to_return = actions[:, act_idx, :]
+            act_idx += 1
+            return to_return
 
         return self.unroll_from_policy(starts, policy_wrap, horizon)
 

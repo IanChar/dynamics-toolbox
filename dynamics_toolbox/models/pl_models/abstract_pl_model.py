@@ -37,6 +37,8 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         if normalizer is None:
             normalizer = NoNormalizer()
         self.normalizer = normalizer
+        self._normalize_inputs = True
+        self._unnormalize_outputs = True
 
     def training_step(
             self,
@@ -83,10 +85,12 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             The output of the model and give a dictionary of related quantities.
         """
         model_input = torch.Tensor(model_input).to(self.device)
+        model_input = self._normalize_prediction_input(model_input)
         if each_input_is_different_sample:
             output, infos = self.multi_sample_output_from_torch(model_input)
         else:
             output, infos = self.single_sample_output_from_torch(model_input)
+        output = self._unnormalize_prediction_output(output)
         return output.numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
@@ -107,6 +111,26 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             Dictionary of name to tensor.
         """
         return self.get_net_out(batch=batch)
+
+    @property
+    def normalize_inputs(self) -> bool:
+        """Whether inputs should be normalized when predicting."""
+        return self._normalize_inputs
+
+    @normalize_inputs.setter
+    def normalize_inputs(self, mode: bool) -> None:
+        """Set normalize inputs to true or false."""
+        self._normalize_inputs = mode
+
+    @property
+    def unnormalize_outputs(self) -> bool:
+        """Whether inputs should be normalized when predicting."""
+        return self._unnormalize_outputs
+
+    @unnormalize_outputs.setter
+    def unnormalize_outputs(self, mode: bool) -> None:
+        """Set unnormalize outputs to true or false."""
+        self._unnormalize_outputs = mode
 
     @abc.abstractmethod
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -177,6 +201,32 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def weight_decay(self) -> float:
         """Get the weight decay."""
+
+    def _normalize_prediction_input(self, model_input: torch.Tensor) -> torch.Tensor:
+        """Normalize the input for prediction.
+
+        Args:
+            model_input: The input to the model.
+
+        Returns:
+            The normalized input.
+        """
+        if self.normalize_inputs:
+            return self.normalizer.normalize(model_input, 0)
+        return model_input
+
+    def _unnormalize_prediction_output(self, output: torch.Tensor) -> torch.Tensor:
+        """Unnormalize the output of the model.
+
+        Args:
+            output: The output of the model.
+
+        Returns:
+            The unnormalized outptu.
+        """
+        if self.unnormalize_outputs:
+            return self.normalizer.unnormalize(output, 1)
+        return output
 
     def _log_stats(self, *args: Dict[str, float], prefix='train', **kwargs) -> None:
         """Log all of the stats from dictionaries.

@@ -18,10 +18,10 @@ class ModelEnv(gym.Env):
             dynamics_model: AbstractModel,
             start_distribution: Callable[[], np.ndarray],
             horizon: Optional[int] = None,
-            penalizer: Optional[Callable[[Dict[str, Any]], float]] = None,
+            penalizer: Optional[Callable[[Dict[str, Any]], np.ndarray]] = None,
             penalty_coefficient: float = 1,
-            terminal_function: Optional[Callable[[np.ndarray], bool]] = None,
-            reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray], float]] = None,
+            terminal_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
+            reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]] = None,
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
@@ -82,7 +82,8 @@ class ModelEnv(gym.Env):
         self._dynamics.reset()
         return self._state
 
-    def step(self, action: Union[float, np.ndarray]) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action: Union[float, np.ndarray]) \
+            -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         """ Make a step in the environment.
 
         Args:
@@ -154,7 +155,8 @@ class ModelEnv(gym.Env):
             if self._terminal_function is None:
                 terminals[:, h] = np.full(starts.shape[0], False)
             else:
-                terminals[:, h] = np.array([self._terminal_function(nxt) for nxt in nxts])
+                terminals[:, h] = np.array([self._terminal_function(nxt)
+                                            for nxt in nxts])
         return obs, acts, rewards, terminals
 
     def unroll_from_actions(
@@ -165,8 +167,10 @@ class ModelEnv(gym.Env):
         """
         Unroll multiple different trajectories using a policy.
         Args:
-            starts: All of the states to unroll from should have shape (num_states, obs_dim).
-            actions: The actions to use for unrolling should have shape (num_states, horizon, act_dim)>
+            starts: All of the states to unroll from should have shape
+                (num_states, obs_dim).
+            actions: The actions to use for unrolling should have shape
+                (num_states, horizon, act_dim)>
         Returns:
             - All observations (num_starts, horizon + 1, obs_dim)
             - The actions taken (num_starts, horizon, act_dim)
@@ -237,3 +241,4 @@ class ModelEnv(gym.Env):
             rew -= self._penalty_coefficient * raw_penalty
             info['raw_penalty'] = raw_penalty
         return rew, info
+

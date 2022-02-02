@@ -29,7 +29,8 @@ def get_data_from_source(data_source: str) -> Dict[str, np.ndarray]:
     elif '-v' in data_source:
         return load_qdata_from_d4rl(data_source)
     else:
-        raise ValueError(f'Did not recognize {data_source} as a path to .hdf5 file or environment.')
+        raise ValueError(f'Did not recognize {data_source} as a path to .hdf5 '
+                         'file or environment.')
 
 
 def load_from_hdf5(hdf5_path: str) -> Dict[str, np.ndarray]:

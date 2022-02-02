@@ -13,7 +13,6 @@ import numpy as np
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.abstract_model import\
         AbstractModel
-from dynamics_toolbox.models import pl_models
 from dynamics_toolbox.models.ensemble import Ensemble
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 

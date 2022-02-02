@@ -20,6 +20,12 @@ from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
 
+# The types of simplex models that can be made.
+FULL_NETWORK_SIMPLEX = 'full_network'  # All weights are multiplied by the same weight.
+BY_LAYER_SIMPLEX = 'by_layer'  # Each layer has its own weight to be multiplied by.
+SIMPLEX_TYPES = [FULL_NETWORK_SIMPLEX, BY_LAYER_SIMPLEX]
+
+
 class SimplexMLP(AbstractPlModel):
     """Fully connected network where simplex of weights are low loss."""
 
@@ -33,6 +39,7 @@ class SimplexMLP(AbstractPlModel):
             num_layers: Optional[int] = None,
             layer_size: Optional[int] = None,
             architecture: Optional[str] = None,
+            simplex_type: Optional[str] = BY_LAYER_SIMPLEX,
             hidden_activation: str = activations.RELU,
             loss_type: str = losses.MSE,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
@@ -57,7 +64,6 @@ class SimplexMLP(AbstractPlModel):
             sample_mode: The type of sampling to perform.
             weight_decay: The weight decay for the optimizer.
         """
-
         super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
         if architecture is not None:
@@ -84,8 +90,16 @@ class SimplexMLP(AbstractPlModel):
         self._loss_type = loss_type
         self._sample_mode = sample_mode
         self._curr_sample = None
-        self._simplex_dist = torch.distributions.dirichlet.Dirichlet(
-            torch.ones(num_vertices))
+        self._simplex_type = simplex_type
+        self._num_layers = self._vertex_0.n_layers
+        if simplex_type == FULL_NETWORK_SIMPLEX:
+            self._simplex_dist = torch.distributions.dirichlet.Dirichlet(
+                torch.ones(num_vertices))
+        elif simplex_type == BY_LAYER_SIMPLEX:
+            self._simplex_dist = torch.distributions.dirichlet.Dirichlet(
+                torch.ones((self._num_layers, num_vertices)))
+        else:
+            raise ValueError(f'Unknown simplex type {simplex_type}')
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': ExplainedVariance(),
@@ -106,25 +120,42 @@ class SimplexMLP(AbstractPlModel):
         Args:
             x: The input to the network.
             weighting: The point in the simplex to use to sample. Should have
-                shape (x.shape[0], num_vertices).
+                shape (x.shape[0], num_vertices) if full network is being used and
+                shape (x.shape[0], num_layers, num_vertices) if per layer weighting.
 
         Returns:
             The output of the network.
         """
         if weighting is None:
             weighting = self._simplex_dist.sample((x.shape[0],)).to(self.device)
+        else:
+            if self._simplex_type == FULL_NETWORK_SIMPLEX:
+                expected_shape = (x.shape[0], self._num_vertices)
+            else:
+                expected_shape = (x.shape[0], self._num_layers, self._num_vertices)
+            assert weighting.shape == expected_shape, (
+                f'Wrong weight shape. Expected {expected_shape} '
+                f'but received {weighting.shape}')
         n_layers = getattr(self, '_vertex_0').n_layers
         hidden_activation = getattr(self, '_vertex_0').hidden_activation
         out_activation = getattr(self, '_vertex_0').out_activation
         curr = x
         for layer_num in range(n_layers - 1):
+            if self._simplex_type == BY_LAYER_SIMPLEX:
+                layer_weighting = weighting[:, layer_num, :]
+            else:
+                layer_weighting = weighting
             lin_outs = torch.stack([self._get_vertex_layer(v, layer_num)(curr)
                                     for v in range(self._num_vertices)])
-            curr = torch.mul(lin_outs.T, weighting).sum(dim=-1).T
+            curr = torch.mul(lin_outs.T, layer_weighting).sum(dim=-1).T
             curr = hidden_activation(curr)
+        if self._simplex_type == BY_LAYER_SIMPLEX:
+            layer_weighting = weighting[:, -1, :]
+        else:
+            layer_weighting = weighting
         lin_outs = torch.stack([self._get_vertex_layer(v, n_layers - 1)(curr)
                                 for v in range(self._num_vertices)])
-        curr = torch.mul(lin_outs.T, weighting).sum(dim=-1).T
+        curr = torch.mul(lin_outs.T, layer_weighting).sum(dim=-1).T
         if out_activation is not None:
             return out_activation(curr)
         return curr
@@ -143,8 +174,9 @@ class SimplexMLP(AbstractPlModel):
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
                 or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
-        weight = self._curr_sample[0].repeat(len(net_in)).reshape(len(net_in), -1)
+            self._curr_sample = \
+                self._simplex_dist.sample((len(net_in),)).to(self.device)
+        weight = torch.stack([self._curr_sample[0] for _ in range(len(net_in))])
         with torch.no_grad():
             predictions = self.forward(net_in, weight)
         info = {'predictions': predictions}
@@ -163,12 +195,14 @@ class SimplexMLP(AbstractPlModel):
             The predictions for next states and dictionary of info.
         """
         if (self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP
-            or self._curr_sample is None):
-            self._curr_sample = self._simplex_dist.sample((len(net_in),)).to(self.device)
+                or self._curr_sample is None):
+            self._curr_sample = \
+                self._simplex_dist.sample((len(net_in),)).to(self.device)
         elif len(self._curr_sample) < len(net_in):
             self._curr_sample = torch.cat(
                 [self._curr_sample,
-                 self._simplex_dist.sample((len(net_in) - len(self._curr_sample),)).to(self.device)],
+                 self._simplex_dist.sample(
+                     (len(net_in) - len(self._curr_sample),)).to(self.device)],
                 dim=0)
         weight = self._curr_sample[:len(net_in)]
         with torch.no_grad():
@@ -305,6 +339,8 @@ class SimplexMLP(AbstractPlModel):
             The specified layer.
         """
         layer_weights = None
+        weighting = weighting if self._simplex_type == FULL_NETWORK_SIMPLEX \
+            else weighting[layer_num]
         for vertidx, weight in enumerate(weighting):
             toadd = self._get_vertex_layer(vertidx, layer_num).weight * weight
             if layer_weights is None:

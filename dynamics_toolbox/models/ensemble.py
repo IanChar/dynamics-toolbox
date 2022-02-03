@@ -24,7 +24,8 @@ class Ensemble(AbstractModel):
         Args:
             members: The members of the ensemble
             sample_mode: The method to use for sampling.
-            elite_idxs: The indexes of the elite members. These are the members to sample from.
+            elite_idxs: The indexes of the elite members. These are the members to
+                sample from.
         """
         self._input_dim = members[0].input_dim
         self._output_dim = members[0].output_dim
@@ -66,10 +67,26 @@ class Ensemble(AbstractModel):
         for member_idx, member in enumerate(self.members):
             nxt, info = member.predict(model_input)
             nxts.append(nxt)
-            info_dict.update({f'member{member_idx}_{k}': v for k, v in info.items()})
+            info_dict[f'member_{member_idx}'] = info
         nxts = np.array(nxts)
+        num_membs = len(self.members)
         if self._sample_mode == sampling_modes.RETURN_MEAN:
             return np.mean(nxts, axis=0), info_dict
+        elif self._sample_mode == sampling_modes.BOOTSTRAP_EST_INDEPENDENT_DIM:
+            mean = np.mean(nxts, axis=0)
+            stderr = np.std(nxts, axis=0) / np.sqrt(len(self.members))
+            info_dict['ensemble_mean'] = mean
+            info_dict['ensemble_stderr'] = stderr
+            return mean + np.random.standard_normal(mean.shape) * stderr, info_dict
+        elif self._sample_mode == sampling_modes.BOOTSTRAP_EST_JOINT_DIM:
+            mean = np.mean(nxts, axis=0)
+            info_dict['ensemble_mean'] = mean
+            normd_nxts = (nxts - mean[np.newaxis]).transpose(axes=[1, 0, 2])
+            covs = (normd_nxts @ normd_nxts.transpose(axes=[0, 2, 1]) /
+                    (num_membs * np.sqrt(num_membs)))
+            return np.vstack([
+                np.random.multivariate_normal(mu, sigma).reshape(1, -1)
+                for mu, sigma in zip(mean, covs)]), info_dict
         else:
             if (self._curr_sample is None
                     or self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP):
@@ -77,7 +94,8 @@ class Ensemble(AbstractModel):
             elif len(model_input) > len(self._curr_sample):
                 self._curr_sample = np.vstack([
                     self._curr_sample,
-                    self._draw_from_categorical(len(model_input) - len(self._curr_sample)),
+                    self._draw_from_categorical(
+                        len(model_input) - len(self._curr_sample)),
                 ])
             if each_input_is_different_sample:
                 ensemble_idxs = self._curr_sample[:len(model_input)]

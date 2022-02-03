@@ -87,7 +87,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             output, infos = self.multi_sample_output_from_torch(model_input)
         else:
             output, infos = self.single_sample_output_from_torch(model_input)
-        return output.numpy(), infos
+        return output.cpu().numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer"""

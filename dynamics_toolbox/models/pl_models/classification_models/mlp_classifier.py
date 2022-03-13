@@ -6,14 +6,13 @@ Author: Youngseog Chung
 from typing import Sequence, Tuple, Dict, Any, Optional, Callable
 
 import torch
-from torchmetrics import ExplainedVariance
+from torchmetrics import Accuracy
 
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 import dynamics_toolbox.constants.activations as activations
 import dynamics_toolbox.constants.losses as losses
 from dynamics_toolbox.utils.misc import get_architecture
 from dynamics_toolbox.utils.pytorch.activations import get_activation
-from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.losses import get_classification_loss
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
@@ -30,7 +29,7 @@ class MLP(AbstractPlModel):
             layer_size: Optional[int] = None,
             architecture: Optional[str] = None,
             hidden_activation: str = activations.RELU,
-            loss_type: str = losses.MSE,
+            loss_type: str = losses.CE,
             weight_decay: Optional[float] = 0.0,
             **kwargs,
     ):
@@ -38,7 +37,7 @@ class MLP(AbstractPlModel):
 
         Args:
             input_dim: The input dimension.
-            output_dim: The output dimension.
+            output_dim: The output dimension, equal to number of classes
             learning_rate: The learning rate for the network.
             num_layers: The number of hidden layers in the MLP.
             layer_size: The size of each hidden layer in the MLP.
@@ -65,8 +64,9 @@ class MLP(AbstractPlModel):
         self._loss_type = loss_type
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
-                'EV': ExplainedVariance(),
-                'IndvEV': ExplainedVariance('raw_values'),
+                # 'EV': ExplainedVariance(),
+                # 'IndvEV': ExplainedVariance('raw_values'),
+                'Accuracy': Accuracy()
         }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -94,7 +94,11 @@ class MLP(AbstractPlModel):
         """
         with torch.no_grad():
             predictions = self.forward(net_in)
-        info = {'predictions': predictions}
+            pred_class = torch.argmax(predictions).numpy()
+        info = {
+            'predictions': predictions,
+            'pred_class': pred_class,
+        }
         return predictions, info
 
     def multi_sample_output_from_torch(

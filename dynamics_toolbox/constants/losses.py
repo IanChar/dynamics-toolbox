@@ -14,3 +14,5 @@ PB = 'pinball'
 CALI = 'calibration'
 INT = 'interval'
 
+# CLASSIFICATION LOSSES
+CE = 'cross_entropy'

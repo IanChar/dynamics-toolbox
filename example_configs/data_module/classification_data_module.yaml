@@ -1,4 +1,4 @@
-_target_: dynamics_toolbox.data.pl_data_modules.regression_data_module.ClassificationDataModule
+_target_: dynamics_toolbox.data.pl_data_modules.classification_data_module.ClassificationDataModule
 batch_size: 256
 val_proportion: 0.1
 test_proportion: 0.1

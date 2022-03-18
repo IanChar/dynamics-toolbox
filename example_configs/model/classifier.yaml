@@ -1,4 +1,4 @@
-_target_: dynamics_toolbox.models.pl_models.classification_models.mlp_classifier
+_target_: dynamics_toolbox.models.pl_models.classification_models.mlp_classifier.MLP_Classifier
 num_layers: 3
 layer_size: 200
 learning_rate: 0.0001

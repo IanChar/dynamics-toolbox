@@ -17,7 +17,7 @@ from dynamics_toolbox.utils.pytorch.losses import get_classification_loss
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
 
-class MLP(AbstractPlModel):
+class MLP_Classifier(AbstractPlModel):
     """Fully connected network for dynamics."""
 
     def __init__(
@@ -92,6 +92,7 @@ class MLP(AbstractPlModel):
         Returns:
             The predictions for a single function sample
         """
+        breakpoint()
         with torch.no_grad():
             predictions = self.forward(net_in)
             pred_class = torch.argmax(predictions).numpy()
@@ -157,7 +158,7 @@ class MLP(AbstractPlModel):
             The loss and a dictionary of other statistics.
         """
         _, yi = batch
-        loss = self._loss_function(net_out['prediction'], yi)
+        loss = self._loss_function(net_out['prediction'], yi.long())
         stats = {'loss': loss.item()}
         return loss, stats
 
@@ -218,7 +219,7 @@ class MLP(AbstractPlModel):
         pred = net_out['prediction']
         _, yi = batch
         for metric_name, metric in self._metrics.items():
-            metric_value = metric(pred, yi)
+            metric_value = metric(pred, yi.long())
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
                     to_return[f'{metric_name}_dim{dim_idx}'] = metric_v

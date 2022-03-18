@@ -136,7 +136,10 @@ class ClassificationDataModule(LightningDataModule):
     @property
     def output_dim(self) -> int:
         """Output dimension."""
-        return self._ydata.shape[-1]
+        min_class = np.min(self._ydata)
+        max_class = np.max(self._ydata)
+        num_classes = int((max_class - min_class) + 1)
+        return num_classes
 
     @property
     def num_train(self) -> int:

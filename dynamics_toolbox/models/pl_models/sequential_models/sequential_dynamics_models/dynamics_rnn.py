@@ -227,3 +227,7 @@ class DynamicsRNN(AbstractSequentialModel):
     def clear_history(self) -> None:
         """Clear the history."""
         self._hidden_state = None
+
+    def reset(self) -> None:
+        """Reset the dynamics model."""
+        self.clear_history()

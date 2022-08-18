@@ -45,6 +45,9 @@ class Ensemble(AbstractModel):
     def reset(self) -> None:
         """Reset the model."""
         self._curr_sample = None
+        if hasattr(self._members[0], 'reset'):
+            for member in self._members:
+                member.reset()
 
     def predict(
             self,

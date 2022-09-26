@@ -99,7 +99,7 @@ class DynamicsRNN(AbstractSequentialModel):
 
         Args:
             batch: The batch passed into the network. This is expected to be a tuple
-                with (obs, acts, nxts, rews, terminals, is_padding).
+                with (obs, acts, rews, nexts, terminals, is_padding).
 
         Returns:
             Dictionary of name to tensor.
@@ -139,7 +139,7 @@ class DynamicsRNN(AbstractSequentialModel):
         Args:
             net_out: The output of the network.
             batch: The batch passed into the network. This is expected to be a tuple with
-                (obs, acts, nxts, rews, terminals).
+                (obs, acts, rews, nxts, terminals).
 
         Returns:
             The loss and a dictionary of other statistics.

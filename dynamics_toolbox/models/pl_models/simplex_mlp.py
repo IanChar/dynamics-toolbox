@@ -244,10 +244,6 @@ class SimplexMLP(AbstractPlModel):
         stats = {'loss': loss.item(), 'cosine_similarity': similarity.item()}
         return loss, stats
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        """Configure the optimizer"""
-        return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
-
     @property
     def sample_mode(self) -> str:
         """The sample mode is the method that in which we get next state."""

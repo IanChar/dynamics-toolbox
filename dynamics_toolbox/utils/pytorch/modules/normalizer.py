@@ -22,8 +22,13 @@ class Normalizer(torch.nn.Module):
         """
         super().__init__()
         for batch_idx, norm_pair in enumerate(norm_infos):
-            self.register_buffer(f'{batch_idx}_offset', norm_pair[0].reshape(1, -1))
-            self.register_buffer(f'{batch_idx}_scaling', norm_pair[1].reshape(1, -1))
+            offsets = norm_pair[0].reshape(1, -1)
+            scales = norm_pair[1].reshape(1, -1)
+            for sidx, scale in enumerate(norm_pair[1].flatten()):
+                if scale < 1e-8:
+                    scales[0, sidx] = 1
+            self.register_buffer(f'{batch_idx}_offset', offsets)
+            self.register_buffer(f'{batch_idx}_scaling', scales)
 
     def normalize_batch(self, batch: Sequence[torch.Tensor]) -> \
             Sequence[torch.Tensor]:

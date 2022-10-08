@@ -97,9 +97,11 @@ def get_early_stopping_for_val_loss(cfg: DictConfig) -> pl.callbacks.EarlyStoppi
     Returns:
         The early stopping callback to use in the trainer.
     """
+    monitor = cfg.get('monitor', 'val/loss')
+    mode = cfg.get('mode', 'min')
     return pl.callbacks.EarlyStopping(
-        monitor='val/loss',
+        monitor=monitor,
         min_delta=cfg['min_delta'],
         patience=cfg['patience'],
-        mode='min',
+        mode=mode,
     )

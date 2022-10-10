@@ -1,7 +1,7 @@
 _target_: dynamics_toolbox.models.pl_models.simplex_mlp.SimplexMLP
-num_vertices: 2
+num_vertices: 5
 num_layers: 3
 layer_size: 200
-learning_rate: 0.0001
+learning_rate: 0.001
 diversity_coef: 1
 hidden_activation: "tanh"

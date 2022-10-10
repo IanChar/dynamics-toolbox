@@ -30,6 +30,7 @@ class DynamicsMLP(AbstractSequentialModel):
             loss_type: str = losses.MSE,
             weight_decay: Optional[float] = 0.0,
             autoregress_noise: Optional[float] = 0.0,
+            predictions_are_deltas: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -49,6 +50,7 @@ class DynamicsMLP(AbstractSequentialModel):
             weight_decay: The weight decay for the optimizer.
             autoregress_noise: The amount of noise to apply when feeding predictions
                 back in as inputs.
+            predictions_are_deltas: Whether the predictions of the model are deltas.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
@@ -69,6 +71,7 @@ class DynamicsMLP(AbstractSequentialModel):
         self._loss_type = loss_type
         self._record_history = True
         self._hidden_state = None
+        self._predictions_are_deltas = predictions_are_deltas
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': ExplainedVariance(),
@@ -99,7 +102,10 @@ class DynamicsMLP(AbstractSequentialModel):
             if t < self._warm_up_period:
                 curr = obs[:, t + 1, :]
             else:
-                curr = curr + predictions[-1]
+                if self._predictions_are_deltas:
+                    curr = curr + predictions[-1]
+                else:
+                    curr = predictions[-1]
                 if self.training and self._autoregress_noise > 0:
                     curr += (torch.randn_like(curr).to(self.device)
                              * self._autoregress_noise)

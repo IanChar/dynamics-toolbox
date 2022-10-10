@@ -34,6 +34,7 @@ class DynamicsRPNN(AbstractSequentialModel):
             learning_rate: float = 1e-3,
             weight_decay: Optional[float] = 0.0,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
+            predictions_are_deltas: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -52,6 +53,7 @@ class DynamicsRPNN(AbstractSequentialModel):
             learning_rate: The learning rate for the network.
             weight_decay: The weight decay for the optimizer.
             sample_mode: The method to use for sampling.
+            predictions_are_deltas: Whether the predictions of the model are deltas.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
@@ -83,6 +85,7 @@ class DynamicsRPNN(AbstractSequentialModel):
         self._decoder.sample_mode = sample_mode
         self._record_history = True
         self._hidden_state = None
+        self._predictions_are_deltas = predictions_are_deltas
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': ExplainedVariance(),
@@ -123,8 +126,12 @@ class DynamicsRPNN(AbstractSequentialModel):
             if t < self._warm_up_period:
                 curr = obs[:, t + 1, :]
             else:
-                curr = (curr + mean_pred + torch.randn_like(curr).to(self.device)
-                        * (logvar_pred * 0.5).exp())
+                sample = (mean_pred + torch.randn_like(curr).to(self.device)
+                          * (logvar_pred * 0.5).exp())
+                if self._predictions_are_deltas:
+                    curr = curr + sample
+                else:
+                    curr = sample
         return {
             'mean': torch.stack(mean_predictions, dim=1),
             'logvar': torch.stack(logvar_predictions, dim=1),

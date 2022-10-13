@@ -19,7 +19,7 @@ from dynamics_toolbox.utils.pytorch.modules.transformer import *
 import random
 
 class DynamicsTransformer(AbstractSequentialModel):
-    """RNN network."""
+    """Transformer network."""
 
     def __init__(
             self,
@@ -27,7 +27,8 @@ class DynamicsTransformer(AbstractSequentialModel):
             output_dim: int,
 
             num_hidden: int, 
-            encode_dim: int, 
+            ff_dim: int, 
+            embed_dim: int,
             num_heads: int, 
             teacher_force=True,
 
@@ -38,6 +39,7 @@ class DynamicsTransformer(AbstractSequentialModel):
             autoregress_noise: Optional[float] = 0.0,
             seq_len = 0,  
             dropout_prob=0.3,
+            predictions_are_deltas: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -61,7 +63,6 @@ class DynamicsTransformer(AbstractSequentialModel):
         super().__init__(input_dim, output_dim, **kwargs)
         self.save_hyperparameters()
 
-
         # these will now be transformers,
         # have to rewrite the configs
 
@@ -73,19 +74,21 @@ class DynamicsTransformer(AbstractSequentialModel):
 
         self.encoder = TransformerEncoder(num_hidden = num_hidden,
                                          input_dim=input_dim, 
-                                         hidden_dim = encode_dim, 
+                                         embed_dim = embed_dim,
+                                         ff_dim = ff_dim, 
                                          output_dim = output_dim,
                                          num_heads = num_heads, 
-                                         dropout_prob = dropout_prob
+                                         dropout_prob = dropout_prob,
+                                         seq_len = 30
                                          )
 
         self.transformer = TransformerForPrediction(self.encoder)
 
 
         # have to rewrite this part to match the useful params
+        self._predictions_are_deltas = predictions_are_deltas
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._encode_dim = encode_dim
         self._warm_up_period = warm_up_period
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
@@ -100,7 +103,6 @@ class DynamicsTransformer(AbstractSequentialModel):
             'IndvEV': ExplainedVariance('raw_values'),
         }
 
-
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
 
@@ -111,11 +113,9 @@ class DynamicsTransformer(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-
         assert len(batch) == 6, 'Invalide batch size.'
-
-
         assert len(batch) == 6, 'Need SARS + terminal + is_real in batch.'
+
         obs, acts = batch[:2]
         is_real = batch[-1]
         if len(obs.shape) == 2:
@@ -123,37 +123,34 @@ class DynamicsTransformer(AbstractSequentialModel):
             acts = acts.unsqueeze(1)
         predictions = []
         curr = obs[:, 0, :]
-      #  predictions.append(curr)
-        #hidden = torch.zeros(self._num_layers, state.shape[0], self._encode_dim,
-         #                    device=self.device)
+        memory = torch.cat([curr, acts[:, 0]], dim=1)
+        memory = memory.unsqueeze(1) # batch size, 1, number of dimensions
+        curr = obs[:, 0, :]
 
         # batch size by time steps by number of states
         memory = torch.cat([curr, acts[:, 0]], dim=1)
         memory = memory.unsqueeze(1) # batch size, 1, number of dimensions
-      #  print(curr.shape, acts[:, 0].shape)
-        for t in range(0, obs.shape[1]):
+        
+        for t in range(obs.shape[1]):
 
-            #net_in = torch.cat([curr, acts[:, t], next_acts[:, t]], dim=1)
-            # net_in: batch x [states size+action_size+next action_size], 
             pred = self.transformer(memory)
-         #   print(pred.shape)
             predictions.append(pred * is_real[:, t].unsqueeze(-1))
             if t < self._warm_up_period:
                 curr = obs[:, t + 1, :]
             else:
-                # teacher force
-                if t < obs.shape[1]-1:
-                    curr = obs[:, t + 1, :]
-                else: 
+                if self._predictions_are_deltas:
                     curr = curr + predictions[-1]
+                else:
+                    curr = predictions[-1]
                 if self.training and self._autoregress_noise > 0:
                     curr += (torch.randn_like(curr).to(self.device)
                              * self._autoregress_noise)
 
-          #  print('here', pred.shape, acts[:, t+1].shape)
             if t<obs.shape[1]-1:
                 next_input = torch.cat([curr, acts[:, t+1]], dim=1)
                 memory = torch.cat([memory, next_input.unsqueeze(1)], dim=1)
+
+
         return {'prediction': torch.stack(predictions, dim=1)}
 
 
@@ -206,9 +203,6 @@ class DynamicsTransformer(AbstractSequentialModel):
         return predictions, info
 
 
-
-
-
     def multi_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
         torch.Tensor, Dict[str, Any]]:
         """Get the output where each input is assumed to be from a different sample.
@@ -220,8 +214,6 @@ class DynamicsTransformer(AbstractSequentialModel):
             The deltas for next states and dictionary of info.
         """
         return self.single_sample_output_from_torch(net_in)
-
-
 
 
     @property

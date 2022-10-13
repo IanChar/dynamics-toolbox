@@ -1,5 +1,0 @@
-_target_: dynamics_toolbox.models.pl_models.sequential_models.sequential_dynamics_models.dynamics_transformer.DynamicsTransformer
-num_hidden: 2
-hidden_size: 32
-num_heads: 8
-

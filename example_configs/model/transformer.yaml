@@ -1,5 +1,9 @@
 _target_: dynamics_toolbox.models.pl_models.sequential_models.sequential_dynamics_models.dynamics_transformer.DynamicsTransformer
-num_hidden: 2
-encode_dim: 128
-num_heads: 6
-dropout_prob: 0.25
+num_hidden: 4
+ff_dim: 128
+embed_dim: 64
+num_heads: 3
+dropout_prob: 0.1
+warm_up_period: 5
+
+

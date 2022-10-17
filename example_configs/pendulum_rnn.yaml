@@ -1,0 +1,17 @@
+experiment_name: "dynamics-toolbox"
+run_name: "rnn"
+data_source: "/home/scratch/ichar/dynamics-toolbox/pendulum_random_100k.hdf5"
+seed: 1
+logger: tensorboard
+# cuda_device: 0
+# normalization: "standardize"
+defaults:
+    - trainer: gpu_trainer
+    - data_module: sequential_rl_data_module
+    - early_stopping: default
+    - model: rnn
+hydra:
+    job:
+        name: ${run_name}
+    run:
+        dir: pendulum/${run_name}/${seed}

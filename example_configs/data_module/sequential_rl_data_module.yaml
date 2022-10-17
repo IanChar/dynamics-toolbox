@@ -1,7 +1,7 @@
 _target_: dynamics_toolbox.data.pl_data_modules.sequential_rl_data_module.SequentialRlDataModule
 batch_size: 64
 learn_rewards: False
-val_proportion: 0.1
+val_proportion: 0.05
 test_proportion: 0.1
 pin_memory: False
 num_workers: 1

@@ -35,6 +35,8 @@ def train(cfg: DictConfig) -> None:
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
+    if 'cuda_device' in cfg:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg['cuda_device'])
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
     print(OmegaConf.to_yaml(cfg))
     if cfg['logger'] == 'mlflow':
@@ -52,6 +54,8 @@ def train(cfg: DictConfig) -> None:
     trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]
+        with open('test_results.txt', 'w') as f:
+            f.write('\n'.join([f'{k}: {v}' for k, v in test_dict.items()]))
         tune_metric = cfg.get('tune_metric', 'test/loss')
         return_val = test_dict[tune_metric]
         if cfg.get('tune_objective', 'minimize') == 'maximize':

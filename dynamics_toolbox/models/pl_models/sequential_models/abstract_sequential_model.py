@@ -54,7 +54,10 @@ class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
         pred = net_out['prediction']
         one_step_pred = pred[:, self._warm_up_period, ...]
         pred = pred.reshape(-1, pred.shape[-1])
-        yi = batch[3]
+        if len(batch) > 3:  # Check if we are doing RL data or (x, y, mask) data.
+            yi = batch[3]
+        else:
+            yi = batch[1]
         one_step_yi = yi[:, self._warm_up_period, ...]
         yi = yi.reshape(-1, yi.shape[-1])
         for metric_name, metric in self.metrics.items():

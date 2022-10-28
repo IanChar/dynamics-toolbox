@@ -17,6 +17,9 @@ def do_attention(query, key, value, mask= None):
     return torch.bmm(attention_weights, value)    
 
 
+
+
+
 def get_positional_encoding(seq_len, dim):
 
     positional_embed = torch.zeros((seq_len, dim))
@@ -34,19 +37,19 @@ class AttentionHead(Module):
         self.Wq = Linear(embed_dim, head_dim)
         self.Wk = Linear(embed_dim, head_dim)
         self.Wv = Linear(embed_dim, head_dim)
+        
         self.register_buffer("mask", torch.tril(torch.ones(block_size, block_size))
                                      .view(1, block_size, block_size))
-
 
     #    joined_dim = config.observation_dim + config.action_dim + 2
   #      self.mask.squeeze()[:,joined_dim-1::joined_dim] = 0
         # add dropout and linear projection
     
-    def forward(self, h):
-        B, T, C = h.size()
-        q = self.Wq(h)
-        k = self.Wk(h)
-        v = self.Wv(h)
+    def forward(self, x):
+        B, T, C = x.size()
+        q = self.Wq(x)
+        k = self.Wk(x)
+        v = self.Wv(x)
 
         attention_scores = torch.bmm(q, k.transpose(1,2))/math.sqrt(k.size(-1))
         attention_scores = attention_scores.masked_fill(self.mask[:,:T,:T]== 0, float('-inf'))
@@ -54,8 +57,7 @@ class AttentionHead(Module):
         attention_weights = F.softmax(attention_scores, dim=-1)
 
         return torch.bmm(attention_weights, v)    
-
-        
+ 
         
 class MultiHeadAttention(Module):
     
@@ -107,6 +109,8 @@ class TransformerEncoderLayer(Module):
         self.layer_norm2 = LayerNorm(hidden_size)
         self.attention = MultiHeadAttention(hidden_size, num_heads, seq_len)
         self.ff = FeedForward(hidden_size, ff_dim, dropout_prob)
+
+        self.seq_len = seq_len
         
         # not actually trying to prdict the actions, so project to output size
         # not sure what they do in the paper for this
@@ -175,7 +179,7 @@ class TransformerEncoder(Module):
         self.dim = input_dim
         self.output_dim = output_dim
         self.embed_dim = embed_dim
-
+        #try nn embedding
         self.embed = Embedding(self.dim, embed_dim, dropout_prob)
 
         self.layers = ModuleList(
@@ -185,15 +189,20 @@ class TransformerEncoder(Module):
                                  )
        # self.layers.append(TransformerEncoderLayer(embed_dim, ff_dim, output_dim
         #                         ,num_heads, dropout_prob))
+        self.seq_len = seq_len
+        self.embed_dim = embed_dim
     def forward(self, x):
 
         positional = get_positional_encoding(x.shape[1], self.embed_dim)
         # add dropout
+
         x = self.embed(x) + positional
         for layer in self.layers:
             x = layer(x)
         # add layernorm
         return x
+
+
 
 
 class TransformerDecoder(Module):
@@ -220,6 +229,9 @@ class TransformerDecoder(Module):
             return x
 
 
+
+
+
 class TransformerForPrediction(Module):
     
     def __init__(self, encoder: TransformerEncoder, dropout_prob = 0.3) -> None:
@@ -229,24 +241,34 @@ class TransformerForPrediction(Module):
         self.head = Linear(encoder.embed_dim, encoder.output_dim)
         self.apply(self._init_weights)
 
+        self.seq_len = encoder.seq_len
+        self.embed_dim = encoder.embed_dim
 
 
     # taken from trajectory transformer code
     def pad_to_full_observation(self, x):
         b, t, _ = x.shape
-        n_pad = (self.transition_dim - t % self.transition_dim) % self.transition_dim
-        padding = torch.zeros(b, n_pad, self.embedding_dim)
+        n_pad = (self.seq_len - t % self.seq_len) % self.seq_len
+        padding = torch.zeros(b, n_pad, self.embed_dim)
         ## [ B x T' x embedding_dim ]
+       # print(x.shape, padding.shape)
         x_pad = torch.cat([x, padding], dim=1)
         ## [ (B * T' / transition_dim) x transition_dim x embedding_dim ]
-        x_pad = x_pad.view(-1, self.transition_dim, self.embedding_dim)
+        x_pad = x_pad.view(-1, self.seq_len, self.embed_dim)
 
         return x_pad, n_pad
 
 
     def forward(self, x):
         x = self.encoder(x)[:,-1,:]
+      #  b,t, _ = x.shape
+      #  x = self.encoder(x)
+        #print(x.shape)
+     #   x, n_pad = self.pad_to_full_observation(x)
+     #   x = x[:,t-1,:]
+        #print(x.shape)
         x = self.head(x)
+   #     x = x.reshape(b, t+n_pad, x.shape[-1])
         return x
 
     # no clue what why this is here

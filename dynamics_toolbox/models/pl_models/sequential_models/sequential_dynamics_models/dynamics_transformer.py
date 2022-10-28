@@ -26,6 +26,8 @@ class DynamicsTransformer(AbstractSequentialModel):
             input_dim: int,
             output_dim: int,
 
+            seq_len: int,
+
             num_hidden: int, 
             ff_dim: int, 
             embed_dim: int,
@@ -37,7 +39,6 @@ class DynamicsTransformer(AbstractSequentialModel):
             loss_type: str = losses.MSE,
             weight_decay: Optional[float] = 0.0,
             autoregress_noise: Optional[float] = 0.0,
-            seq_len = 0,  
             dropout_prob=0.3,
             predictions_are_deltas: bool = True,
             **kwargs,
@@ -76,10 +77,10 @@ class DynamicsTransformer(AbstractSequentialModel):
                                          input_dim=input_dim, 
                                          embed_dim = embed_dim,
                                          ff_dim = ff_dim, 
-                                         output_dim = output_dim,
+                                         seq_len = seq_len,
+                                         output_dim = input_dim,
                                          num_heads = num_heads, 
                                          dropout_prob = dropout_prob,
-                                         seq_len = 30
                                          )
 
         self.transformer = TransformerForPrediction(self.encoder)
@@ -117,6 +118,7 @@ class DynamicsTransformer(AbstractSequentialModel):
         assert len(batch) == 6, 'Need SARS + terminal + is_real in batch.'
 
         obs, acts = batch[:2]
+        obs_size = obs.shape[-1]
         is_real = batch[-1]
         if len(obs.shape) == 2:
             obs = obs.unsqueeze(1)
@@ -133,7 +135,7 @@ class DynamicsTransformer(AbstractSequentialModel):
         
         for t in range(obs.shape[1]):
 
-            pred = self.transformer(memory)
+            pred = self.transformer(memory)[:,:obs_size]
             predictions.append(pred * is_real[:, t].unsqueeze(-1))
             if t < self._warm_up_period:
                 curr = obs[:, t + 1, :]

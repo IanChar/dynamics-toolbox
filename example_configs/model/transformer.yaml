@@ -3,6 +3,7 @@ num_hidden: 4
 ff_dim: 128
 embed_dim: 64
 num_heads: 3
+seq_len: 30
 dropout_prob: 0.1
 warm_up_period: 5
 

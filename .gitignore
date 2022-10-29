@@ -1,3 +1,6 @@
+data/
+results/
+.DS_STORE
 *.egg-info
 *.swp
 trained_models/

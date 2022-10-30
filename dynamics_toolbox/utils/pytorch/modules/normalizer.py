@@ -57,7 +57,7 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
-        if batch_idx >= self._num_normalizers:
+        if hasattr(self, '_num_normalizers') and batch_idx >= self._num_normalizers:
             return x
         orig_shape = x.shape
         if len(x.shape) > 2:
@@ -79,7 +79,7 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
-        if batch_idx >= self._num_normalizers:
+        if hasattr(self, '_num_normalizers') and batch_idx >= self._num_normalizers:
             return x
         orig_shape = x.shape
         if len(x.shape) > 2:

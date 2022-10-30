@@ -51,7 +51,12 @@ class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
             A dictionary of additional metrics.
         """
         to_return = {}
-        pred = net_out['prediction']
+        if 'prediction' in net_out:
+            pred = net_out['prediction']
+        elif 'mean' in net_out:
+            pred = net_out['mean']
+        else:
+            raise ValueError('Need either prediction or mean in the net_out')
         one_step_pred = pred[:, self._warm_up_period, ...]
         pred = pred.reshape(-1, pred.shape[-1])
         if len(batch) > 3:  # Check if we are doing RL data or (x, y, mask) data.

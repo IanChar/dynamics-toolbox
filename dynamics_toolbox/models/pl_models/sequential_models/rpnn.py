@@ -197,14 +197,14 @@ class RPNN(AbstractSequentialModel):
                              f' Expected {self._hidden_state.shape[1]} but received'
                              f' {net_in.shape[0]}.')
         with torch.no_grad():
-            encoded = self._encoder(net_in.unsqueeze(0))
+            encoded = self._encoder(net_in).unsqueeze(1)
             if self._use_layer_norm:
                 encoded = self._layer_norm(encoded)
             mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
             if self._record_history:
                 self._hidden_state = hidden_out
             mean_predictions, logvar_predictions =\
-                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze(0)
+                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze()
         std_predictions = (0.5 * logvar_predictions).exp()
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
             predictions = (torch.randn_like(mean_predictions) * std_predictions

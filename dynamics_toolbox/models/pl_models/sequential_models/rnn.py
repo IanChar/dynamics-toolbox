@@ -158,14 +158,14 @@ class RNN(AbstractSequentialModel):
                              f' Expected {self._hidden_state.shape[1]} but received'
                              f' {net_in.shape[0]}.')
         with torch.no_grad():
-            encoded = self._encoder(net_in.unsqueeze(0))
+            encoded = self._encoder(net_in).unsqueeze(1)
             if self._use_layer_norm:
                 encoded = self._layer_norm(encoded)
             mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
             if self._record_history:
                 self._hidden_state = hidden_out
             predictions =\
-                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze(0)
+                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze()
         info = {'predictions': predictions}
         return predictions, info
 

@@ -204,7 +204,8 @@ class RPNN(AbstractSequentialModel):
             if self._record_history:
                 self._hidden_state = hidden_out
             mean_predictions, logvar_predictions =\
-                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze()
+                (output.squeeze() for output in
+                 self._decoder(torch.cat([encoded, mem_out], dim=-1)))
         std_predictions = (0.5 * logvar_predictions).exp()
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
             predictions = (torch.randn_like(mean_predictions) * std_predictions

@@ -68,6 +68,8 @@ class MLP_Classifier(AbstractPlModel):
                 # 'IndvEV': ExplainedVariance('raw_values'),
                 'Accuracy': Accuracy()
         }
+        ### YSC
+        self._hard_labels = kwargs.get('hard_labels', default=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function for network
@@ -158,7 +160,10 @@ class MLP_Classifier(AbstractPlModel):
             The loss and a dictionary of other statistics.
         """
         _, yi = batch
-        loss = self._loss_function(net_out['prediction'], yi.long())
+        if self._hard_labels:
+            loss = self._loss_function(net_out['prediction'], yi.long())
+        else:
+            loss = self._loss_function(net_out['prediction'], yi.float())
         stats = {'loss': loss.item()}
         return loss, stats
 

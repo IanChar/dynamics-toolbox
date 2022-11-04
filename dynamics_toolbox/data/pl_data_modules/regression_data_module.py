@@ -40,7 +40,7 @@ class RegressionDataModule(LightningDataModule):
             batch_size: Batch size.
             learn_rewards: Whether to include the rewards for learning in xdata.
             val_proportion: Proportion of data to use as validation.
-            val_proportion: Proportion of data to use as test.
+            test_proportion: Proportion of data to use as test.
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.

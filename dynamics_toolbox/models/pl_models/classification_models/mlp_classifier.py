@@ -72,13 +72,13 @@ class MLP_Classifier(AbstractPlModel):
         self._hard_labels = kwargs.get('hard_labels', default=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward function for network
+        """Forward function for network.
 
         Args:
             x: The input to the network.
 
         Returns:
-            The output of the networ.
+            The output of the network.
         """
         return self._net.forward(x)
 

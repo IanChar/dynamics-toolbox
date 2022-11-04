@@ -243,7 +243,18 @@ class RPNN(AbstractSequentialModel):
 
     @property
     def sample_mode(self) -> str:
+        """The sample mode is the method that in which we get next state."""
         return self._sample_mode
+
+    @sample_mode.setter
+    def sample_mode(self, mode: str) -> None:
+        """Set the sample mode to the appropriate mode."""
+        if self._sample_mode not in [sampling_modes.SAMPLE_FROM_DIST,
+                                     sampling_modes.RETURN_MEAN]:
+            raise ValueError(
+                f'PNN sample mode must either be {sampling_modes.SAMPLE_FROM_DIST} '
+                f'or {sampling_modes.RETURN_MEAN}, but received {mode}.')
+        self._sample_mode = mode
 
     @property
     def input_dim(self) -> int:

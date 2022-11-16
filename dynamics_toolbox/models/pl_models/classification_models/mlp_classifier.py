@@ -69,7 +69,7 @@ class MLP_Classifier(AbstractPlModel):
                 'Accuracy': Accuracy()
         }
         ### YSC
-        self._hard_labels = kwargs.get('hard_labels', default=False)
+        self._hard_labels = bool(kwargs.get('hard_labels', True))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward function for network.
@@ -159,6 +159,7 @@ class MLP_Classifier(AbstractPlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
+        import pdb; pdb.set_trace()
         _, yi = batch
         if self._hard_labels:
             loss = self._loss_function(net_out['prediction'], yi.long())

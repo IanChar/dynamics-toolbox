@@ -4,6 +4,7 @@ Main file to use for training dynamics models.
 Author: Ian Char
 """
 import os
+import pickle as pkl
 
 import hydra
 from hydra.utils import get_original_cwd
@@ -15,8 +16,10 @@ from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
 
-@hydra.main(config_path='./example_configs', config_name='config')
+@hydra.main(config_path='./example_configs', 
+            config_name='config_ysc')
 def train(cfg: DictConfig) -> None:
+    # breakpoint()
     """Train the model."""
     if 'model' not in cfg:
         raise ValueError('model must be specified. Choose one of the provided '
@@ -36,6 +39,8 @@ def train(cfg: DictConfig) -> None:
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
+
+    # import pdb; pdb.set_trace()
     print(OmegaConf.to_yaml(cfg))
     if cfg['logger'] == 'mlflow':
         save_path = os.path.join(cfg['save_dir'], logger.experiment_id, logger.run_id)
@@ -47,8 +52,11 @@ def train(cfg: DictConfig) -> None:
         save_path = os.path.join(logger.save_dir, name, f'version_{logger.version}')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
+
+    pkl.dump(data, open('{}/data_obj.pkl'.format(save_path), 'wb'))
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))
     logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
+    # import pdb; pdb.set_trace()
     trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]

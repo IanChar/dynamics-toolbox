@@ -6,7 +6,7 @@ run_name: "classification_sigmoid_bias_500"
 data_source: "/home/scratch/youngsec/rs/fusion/disruption/datasets/scan_sigmoid_bias/scan_sigmoid_bias_500.h5"
 seed: 1
 logger: tensorboard
-normalization: "standardize"
+normalization: "standardize_input"
 defaults:
     - trainer: pl_trainer
     - data_module: classification_data_module

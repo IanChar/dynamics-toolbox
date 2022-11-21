@@ -50,6 +50,13 @@ def construct_all_pl_components_for_training(
               torch.Tensor(np.std(b.reshape(-1, b.shape[-1]), axis=0)))
              for b in data_module.data]
         )
+    elif cfg['normalization'] == 'standardize_input':
+        b = data_module.data[0]
+        normalizer = InputNormalizer(
+            [(torch.Tensor(np.mean(b.reshape(-1, b.shape[-1]), axis=0)),
+             torch.Tensor(np.std(b.reshape(-1, b.shape[-1]), axis=0)))
+             ]
+        )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,

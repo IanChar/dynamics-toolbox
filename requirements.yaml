@@ -5,5 +5,5 @@ dependencies:
     - h5py
     - hydra-core
     - numpy
-    - pytorch
+    - pytorch=1.9.1
     - pytorch-lightning=1.4.2

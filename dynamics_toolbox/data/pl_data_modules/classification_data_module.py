@@ -6,6 +6,7 @@ Author: Youngseog Chung
 from typing import Dict, Union, List, Sequence
 
 import numpy as np
+from imblearn.over_sampling import SMOTE
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -47,6 +48,14 @@ class ClassificationDataModule(LightningDataModule):
         """
         super().__init__()
         dataset = load_from_hdf5(data_source)
+        use_smote = bool(kwargs.get('smote', False))
+        if use_smote:
+            for split_key in ['tr', 'val', 'te']:
+                curr_x = dataset[f'{split_key}_x']
+                curr_y = (dataset[f'{split_key}_y'] >= 0.5).astype(int)  # TODO(ysc): I am just applying hard labels here, that's actually set in cfg['model'] for now
+                x_re, y_re = SMOTE().fit_resample(curr_x, curr_y)
+                dataset[f'{split_key}_x'] = x_re.reshape(-1, curr_x.shape[1])
+                dataset[f'{split_key}_y'] = y_re.reshape(-1, curr_y.shape[1])
         self._xdata = dataset['tr_x']
         self._ydata = dataset['tr_y']
         self._val_proportion = val_proportion

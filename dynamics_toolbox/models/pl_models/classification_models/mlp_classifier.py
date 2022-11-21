@@ -159,12 +159,15 @@ class MLP_Classifier(AbstractPlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        import pdb; pdb.set_trace()
         _, yi = batch
         if self._hard_labels:
-            loss = self._loss_function(net_out['prediction'], yi.long())
+            loss = self._loss_function(net_out['prediction'], yi.flatten().long())
         else:
-            loss = self._loss_function(net_out['prediction'], yi.float())
+            class_prob = yi
+            # handle case when binary clasification 
+            if self.output_dim == 2 and yi.shape[1] == 1:
+                class_prob = torch.cat([1-yi.float(), yi.float()], dim=1)
+            loss = self._loss_function(net_out['prediction'], class_prob)
         stats = {'loss': loss.item()}
         return loss, stats
 
@@ -225,7 +228,15 @@ class MLP_Classifier(AbstractPlModel):
         pred = net_out['prediction']
         _, yi = batch
         for metric_name, metric in self._metrics.items():
-            metric_value = metric(pred, yi.long())
+            metric = metric.to(yi.device)
+            if metric_name == 'Accuracy':
+                # handle getting label when binary clasification 
+                if self.output_dim == 2 and yi.shape[1] == 1:
+                    yi = yi.long().flatten()
+                else:
+                    yi = torch.argmax(yi, dim=1)
+            # metric_value = metric(pred, yi.flatten().long())
+            metric_value = metric(pred, yi)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
                     to_return[f'{metric_name}_dim{dim_idx}'] = metric_v

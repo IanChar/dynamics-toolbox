@@ -17,7 +17,7 @@ from dynamics_toolbox.utils.lightning.constructors import\
 
 
 @hydra.main(config_path='./example_configs', 
-            config_name='config_ysc')
+            config_name='class_config_ysc')
 def train(cfg: DictConfig) -> None:
     # breakpoint()
     """Train the model."""
@@ -32,6 +32,8 @@ def train(cfg: DictConfig) -> None:
     # Alter config file and add defaults.
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']
+        if 'smote' in cfg:
+            cfg['smote'] = bool(cfg['smote'])
         if 'save_dir' not in cfg:
             cfg['save_dir'] = os.path.join(os.getcwd(), 'model')
         elif cfg['save_dir'][0] != '/':

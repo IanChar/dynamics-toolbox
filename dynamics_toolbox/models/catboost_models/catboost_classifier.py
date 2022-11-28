@@ -105,3 +105,44 @@ class CBClassifier(AbstractCatboostModel):
             The deltas for next states and dictionary of info.
         """
         return self.single_sample_output(model_in)
+
+    def get_model_out(self, batch: Sequence[np.ndarray]) -> Dict[str, np.ndarray]:
+        xi, _ = batch
+        output = self.model.pred_prob(xi)
+        return {'prediction': output}
+
+    def loss(
+            self,
+            net_out: Dict[str, np.ndarray],
+            batch: Sequence[np.ndarray],
+    ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        pass
+
+    @property
+    def metrics(self) -> Dict[str, Callable[[np.ndarray], np.ndarray]]:
+        pass
+
+    @property
+    def learning_rate(self) -> float:
+        """Get the learning rate."""
+        return self._learning_rate
+
+    @property
+    def weight_decay(self) -> float:
+        """Get the weight decay."""
+        return self._weight_decay
+
+    @property
+    def input_dim(self) -> int:
+        """The sample mode is the method that in which we get next state."""
+        return self._hparams.input_dim
+
+    @property
+    def output_dim(self) -> int:
+        """The sample mode is the method that in which we get next state."""
+        return self._hparams.output_dim
+
+    @property
+    def sample_mode(self) -> str:
+        """The sample mode is the method that in which we get next state."""
+        return self._sample_mode

@@ -1,5 +1,5 @@
 """
-Catboost classifier model.
+Catboost regression model.
 
 Author: Youngseog Chung
 """

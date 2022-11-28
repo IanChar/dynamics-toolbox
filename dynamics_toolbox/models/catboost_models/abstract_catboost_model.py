@@ -41,12 +41,15 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
         self._unnormalize_outputs = True
 
     def training_step():
+        # not needed
         pass
 
     def validation_step():
+        # not needed
         pass
 
     def test_step():
+        # not needed
         pass
 
     def predict(
@@ -67,17 +70,17 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
         """
         model_input = self._normalize_prediction_input(model_input)
         if each_input_is_different_sample:
-            output, infos = self.multi_sample_output_from_torch(model_input)
+            output, infos = self.multi_sample_output(model_input)
         else:
-            output, infos = self.single_sample_output_from_torch(model_input)
+            output, infos = self.single_sample_output(model_input)
         output = self._unnormalize_prediction_output(output)
-        return output.cpu().numpy(), infos
+        return output, infos
 
     def configure_optimizers():
         pass
 
 
-    def get_eval_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def get_eval_model_out(self, batch: Sequence[np.ndarray]) -> Dict[str, np.ndarray]:
         """Get the validation output of the network and organize into dictionary.
 
         Args:
@@ -109,7 +112,7 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
         self._unnormalize_outputs = mode
 
     @abc.abstractmethod
-    def get_model_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def get_model_out(self, batch: Sequence[np.ndarray]) -> Dict[str, np.ndarray]:
         """Get the output of the network and organize into dictionary.
 
         Args:
@@ -122,9 +125,9 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def loss(
             self,
-            net_out: Dict[str, torch.Tensor],
-            batch: Sequence[torch.Tensor],
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+            net_out: Dict[str, np.ndarray],
+            batch: Sequence[np.ndarray],
+    ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """Compute the loss function.
 
         Args:
@@ -136,28 +139,28 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def single_sample_output_from_torch(
+    def single_sample_output(
             self,
-            net_in: torch.Tensor
-    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+            model_in: np.ndarray
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Get the output for a single sample in the model.
 
         Args:
-            net_in: The input for the network.
+            model_in: The input for the network.
 
         Returns:
             The deltas for next states and dictionary of info.
         """
 
     @abc.abstractmethod
-    def multi_sample_output_from_torch(
+    def multi_sample_output(
             self,
-            net_in: torch.Tensor
-    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+            model_in: numpy.ndarray
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Get the output where each input is assumed to be from a different sample.
 
         Args:
-            net_in: The input for the network.
+            model_in: The input for the network.
 
         Returns:
             The deltas for next states and dictionary of info.
@@ -165,7 +168,7 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
+    def metrics(self) -> Dict[str, Callable[[np.ndarray], np.ndarray]]:
         """Get the list of metric functions to compute."""
 
     @property
@@ -178,7 +181,7 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
     def weight_decay(self) -> float:
         """Get the weight decay."""
 
-    def _normalize_prediction_input(self, model_input: torch.Tensor) -> torch.Tensor:
+    def _normalize_prediction_input(self, model_input: np.ndarray) -> torch.Tensor:
         """Normalize the input for prediction.
 
         Args:

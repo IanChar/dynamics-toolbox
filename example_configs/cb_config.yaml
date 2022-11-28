@@ -29,8 +29,8 @@ gpus: 2
 
 # modifications 1: make the network bigger
 model:
-    num_layers: 5
-    layer_size: 300
+#     num_layers: 5
+#     layer_size: 300
     hard_labels: 1
 
       # hydra:

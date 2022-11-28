@@ -4,6 +4,7 @@ Catboost classifier model.
 Author: Youngseog Chung
 """
 from catboost import CatBoostClassifier
+import numpy as np
 
 from typing import Sequence, Tuple, Dict, Any, Optional, Callable
 
@@ -19,7 +20,7 @@ class CBClassifier(AbstractCatboostModel):
             output_dim: int,
             learning_rate: float = 1e-3,
             depth: int = 5,
-            loss_function: str = losses.LL,  # TODO: make this
+            loss_function: str = losses.CB_LL,  # TODO: make this
             # loss_type: str = losses.CE,
             weight_decay: Optional[float] = 0.0,
             **kwargs,
@@ -91,10 +92,10 @@ class CBClassifier(AbstractCatboostModel):
         }
         return pred_prob, info
 
-    def multi_sample_output_from_torch(
+    def multi_sample_output(
             self,
             model_in: np.ndarray
-    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Get the output where each input is assumed to be from a different sample.
 
         Args:
@@ -103,4 +104,4 @@ class CBClassifier(AbstractCatboostModel):
         Returns:
             The deltas for next states and dictionary of info.
         """
-        return self.single_sample_output_from_torch(model_in)
+        return self.single_sample_output(model_in)

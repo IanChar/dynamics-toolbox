@@ -1,7 +1,7 @@
 """
-Construction functions for lightning.
+Construction functions for catboost.
 
-Author: Ian Char
+Author: Youngseog Chung
 """
 from typing import Tuple
 import os
@@ -23,7 +23,7 @@ from dynamics_toolbox.utils.pytorch.modules.normalizer import (
 )
 
 
-def construct_all_pl_components_for_training(
+def construct_all_cb_components_for_training(
         cfg: DictConfig
 ) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase, DictConfig]:
     """Construct all components needed for training.
@@ -61,6 +61,7 @@ def construct_all_pl_components_for_training(
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
+    breakpoint()
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
                                     _recursive_=False)
     callbacks = []

@@ -94,10 +94,9 @@ class MLP_Classifier(AbstractPlModel):
         Returns:
             The predictions for a single function sample
         """
-        breakpoint()
         with torch.no_grad():
             predictions = self.forward(net_in)
-            pred_class = torch.argmax(predictions).numpy()
+            pred_class = torch.argmax(predictions, dim=1).numpy()
         info = {
             'predictions': predictions,
             'pred_class': pred_class,

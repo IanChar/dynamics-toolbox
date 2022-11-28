@@ -8,6 +8,7 @@ from catboost import CatBoostClassifier
 from typing import Sequence, Tuple, Dict, Any, Optional, Callable
 
 from dynamics_toolbox.models.catboost_models.abstract_catboost_model import AbstractCatboostModel
+import dynamics_toolbox.constants.losses as losses
 
 class CatboostRegressor(AbstractCatboostModel):
     """ Catboost classifier. """

@@ -155,7 +155,7 @@ class AbstractCatboostModel(AbstractModel, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def multi_sample_output(
             self,
-            model_in: numpy.ndarray
+            model_in: np.ndarray
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """Get the output where each input is assumed to be from a different sample.
 

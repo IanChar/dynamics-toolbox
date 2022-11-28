@@ -17,7 +17,7 @@ from dynamics_toolbox.utils.catboost.constructors import\
 
 
 @hydra.main(config_path='./example_configs', 
-            config_name='class_config_ysc')
+            config_name='cb_config')
 def train(cfg: DictConfig) -> None:
     # breakpoint()
     """Train the model."""
@@ -40,7 +40,7 @@ def train(cfg: DictConfig) -> None:
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
-    model, data, logger, cfg = construct_all_pl_components_for_training(cfg)
+    model, data, logger, cfg = construct_all_cb_components_for_training(cfg)
 
     # import pdb; pdb.set_trace()
     print(OmegaConf.to_yaml(cfg))
@@ -62,7 +62,6 @@ def train(cfg: DictConfig) -> None:
 
     breakpoint()
     model.fit()
-    trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]
         tune_metric = cfg.get('tune_metric', 'test/loss')

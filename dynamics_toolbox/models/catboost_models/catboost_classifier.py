@@ -18,9 +18,9 @@ class CBClassifier(AbstractCatboostModel):
             self,
             input_dim: int,
             output_dim: int,
-            learning_rate: float = 1e-3,
+            learning_rate: float = None,
             depth: int = 5,
-            loss_function: str = losses.CB_LL,  # TODO: make this
+            loss_function: str = losses.CB_LL,
             # loss_type: str = losses.CE,
             weight_decay: Optional[float] = 0.0,
             **kwargs,
@@ -69,9 +69,13 @@ class CBClassifier(AbstractCatboostModel):
             self,
             param_dict: Dict[str, any],
     ):
-        breakpoint()
-        self.model.set_params(*param_dict)
+        self._model.set_params(**param_dict)
 
+    def fit(self, tr_pool, cfg_gpu, **kwargs):
+        if cfg_gpu is not None:
+            self.set_additional_model_params({'task_type': 'GPU', 'devices': cfg_gpu})
+
+        return self._model.fit(tr_pool, **kwargs)
 
     def single_sample_output(
             self,
@@ -92,6 +96,7 @@ class CBClassifier(AbstractCatboostModel):
             'pred_class': pred_class,
         }
         return pred_prob, info
+
 
     def multi_sample_output(
             self,

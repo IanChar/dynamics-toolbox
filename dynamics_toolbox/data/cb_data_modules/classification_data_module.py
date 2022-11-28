@@ -15,7 +15,7 @@ from catboost import Pool
 from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
 
 
-class CBDataModule(LightningDataModule):
+class CBClassificationDataModule(LightningDataModule):
 
     def __init__(
             self,
@@ -49,6 +49,7 @@ class CBDataModule(LightningDataModule):
         """
         super().__init__()
         dataset = load_from_hdf5(data_source)
+        breakpoint()
         use_smote = bool(kwargs.get('smote', False))
         if use_smote:
             for split_key in ['tr', 'val', 'te']:
@@ -84,6 +85,7 @@ class CBDataModule(LightningDataModule):
                     torch.Tensor(dataset['te_y']),
             )
 
+        breakpoint()
         self.tr_x = self._tr_dataset.dataset.tensors[0].numpy()
         self.tr_y = self._tr_dataset.dataset.tensors[1].numpy()
         self.val_x = self._val_dataset.tensors[0].numpy()
@@ -91,9 +93,9 @@ class CBDataModule(LightningDataModule):
         self.te_x = self._te_dataset.tensors[0].numpy()
         self.te_y = self._te_dataset.tensors[1].numpy()
 
-        self.tr_pool = Pool(tr_x, tr_y)
-        self.va_pool = Pool(val_x, val_y)
-        self.te_pool = Pool(te_x, te_y)
+        self.tr_pool = Pool(self.tr_x, self.tr_y)
+        self.val_pool = Pool(self.val_x, self.val_y)
+        self.te_pool = Pool(self.te_x, self.te_y)
 
         if 'num_classes' in kwargs:
             self._num_classes = int(kwargs.get('num_classes'))

@@ -55,22 +55,27 @@ def train(cfg: DictConfig) -> None:
     if not os.path.exists(save_path):
         os.makedirs(save_path)
 
-    pkl.dump(data, open('{}/data_obj.pkl'.format(save_path), 'wb'))
+    # pkl.dump(data, open('{}/data_obj.pkl'.format(save_path), 'wb'))
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))
     logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
-    # import pdb; pdb.set_trace()
 
     breakpoint()
-    model.fit()
-    if data.test_dataloader() is not None:
-        test_dict = trainer.test(model, datamodule=data)[0]
-        tune_metric = cfg.get('tune_metric', 'test/loss')
-        return_val = test_dict[tune_metric]
-        if cfg.get('tune_objective', 'minimize') == 'maximize':
-            return_val *= -1
-        return return_val
-    else:
-        return 0
+    model.set_additional_model_params(
+        {'eval_metric': 'Recall'})
+    model.set_additional_model_params(
+        {'od_type': 'IncToDec', 'od_pval': 1e-3})
+    model.fit(data.tr_pool, cfg['gpus'], 
+        eval_set=data.val_pool)
+
+    # if data.test_dataloader() is not None:
+    #     test_dict = trainer.test(model, datamodule=data)[0]
+    #     tune_metric = cfg.get('tune_metric', 'test/loss')
+    #     return_val = test_dict[tune_metric]
+    #     if cfg.get('tune_objective', 'minimize') == 'maximize':
+    #         return_val *= -1
+    #     return return_val
+    # else:
+    #     return 0
 
 
 if __name__ == '__main__':

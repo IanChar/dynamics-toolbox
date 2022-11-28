@@ -9,12 +9,12 @@ logger: tensorboard
 normalization: "standardize_input"
 defaults:
     - trainer: pl_trainer
-    - data_module: classification_data_module
+    - data_module: cb_classification_data_module
     - early_stopping: default
     - model: cb_classifier
 
 trainer:
-    max_epochs: 3000
+    max_epochs: 100000
     devices: 1
     accelerator: 'gpu'
     auto_select_gpus: 1
@@ -23,7 +23,7 @@ data_module:
     val_proportion: 0.0
     test_proportion: 0.0
     num_workers: 16
-    smote: 1
+    smote: 0
 save_dir: "/zfsauton2/home/youngsec/research/fusion/disruption/train_runs"
 gpus: 2
 

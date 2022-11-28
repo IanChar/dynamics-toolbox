@@ -61,7 +61,6 @@ def construct_all_cb_components_for_training(
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
-    breakpoint()
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
                                     _recursive_=False)
     callbacks = []
@@ -69,6 +68,9 @@ def construct_all_cb_components_for_training(
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
     max_epochs = (1000 if 'max_epochs' not in cfg['trainer']
                   else cfg['trainer']['max_epochs'])
+
+    model.set_additional_model_params({'iterations': max_epochs})
+
     if data_module.num_validation > 0:
         callbacks.append(ModelCheckpoint(monitor='val/loss'))
     callbacks.append(SingleProgressBar(max_epochs))

@@ -43,7 +43,8 @@ class CBClassifier(AbstractCatboostModel):
 
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
+        self._input_dim = input_dim
+        self._output_dim = output_dim
         self._model = CatBoostClassifier(
             depth=depth,
             learning_rate=learning_rate,
@@ -135,12 +136,12 @@ class CBClassifier(AbstractCatboostModel):
     @property
     def input_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._hparams.input_dim
+        return self._input_dim
 
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._hparams.output_dim
+        return self._output_dim
 
     @property
     def sample_mode(self) -> str:

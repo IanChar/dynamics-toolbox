@@ -1,0 +1,38 @@
+# experiment_name: "disrupt_model"
+# run_name: "dataset_2022-10-12"
+# data_source: "/zfsauton2/home/youngsec/research/fusion/disruption/model_data_file_fixed.h5"
+experiment_name: "toy_data_pnn"
+run_name: "PASS"
+data_source: "PASS"
+seed: 1
+logger: tensorboard
+#normalization: "standardize"
+defaults:
+    - trainer: pl_trainer
+    - data_module: regression_data_module
+    - early_stopping: default
+    - model: pnn
+
+trainer:
+#    max_epochs: 3000
+    max_epochs: 10
+    devices: 1
+    accelerator: 'gpu'
+data_module:
+    batch_size: 64
+    val_proportion: 0.0
+    test_proportion: 0.0
+    num_workers: 16
+save_dir: "PASS"
+gpus: 1
+
+# modifications 1: make the network bigger
+model:
+    num_layers: 3
+    layer_size: 100
+
+      # hydra:
+      #     job:
+      #         name: ${name}
+      #     run:
+      #         dir: results/${name}/${now:%Y-%m-%d-%H-%M}

@@ -28,6 +28,8 @@ class SequentialDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            allow_padding: bool = True,
+            predict_deltas: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -45,6 +47,9 @@ class SequentialDataModule(LightningDataModule):
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.
+            allow_padding: Whether to allow snippets to be incomplete and have padding.
+            predict_deltas: Whether the labels should be deltas of the absolute
+                next states.
         """
         super().__init__()
         qset = get_data_from_source(data_source)
@@ -53,6 +58,7 @@ class SequentialDataModule(LightningDataModule):
             snippet_size=snippet_size,
             val_proportion=val_proportion,
             test_proportion=test_proportion,
+            allow_padding=allow_padding,
         )
         if te_data_source is not None:
             te_qset = get_data_from_source(te_data_source)
@@ -61,20 +67,25 @@ class SequentialDataModule(LightningDataModule):
                 snippet_size=snippet_size,
                 val_proportion=0,
                 test_proportion=0,
+                allow_padding=allow_padding,
             )[0]
         datasets = []
         self._xdata, self._ydata = None, None
         for ds in self._snippets:
-            nexts = ds['next_observations'] - ds['observations']
+            nexts = ds['next_observations']
+            if predict_deltas:
+                nexts -= ds['observations']
             if learn_rewards:
                 nexts = np.hstack([ds['rewards'][..., np.newaxis], ds['nexts']])
+            xdata = np.concatenate((ds['observations'], ds['actions']), axis=-1)
             datasets.append(TensorDataset(
-                torch.Tensor(np.hstack([ds['observations'], ds['actions']])),
+                torch.Tensor(xdata),
                 torch.Tensor(nexts),
+                torch.Tensor(ds['mask']).unsqueeze(-1),
             ))
             if self._xdata is None:
-                self._xdata = np.hstack([ds['observations'], ds['actions']])
-                self._ydata = nexts
+                self._xdata = xdata.reshape(-1, xdata.shape[-1])
+                self._ydata = nexts.reshape(-1, nexts.shape[-1])
         self._tr_dataset, self._val_dataset, self._te_dataset = datasets
         self._batch_size = batch_size
         self._num_workers = num_workers

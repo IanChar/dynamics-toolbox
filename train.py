@@ -27,10 +27,12 @@ def train(cfg: DictConfig) -> None:
     if 'seed' in cfg:
         seed_everything(cfg['seed'])
     # Alter config file and add defaults.
+    if 'cuda_device' in cfg:
+        os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg['cuda_device'])
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']
         if 'save_dir' not in cfg:
-            cfg['save_dir'] = os.path.join(os.getcwd(), 'model')
+            cfg['save_dir'] = os.getcwd()
         elif cfg['save_dir'][0] != '/':
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
         if 'gpus' in cfg:
@@ -40,11 +42,7 @@ def train(cfg: DictConfig) -> None:
     if cfg['logger'] == 'mlflow':
         save_path = os.path.join(cfg['save_dir'], logger.experiment_id, logger.run_id)
     else:
-        if 'run_name' in cfg:
-            name = os.path.join(cfg['experiment_name'], cfg['run_name'])
-        else:
-            name = cfg['experiment_name']
-        save_path = os.path.join(logger.save_dir, name, f'version_{logger.version}')
+        save_path = os.getcwd()
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))

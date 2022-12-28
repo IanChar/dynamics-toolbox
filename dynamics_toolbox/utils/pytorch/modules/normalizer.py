@@ -21,6 +21,7 @@ class Normalizer(torch.nn.Module):
                 that appears in a batch for learning.
         """
         super().__init__()
+        self._num_normalizers = len(norm_infos)
         for batch_idx, norm_pair in enumerate(norm_infos):
             offsets = norm_pair[0].reshape(1, -1)
             scales = norm_pair[1].reshape(1, -1)
@@ -56,8 +57,13 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
+        if hasattr(self, '_num_normalizers') and batch_idx >= self._num_normalizers:
+            return x
+        orig_shape = x.shape
+        if len(x.shape) > 2:
+            x = x.reshape(-1, orig_shape[-1])
         return ((x - getattr(self, f'{batch_idx}_offset'))
-                / getattr(self, f'{batch_idx}_scaling'))
+                / getattr(self, f'{batch_idx}_scaling')).reshape(orig_shape)
 
     def unnormalize(
             self,
@@ -73,15 +79,20 @@ class Normalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
-        return x * getattr(self, f'{batch_idx}_scaling') \
-               + getattr(self, f'{batch_idx}_offset')
+        if hasattr(self, '_num_normalizers') and batch_idx >= self._num_normalizers:
+            return x
+        orig_shape = x.shape
+        if len(x.shape) > 2:
+            x = x.reshape(-1, orig_shape[-1])
+        return (x * getattr(self, f'{batch_idx}_scaling')
+                + getattr(self, f'{batch_idx}_offset')).reshape(orig_shape)
+
 
 class NoNormalizer(Normalizer):
 
     def __init__(self):
         """Constructor."""
         super().__init__([])
-
 
     def normalize(
             self,

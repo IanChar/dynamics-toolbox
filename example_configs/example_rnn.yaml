@@ -1,0 +1,16 @@
+name: "rnn"
+data_source: ???
+seed: 1
+logger: tensorboard
+normalization: "standardize"
+cuda_device: null
+defaults:
+    - model: rnn
+    - trainer: pl_trainer
+    - data_module: sequential_data_module
+    - early_stopping: default
+hydra:
+    job:
+        name: ${name}
+    run:
+        dir: results/${name}/${seed}

@@ -1,0 +1,10 @@
+h5py
+hydra-core
+numpy
+torch
+pytorch-lightning=1.4.2
+gym
+tqdm
+matplotlib
+sklearn
+scipy

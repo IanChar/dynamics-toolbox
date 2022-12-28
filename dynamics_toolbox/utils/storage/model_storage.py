@@ -50,6 +50,7 @@ def load_ensemble_from_list_of_log_dirs(
         paths: List[str],
         epochs: Optional[List[int]] = None,
         sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+        member_sample_mode: Optional[str] = None,
 ) -> Ensemble:
     """Load several models into an ensemble.
 
@@ -60,19 +61,26 @@ def load_ensemble_from_list_of_log_dirs(
         sample_mode: The sampling mode for the ensemble.
     """
     epochs = [None for _ in paths] if epochs is None else epochs
-    return Ensemble([load_model_from_log_dir(path, epoch)
-                     for path, epoch in zip(paths, epochs)], sample_mode=sample_mode)
+    ensemble = Ensemble([load_model_from_log_dir(path, epoch)
+                         for path, epoch in zip(paths, epochs)],
+                        sample_mode=sample_mode)
+    if member_sample_mode is not None:
+        for memb in ensemble.members:
+            memb.sample_mode = member_sample_mode
+    return ensemble
 
 
 def load_ensemble_from_parent_dir(
     parent_dir: str,
     sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+    member_sample_mode: Optional[str] = None,
 ) -> Ensemble:
     """Load all the models contained in the parent directory
 
     Args:
         parent_dir: The directory containing other directories of members.
         sample_mode: The sampling mode for the ensemble.
+        member_sample_mode: How each of the children should sample.
     """
     children = os.listdir(parent_dir)
     paths = []
@@ -80,7 +88,11 @@ def load_ensemble_from_parent_dir(
         child = os.path.join(parent_dir, child)
         if os.path.isdir(child) and 'config.yaml' in os.listdir(child):
             paths.append(child)
-    return load_ensemble_from_list_of_log_dirs(paths, sample_mode=sample_mode)
+    return load_ensemble_from_list_of_log_dirs(
+        paths,
+        sample_mode=sample_mode,
+        member_sample_mode=member_sample_mode,
+    )
 
 
 def load_model_from_tensorboard_log(

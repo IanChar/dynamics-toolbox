@@ -23,7 +23,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             output_dim: int,
             normalizer: Optional[Normalizer] = None,
             **kwargs
-        ):
+    ):
         """Constructor.
 
         Args:

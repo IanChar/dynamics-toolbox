@@ -64,17 +64,22 @@ def construct_all_pl_components_for_training(
     callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
+        experiment = cfg.get('experiment_name', 'experiment')
+        if 'run_name' in cfg:
+            run_name = cfg['run_name']
+        else:
+            run_name = cfg.get('name', 'temp')
         logger = MLFlowLogger(
-            experiment_name=cfg['experiment_name'],
+            experiment_name=experiment,
             tracking_uri=cfg.get('tracking_uri', None),
             save_dir=cfg['save_dir'],
-            run_name=cfg.get('run_name', None),
+            run_name=run_name,
         )
     else:
         if 'run_name' in cfg:
-            name = os.path.join(cfg['experiment_name'], cfg['run_name'])
+            name = cfg['run_name']
         else:
-            name = cfg['experiment_name']
+            name = cfg.get('name', 'temp')
         logger = TensorBoardLogger(
             save_dir=cfg['save_dir'],
             name=name,

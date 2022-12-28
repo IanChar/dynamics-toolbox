@@ -61,7 +61,7 @@ def parse_into_snippet_datasets(
             * next_observations: ndarray of shape (num_snippets, snippet_size, obs_dim)
             * rewards: ndarray of shape (num_snippets, snippet_size)
             * terminals: ndarray of shape (num_snippets, snippet_size)
-            * is_real: ndarray of 0s or 1s (num_snippets, snippet_size). This comes
+            * mask: ndarray of 0s or 1s (num_snippets, snippet_size). This comes
                 into play if allow_padding is True.
     """
     if val_proportion + test_proportion > 1:
@@ -87,7 +87,7 @@ def parse_into_snippet_datasets(
         'next_observations': [],
         'rewards': [],
         'terminals': [],
-        'is_real': [],
+        'mask': [],
     } for _ in range(3)]
     for dataset, trajectory_group in zip(datasets,
                                          [trajectories, val_trajectories,
@@ -102,14 +102,14 @@ def parse_into_snippet_datasets(
                         padded = np.zeros(arr_shape)
                         padded[:traj_len] = arr
                         dataset[k].append(padded)
-                dataset['is_real'].append(np.array([1 if i < traj_len else 0
-                                                    for i in range(snippet_size)]))
+                dataset['mask'].append(np.array([1 if i < traj_len else 0
+                                                 for i in range(snippet_size)]))
             else:
                 for idx in range(traj_len + 1 - snippet_size):
                     for k, arr in dataset.items():
                         if k in traj:
                             arr.append(traj[k][idx:idx + snippet_size])
-                    dataset['is_real'].append(np.ones(snippet_size))
+                    dataset['mask'].append(np.ones(snippet_size))
         for k, arr in dataset.items():
             dataset[k] = np.array(arr)
     return datasets

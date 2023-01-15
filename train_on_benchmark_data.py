@@ -61,7 +61,6 @@ def train(cfg: DictConfig) -> None:
             cfg['gpus'] = str(cfg['gpus'])
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
 
-    import pdb; pdb.set_trace()
     print(OmegaConf.to_yaml(cfg))
     if cfg['logger'] == 'mlflow':
         save_path = os.path.join(cfg['save_dir'], logger.experiment_id, logger.run_id)

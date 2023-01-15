@@ -26,10 +26,12 @@ data_module:
 save_dir: "PASS"
 gpus: 1
 
-# modifications 1: make the network bigger
+# the below actually doesn't do anything
 model:
-    num_layers: 5
+    num_layers: 10
     layer_size: 200
+
+
 
       # hydra:
       #     job:

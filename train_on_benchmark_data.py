@@ -17,8 +17,8 @@ from dynamics_toolbox.utils.lightning.constructors import\
 
 # _DATA_SOURCE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/data/benchmark/mulan/mulan/data/multi-target/h5py_data"
 # _SAVE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/experiments/benchmark"
-# _DATA_SOURCE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/data/benchmark"
-# _SAVE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/experiments/benchmark"
+_DATA_SOURCE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/data/benchmark"
+_SAVE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/experiments/benchmark"
 _CURR_DATASET_NAME = "???"
 _CURR_SEED = 0
 

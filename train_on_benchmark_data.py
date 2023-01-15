@@ -15,10 +15,10 @@ import dynamics_toolbox
 from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
-# _DATA_SOURCE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/data/benchmark/mulan/mulan/data/multi-target/h5py_data"
-# _SAVE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/experiments/benchmark"
-_DATA_SOURCE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/data/benchmark"
-_SAVE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/experiments/benchmark"
+_DATA_SOURCE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/data/benchmark/mulan/mulan/data/multi-target/h5py_data"
+_SAVE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/experiments/benchmark"
+# _DATA_SOURCE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/data/benchmark"
+# _SAVE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/experiments/benchmark"
 _CURR_DATASET_NAME = "???"
 _CURR_SEED = 0
 
@@ -39,7 +39,15 @@ def train(cfg: DictConfig) -> None:
     cfg['run_name'] = f"benchmark_dataset_{_CURR_DATASET_NAME}-seed_{_CURR_SEED}"
     cfg['data_source'] = f"{_DATA_SOURCE_DIR}/{_CURR_DATASET_NAME}-seed_{_CURR_SEED}.h5"
     cfg['save_dir'] = _SAVE_DIR
+
+    print('='*80)
+    print(f"  run_name: {cfg['run_name']}")
+    print(f"  run_name: {cfg['data_source']}")
+    print('='*80)
     ######
+
+
+
     # Alter config file and add defaults.
     with open_dict(cfg):
         cfg['data_module']['data_source'] = cfg['data_source']

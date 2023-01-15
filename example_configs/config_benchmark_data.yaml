@@ -16,8 +16,8 @@ defaults:
 trainer:
     max_epochs: 10000
 #     max_epochs: 10
-    devices: 2
-    accelerator: 'gpu'
+#    devices: 2
+#    accelerator: 'gpu'
 data_module:
     batch_size: 128
     val_proportion: 0.0
@@ -28,8 +28,17 @@ gpus: 1
 
 # the below actually doesn't do anything
 model:
-    num_layers: 10
-    layer_size: 200
+    encoder_output_dim: 200
+    encoder_cfg:
+        num_layers: 4
+        layer_size: 200
+    mean_net_cfg:
+        num_layers: 0
+        layer_size: 200
+    logvar_net_cfg:
+        num_layers: 0
+        layer_size: 200
+
 
 
 

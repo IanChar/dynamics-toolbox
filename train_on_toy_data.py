@@ -15,8 +15,10 @@ import dynamics_toolbox
 from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
-_DATA_SOURCE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/data/toy_dataset"
-_SAVE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/experiments/toy_dataset"
+# _DATA_SOURCE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/data/toy_dataset"
+# _SAVE_DIR = "/Users/youngsec/research/uq/highdim_cali/git_package/experiments/toy_dataset"
+_DATA_SOURCE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/data/h5_files"
+_SAVE_DIR = "/zfsauton2/home/youngsec/research/uq/multidim_recal_paper/experiments/toy_dataset"
 _CURR_NUM_DATA = 0
 _CURR_REP_IDX = 0
 
@@ -49,7 +51,6 @@ def train(cfg: DictConfig) -> None:
             cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
-    breakpoint()
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
 
     # import pdb; pdb.set_trace()
@@ -81,8 +82,11 @@ def train(cfg: DictConfig) -> None:
         return 0
 
 def run():
-    num_reps = 3
-    num_data_list = [500, 1000, 3000]
+    num_reps = 5
+    # num_data_list = [500, 5000, 10000]
+    num_data_list = [500]
+    num_data_list = [5000]
+    num_data_list = [10000]
 
     for num_data in num_data_list:
         for i in range(num_reps):

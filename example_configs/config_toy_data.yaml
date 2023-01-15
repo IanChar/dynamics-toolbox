@@ -14,12 +14,12 @@ defaults:
     - model: pnn
 
 trainer:
-#    max_epochs: 3000
-    max_epochs: 10
-    devices: 1
+    max_epochs: 3000
+#     max_epochs: 10
+    devices: 2
     accelerator: 'gpu'
 data_module:
-    batch_size: 64
+    batch_size: 128
     val_proportion: 0.0
     test_proportion: 0.0
     num_workers: 16
@@ -28,8 +28,8 @@ gpus: 1
 
 # modifications 1: make the network bigger
 model:
-    num_layers: 3
-    layer_size: 100
+    num_layers: 2
+    layer_size: 64
 
       # hydra:
       #     job:

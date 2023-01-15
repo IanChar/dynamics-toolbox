@@ -88,7 +88,6 @@ def construct_all_pl_components_for_training(
             save_dir=cfg['save_dir'],
             name=name,
         )
-    breakpoint()
     if 'devices' in cfg['trainer'] and isinstance(cfg['trainer']['devices'], int):
         cfg['trainer']['devices'] = [cfg['trainer']['devices']]
     trainer = pl.Trainer(

@@ -93,11 +93,11 @@ class Ensemble(AbstractModel):
         else:
             if (self._curr_sample is None
                     or self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP):
-                self._curr_sample = self._draw_from_categorical(len(model_input))
+                self._curr_sample = self.draw_from_categorical(len(model_input))
             elif len(model_input) > len(self._curr_sample):
                 self._curr_sample = np.vstack([
                     self._curr_sample,
-                    self._draw_from_categorical(
+                    self.draw_from_categorical(
                         len(model_input) - len(self._curr_sample)),
                 ])
             if each_input_is_different_sample:
@@ -105,6 +105,14 @@ class Ensemble(AbstractModel):
             else:
                 ensemble_idxs = [self._curr_sample[0] for _ in range(len(model_input))]
             return nxts[ensemble_idxs, np.arange(len(model_input))], info_dict
+
+    def set_sample(self, sample: np.ndarray) -> None:
+        """Set the current sample.
+
+        Args:
+            sample: Ndarray of the indices to use.
+        """
+        self._curr_sample = sample
 
     def set_member_sample_mode(self, mode: str) -> None:
         """Set the sampling mode of each member of the ensemble.
@@ -156,7 +164,7 @@ class Ensemble(AbstractModel):
         """The sample mode is the method that in which we get next state."""
         return self.members[0].output_dim
 
-    def _draw_from_categorical(self, num_samples) -> np.ndarray:
+    def draw_from_categorical(self, num_samples) -> np.ndarray:
         """Draw from categorical distribution.
 
         Args:

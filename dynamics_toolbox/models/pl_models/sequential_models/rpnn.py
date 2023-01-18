@@ -86,8 +86,8 @@ class RPNN(AbstractSequentialModel):
             raise ValueError(f'Cannot recognize RNN type {rnn_type}')
         self._memory_unit = rnn_class(encode_dim, rnn_hidden_size,
                                       num_layers=rnn_num_layers,
-                                      batch_first=True,
-                                      device=self.device)
+                                      batch_first=True)
+        self._memory_unit = self._memory_unit.to(self.device)
         if use_layer_norm:
             self._layer_norm = torch.nn.LayerNorm(encode_dim)
         self._input_dim = input_dim

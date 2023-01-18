@@ -60,6 +60,7 @@ def load_ensemble_from_list_of_log_dirs(
             Must be the same length as paths.
         sample_mode: The sampling mode for the ensemble.
     """
+    paths.sort()
     epochs = [None for _ in paths] if epochs is None else epochs
     ensemble = Ensemble([load_model_from_log_dir(path, epoch)
                          for path, epoch in zip(paths, epochs)],

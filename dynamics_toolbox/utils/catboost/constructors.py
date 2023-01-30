@@ -25,7 +25,8 @@ from dynamics_toolbox.utils.pytorch.modules.normalizer import (
 
 def construct_all_cb_components_for_training(
         cfg: DictConfig
-) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase, DictConfig]:
+) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase,
+           DictConfig]:
     """Construct all components needed for training.
 
     Args:
@@ -83,10 +84,7 @@ def construct_all_cb_components_for_training(
             run_name=cfg.get('run_name', None),
         )
     else:
-        if 'run_name' in cfg:
-            name = os.path.join(cfg['experiment_name'], cfg['run_name'])
-        else:
-            name = cfg['experiment_name']
+        name = cfg['name']
         logger = TensorBoardLogger(
             save_dir=cfg['save_dir'],
             name=name,

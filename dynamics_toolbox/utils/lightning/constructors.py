@@ -25,7 +25,8 @@ from dynamics_toolbox.utils.pytorch.modules.normalizer import (
 
 def construct_all_pl_components_for_training(
         cfg: DictConfig
-) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase, DictConfig]:
+) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase,
+           DictConfig]:
     """Construct all components needed for training.
 
     Args:
@@ -68,6 +69,8 @@ def construct_all_pl_components_for_training(
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
     max_epochs = (1000 if 'max_epochs' not in cfg['trainer']
                   else cfg['trainer']['max_epochs'])
+    if hasattr(model, 'set_additional_model_params'):
+        model.set_additional_model_params({'iterations': max_epochs})
     if data_module.num_validation > 0:
         callbacks.append(ModelCheckpoint(monitor='val/loss'))
     callbacks.append(SingleProgressBar(max_epochs))
@@ -85,14 +88,8 @@ def construct_all_pl_components_for_training(
             run_name=run_name,
         )
     else:
-        if 'run_name' in cfg:
-            name = cfg['run_name']
-        else:
-            name = cfg.get('name', 'temp')
-        logger = TensorBoardLogger(
-            save_dir=cfg['save_dir'],
-            name=name,
-        )
+        name = cfg['name']
+        logger = TensorBoardLogger(save_dir=cfg['save_dir'], name=name)
     trainer = pl.Trainer(
         **cfg['trainer'],
         logger=logger,

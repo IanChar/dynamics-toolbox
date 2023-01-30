@@ -1,5 +1,5 @@
-name: "rnn"
-data_source: ???
+name: "example_rnn"
+data_source: "data/pendulum_toy.hdf5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"
@@ -13,4 +13,4 @@ hydra:
     job:
         name: ${name}
     run:
-        dir: results/${name}/${seed}
+        dir: trained_models/

@@ -4,23 +4,21 @@ Main file to use for training dynamics models.
 Author: Ian Char
 """
 import os
-import pickle as pkl
 
 import hydra
-from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf, open_dict
 from pytorch_lightning.utilities.seed import seed_everything
 
-import dynamics_toolbox
+from dynamics_toolbox import DYNAMICS_TOOLBOX_PATH
 from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
 
-@hydra.main(config_path='./example_configs', 
-            config_name='class_config_ysc')
+@hydra.main(config_path='./example_configs', config_name='example_rnn')
 def train(cfg: DictConfig) -> None:
-    # breakpoint()
     """Train the model."""
+    if cfg.get('debug', False):
+        breakpoint()
     if 'model' not in cfg:
         raise ValueError('model must be specified. Choose one of the provided '
                          'model configurations and set +model=<model_config>.')
@@ -33,30 +31,19 @@ def train(cfg: DictConfig) -> None:
     if 'cuda_device' in cfg:
         os.environ['CUDA_VISIBLE_DEVICES'] = str(cfg['cuda_device'])
     with open_dict(cfg):
+        # Make the path relative.
+        cfg['data_source'] = os.path.join(DYNAMICS_TOOLBOX_PATH, cfg['data_source'])
         cfg['data_module']['data_source'] = cfg['data_source']
         if 'smote' in cfg:
             cfg['smote'] = bool(cfg['smote'])
-        if 'save_dir' not in cfg:
-            cfg['save_dir'] = os.getcwd()
-        elif cfg['save_dir'][0] != '/':
-            cfg['save_dir'] = os.path.join(get_original_cwd(), cfg['save_dir'])
+        cfg['save_dir'] = os.getcwd()
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)
-
-    # import pdb; pdb.set_trace()
     print(OmegaConf.to_yaml(cfg))
-    if cfg['logger'] == 'mlflow':
-        save_path = os.path.join(cfg['save_dir'], logger.experiment_id, logger.run_id)
-    else:
-        save_path = os.getcwd()
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-
-    pkl.dump(data, open('{}/data_obj.pkl'.format(save_path), 'wb'))
+    save_path = os.getcwd()
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))
     logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
-    # import pdb; pdb.set_trace()
     trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]

@@ -1,4 +1,5 @@
 import os
 import pathlib
 
-os.environ['DYNAMICS_TOOLBOX_PATH'] = str(pathlib.Path(__file__).parent.resolve())
+DYNAMICS_TOOLBOX_PATH = str(pathlib.Path(__file__).parent.parent.resolve())
+os.environ['DYNAMICS_TOOLBOX_PATH'] = DYNAMICS_TOOLBOX_PATH

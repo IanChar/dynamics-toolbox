@@ -1,7 +1,7 @@
 """
-Construction functions for lightning.
+Construction functions for catboost.
 
-Author: Ian Char
+Author: Youngseog Chung
 """
 from typing import Tuple
 import os
@@ -23,7 +23,7 @@ from dynamics_toolbox.utils.pytorch.modules.normalizer import (
 )
 
 
-def construct_all_pl_components_for_training(
+def construct_all_cb_components_for_training(
         cfg: DictConfig
 ) -> Tuple[AbstractPlModel, LightningDataModule, pl.Trainer, LightningLoggerBase, DictConfig]:
     """Construct all components needed for training.
@@ -68,38 +68,31 @@ def construct_all_pl_components_for_training(
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))
     max_epochs = (1000 if 'max_epochs' not in cfg['trainer']
                   else cfg['trainer']['max_epochs'])
+
+    model.set_additional_model_params({'iterations': max_epochs})
+
     if data_module.num_validation > 0:
         callbacks.append(ModelCheckpoint(monitor='val/loss'))
     callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
-        experiment = cfg.get('experiment_name', 'experiment')
-        if 'run_name' in cfg:
-            run_name = cfg['run_name']
-        else:
-            run_name = cfg.get('name', 'temp')
         logger = MLFlowLogger(
-            experiment_name=experiment,
+            experiment_name=cfg['experiment_name'],
             tracking_uri=cfg.get('tracking_uri', None),
             save_dir=cfg['save_dir'],
-            run_name=run_name,
+            run_name=cfg.get('run_name', None),
         )
     else:
         if 'run_name' in cfg:
-            name = cfg['run_name']
+            name = os.path.join(cfg['experiment_name'], cfg['run_name'])
         else:
-            name = cfg.get('name', 'temp')
+            name = cfg['experiment_name']
         logger = TensorBoardLogger(
             save_dir=cfg['save_dir'],
             name=name,
         )
-    trainer = pl.Trainer(
-        **cfg['trainer'],
-        logger=logger,
-        callbacks=callbacks,
-        progress_bar_refresh_rate=0,
-    )
-    return model, data_module, trainer, logger, cfg
+
+    return model, data_module, logger, cfg
 
 
 def get_early_stopping_for_val_loss(cfg: DictConfig) -> pl.callbacks.EarlyStopping:

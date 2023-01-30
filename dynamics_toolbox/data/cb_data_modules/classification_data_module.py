@@ -1,19 +1,21 @@
 """
-Data module for doing regression.
+Data module for doing classification.
 
-Author: Ian Char
+Author: Youngseog Chung
 """
 from typing import Dict, Union, List, Sequence
 
 import numpy as np
+from imblearn.over_sampling import SMOTE
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
+from catboost import Pool
 
 from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
 
 
-class RegressionDataModule(LightningDataModule):
+class CBClassificationDataModule(LightningDataModule):
 
     def __init__(
             self,
@@ -40,13 +42,22 @@ class RegressionDataModule(LightningDataModule):
             batch_size: Batch size.
             learn_rewards: Whether to include the rewards for learning in xdata.
             val_proportion: Proportion of data to use as validation.
-            test_proportion: Proportion of data to use as test.
+            val_proportion: Proportion of data to use as test.
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.
         """
         super().__init__()
         dataset = load_from_hdf5(data_source)
+        breakpoint()
+        use_smote = bool(kwargs.get('smote', False))
+        if use_smote:
+            for split_key in ['tr', 'val', 'te']:
+                curr_x = dataset[f'{split_key}_x']
+                curr_y = (dataset[f'{split_key}_y'] >= 0.5).astype(int)  # TODO(ysc): I am just applying hard labels here, that's actually set in cfg['model'] for now
+                x_re, y_re = SMOTE().fit_resample(curr_x, curr_y)
+                dataset[f'{split_key}_x'] = x_re.reshape(-1, curr_x.shape[1])
+                dataset[f'{split_key}_y'] = y_re.reshape(-1, curr_y.shape[1])
         self._xdata = dataset['tr_x']
         self._ydata = dataset['tr_y']
         self._val_proportion = val_proportion
@@ -73,6 +84,25 @@ class RegressionDataModule(LightningDataModule):
                     torch.Tensor(dataset['te_x']),
                     torch.Tensor(dataset['te_y']),
             )
+
+        breakpoint()
+        self.tr_x = self._tr_dataset.dataset.tensors[0].numpy()
+        self.tr_y = self._tr_dataset.dataset.tensors[1].numpy()
+        self.val_x = self._val_dataset.tensors[0].numpy()
+        self.val_y = self._val_dataset.tensors[1].numpy()
+        self.te_x = self._te_dataset.tensors[0].numpy()
+        self.te_y = self._te_dataset.tensors[1].numpy()
+
+        self.tr_pool = Pool(self.tr_x, self.tr_y)
+        self.val_pool = Pool(self.val_x, self.val_y)
+        self.te_pool = Pool(self.te_x, self.te_y)
+
+        if 'num_classes' in kwargs:
+            self._num_classes = int(kwargs.get('num_classes'))
+        else:
+            min_class = np.min(self._ydata)
+            max_class = np.max(self._ydata)
+            self._num_classes = int((max_class - min_class) + 1)
 
     def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
@@ -136,7 +166,7 @@ class RegressionDataModule(LightningDataModule):
     @property
     def output_dim(self) -> int:
         """Output dimension."""
-        return self._ydata.shape[-1]
+        return self._num_classes
 
     @property
     def num_train(self) -> int:

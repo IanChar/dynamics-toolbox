@@ -1,0 +1,40 @@
+# experiment_name: "disrupt_model"
+# run_name: "dataset_2022-10-12"
+# data_source: "/zfsauton2/home/youngsec/research/fusion/disruption/model_data_file_fixed.h5"
+experiment_name: "smote_hard_cls_with_ip_1000ms"
+run_name: "scan_use_as_input_(act-nact)"
+data_source: "/home/scratch/youngsec/rs/fusion/disruption/datasets/scan_use_as_input_with_ip_1000ms/scan_use_as_input_(act-nact).h5"
+seed: 1
+logger: tensorboard
+normalization: "standardize_input"
+defaults:
+    - trainer: pl_trainer
+    - data_module: cb_classification_data_module
+    - early_stopping: default
+    - model: cb_classifier
+
+trainer:
+    max_epochs: 100000
+    devices: 1
+    accelerator: 'gpu'
+    auto_select_gpus: 1
+data_module:
+    batch_size: 512
+    val_proportion: 0.0
+    test_proportion: 0.0
+    num_workers: 16
+    smote: 0
+save_dir: "/zfsauton2/home/youngsec/research/fusion/disruption/train_runs"
+gpus: 2
+
+# modifications 1: make the network bigger
+model:
+#     num_layers: 5
+#     layer_size: 300
+    hard_labels: 1
+
+      # hydra:
+      #     job:
+      #         name: ${name}
+      #     run:
+      #         dir: results/${name}/${now:%Y-%m-%d-%H-%M}

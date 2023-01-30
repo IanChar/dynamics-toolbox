@@ -53,6 +53,26 @@ def get_quantile_loss(
         raise ValueError(f'Unknown loss {name}.')
 
 
+def get_classification_loss(
+        name: str,
+        **kwargs
+) -> Callable[[torch.Tensor, torch.Tensor], torch.Tensor]:
+    """Get a classification loss function based on name.
+
+    Args:
+        name: The name of the loss.
+        **kwargs: Any other named arguments to pass to the loss function.
+
+    Returns:
+        The loss function.
+    """
+    if name == losses.CE:
+        return torch.nn.CrossEntropyLoss(**kwargs)
+    # elif name == losses.Brier:
+    else:
+        raise ValueError(f'Unknown loss {name}.')
+
+
 """ Quantile Loss Definitions """
 
 def get_cali_loss(

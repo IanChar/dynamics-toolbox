@@ -88,8 +88,7 @@ def construct_all_pl_components_for_training(
             run_name=run_name,
         )
     else:
-        name = cfg['name']
-        logger = TensorBoardLogger(save_dir=cfg['save_dir'], name=name)
+        logger = TensorBoardLogger(save_dir=cfg['save_dir'], name='logs')
     trainer = pl.Trainer(
         **cfg['trainer'],
         logger=logger,

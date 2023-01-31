@@ -32,8 +32,14 @@ def load_model_from_log_dir(
         The loaded dynamics model.
     """
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
-    path = os.path.join(path, 'checkpoints')
-    checkpoints = os.listdir(path)
+    checkpoint_path = None
+    for root, dirs, files in os.walk(path):
+        if 'checkpoints' in dirs:
+            checkpoint_path = os.path.join(root, 'checkpoints')
+            break
+    if checkpoint_path is None:
+        raise ValueError(f'Checkpoint directory not found in {path}')
+    checkpoints = os.listdir(checkpoint_path)
     epochs = [int(ck.split('-')[0].split('=')[1]) for ck in checkpoints]
     if epoch is not None:
         if epoch not in epochs:
@@ -41,9 +47,9 @@ def load_model_from_log_dir(
         epidx = epochs.index(epoch)
     else:
         epidx = np.argmax(epochs)
-    path = os.path.join(path, checkpoints[epidx])
+    model_path = os.path.join(checkpoint_path, checkpoints[epidx])
     model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
-    return model.load_from_checkpoint(checkpoint_path=path, **cfg['model'])
+    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
 
 
 def load_ensemble_from_list_of_log_dirs(
@@ -127,4 +133,3 @@ def load_model_from_tensorboard_log(
     else:
         path = os.path.join(path, f'version_{max(versions)}')
     return load_model_from_log_dir(path, epoch=epoch)
-

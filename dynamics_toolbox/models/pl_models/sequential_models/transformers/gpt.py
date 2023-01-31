@@ -67,10 +67,13 @@ class GPT(AbstractSequentialModel):
         self._input_dim = input_dim
         self._output_dim = output_dim
         self.embed_dim = embed_dim_per_head * n_heads
+        self.block_size = block_size
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._sample_mode = sample_mode
         self._record_history = True
+        self._history = None
+        self._time_step = 0
         self._warm_up_period = warm_up_period
         self._var_pinning = (logvar_lower_bound is not None
                              and logvar_upper_bound is not None)
@@ -173,7 +176,40 @@ class GPT(AbstractSequentialModel):
         Returns:
             The predictions for a single function sample.
         """
-        raise NotImplementedError('TODO')
+        if self._history is None:
+            self._history = torch.zeros(net_in.shape[0], self.block_size,
+                                        net_in.shape[1])
+        elif self._history.shape[0] != net_in.shape[0]:
+            raise ValueError('Number of inputs does not match previously given number.'
+                             f' Expected {self._history.shape[0]} but received'
+                             f' {net_in.shape[0]}.')
+        if self._time_step >= self.block_size - 1:
+            self._history = torch.cat([
+                self._history[:, 1:],
+                net_in.unsqueeze(1),
+            ], dim=1)
+        else:
+            self._history[:, self._time_step] = net_in
+        with torch.no_grad():
+            out_stats = self.get_net_out([self._history])
+        pred_idx = min(self._time_step, out_stats['mean'].shape[1] - 1)
+        mean_predictions = out_stats['mean'][:, pred_idx]
+        logvar_predictions = out_stats['logvar'][:, pred_idx]
+        std_predictions = (0.5 * logvar_predictions).exp()
+        if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
+            predictions = (torch.randn_like(mean_predictions) * std_predictions
+                           + mean_predictions)
+        else:
+            predictions = mean_predictions
+        info = {
+            'predictions': predictions,
+            'mean_predictions': mean_predictions,
+            'std_predictions': std_predictions,
+            'all_mean_predictions': out_stats['mean'],
+            'all_logvar_predictions': out_stats['logvar']
+        }
+        self._time_step += 1
+        return predictions, info
 
     def multi_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
             torch.Tensor, Dict[str, Any]]:
@@ -250,7 +286,8 @@ class GPT(AbstractSequentialModel):
 
     def clear_history(self) -> None:
         """Clear the history."""
-        self._hidden_state = None
+        self._history = None
+        self._time_step = 0
 
     def reset(self) -> None:
         """Reset the dynamics model."""

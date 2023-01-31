@@ -49,14 +49,14 @@ def collect_data(args):
     returns = []
     while len(observations) < args.num_collects:
         done = False
-        s = env.reset()[0]
+        s = env.reset()
         neps += 1
         t = 0
         timeout = False
         ret = 0
         while not done and t < args.path_length and not timeout:
             a, _ = policy.get_action(s)
-            n, r, done, truncated, info = env.step(a)
+            n, r, done, truncated = env.step(a)[:4]
             ret += r
             t += 1
             ret += r

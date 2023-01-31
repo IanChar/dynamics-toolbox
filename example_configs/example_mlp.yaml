@@ -1,13 +1,13 @@
-name: "example_rnn"
+name: "example_mlp"
 data_source: "data/pendulum_100k.hdf5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"
 cuda_device: null
 defaults:
-    - model: rpnn
+    - model: pnn
     - trainer: pl_trainer
-    - data_module: sequential_data_module
+    - data_module: forward_dynamics_data_module
     - early_stopping: default
 hydra:
     job:

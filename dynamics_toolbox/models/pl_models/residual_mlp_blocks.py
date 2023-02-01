@@ -24,13 +24,13 @@ class MLP(AbstractPlModel):
             self,
             input_dim: int,
             output_dim: int,
-            learning_rate: float = 1e-3,
-            num_layers: Optional[int] = None,
-            layer_size: Optional[int] = None,
-            architecture: Optional[str] = None,
+            embed_dim: int,
+            num_layers_per_block: int,
+            num_blocks: int,
+            learning_rate: float = 3e-4,
             hidden_activation: str = activations.RELU,
             loss_type: str = losses.MSE,
-            weight_decay: Optional[float] = 0.0,
+            weight_decay: Optional[float] = 1e-3,
             **kwargs,
     ):
         """Constructor.
@@ -49,13 +49,16 @@ class MLP(AbstractPlModel):
             weight_decay: The weight decay for the optimizer.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        hidden_sizes = get_architecture(num_layers, layer_size, architecture)
-        self._net = FCNetwork(
-            input_dim=input_dim,
-            output_dim=output_dim,
-            hidden_sizes=hidden_sizes,
-            hidden_activation=get_activation(hidden_activation),
-        )
+        self.num_blocks = num_blocks
+        hidden_sizes = get_architecture(num_layers_per_block, embed_dim, None)
+        for bnum in range(num_blocks):
+            outdim = embed_dim if bnum < num_blocks - 1 else output_dim
+            setattr(self, f'block_{bnum}', FCNetwork(
+                input_dim=input_dim,
+                output_dim=outdim,
+                hidden_sizes=hidden_sizes,
+                hidden_activation=get_activation(hidden_activation),
+            ))
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._sample_mode = ''
@@ -76,7 +79,9 @@ class MLP(AbstractPlModel):
         Returns:
             The output of the networ.
         """
-        return self._net.forward(x)
+        for bnum in range(self.num_blocks):
+            x = x + getattr(self, f'block_{bnum}')(x)
+        return x
 
     def single_sample_output_from_torch(
             self,

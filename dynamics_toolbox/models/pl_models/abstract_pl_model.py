@@ -103,7 +103,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer"""
-        return torch.optim.Adam(
+        return torch.optim.AdamW(
             self.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,

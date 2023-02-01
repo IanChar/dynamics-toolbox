@@ -52,7 +52,6 @@ class RecurrentQuantile(AbstractSequentialModel):
             sample_mode: The method to use for sampling.
         """
         super().__init__(input_dim, output_dim)
-        self.save_hyperparameters()
         self._encoder = hydra.utils.instantiate(
             encoder_cfg,
             input_dim=input_dim,

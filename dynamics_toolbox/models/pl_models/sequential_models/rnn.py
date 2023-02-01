@@ -56,7 +56,6 @@ class RNN(AbstractSequentialModel):
             use_layer_norm: Whether to use layer norm.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
         self._encoder = hydra.utils.instantiate(
             encoder_cfg,
             input_dim=input_dim,

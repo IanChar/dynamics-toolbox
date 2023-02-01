@@ -65,7 +65,6 @@ class SimplexMLP(AbstractPlModel):
             weight_decay: The weight decay for the optimizer.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
         if architecture is not None:
             hidden_sizes = s2i(architecture)
         elif num_layers is not None and layer_size is not None:

@@ -50,7 +50,6 @@ class QuantileModel(AbstractPlModel):
             weight_decay: The weight decay for the optimizer.
     """
         super().__init__(input_dim, output_dim)
-        self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
         self._quantile_network = hydra.utils.instantiate(

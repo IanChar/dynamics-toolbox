@@ -67,7 +67,6 @@ class GPT(AbstractSequentialModel):
             weight_decay: The weight decay for the optimizer.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
         self._input_dim = input_dim
         self._output_dim = output_dim
         self.embed_dim = embed_dim_per_head * n_heads

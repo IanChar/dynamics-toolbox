@@ -9,3 +9,7 @@ posn_embedding:
   _target_: dynamics_toolbox.utils.pytorch.modules.positional_embeddings.LearnedEmbedding
   embed_dim: 64
   max_len: 200
+dim_name_map:
+  - "X Position"
+  - "Y Position"
+  - "Angular Velocity"

@@ -41,7 +41,6 @@ class CatboostRegressor(AbstractCatboostModel):
 
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
         hidden_sizes = get_architecture(num_layers, layer_size, architecture)
         self._net = FCNetwork(
             input_dim=input_dim,

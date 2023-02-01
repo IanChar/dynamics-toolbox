@@ -57,7 +57,6 @@ class DynamicsRNN(AbstractSequentialModel):
             predictions_are_deltas: Whether the predictions of the model are deltas.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.save_hyperparameters()
         self._encoder = hydra.utils.instantiate(
             encoder_cfg,
             input_dim=input_dim,

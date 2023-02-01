@@ -69,14 +69,15 @@ class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
             metric_value = metric(one_step_pred, one_step_yi)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}_OneStep'] = metric_v
+                    to_return[f'{metric_name}_{self._dim_name_map[dim_idx]}_OneStep'] =\
+                        metric_v
             else:
                 to_return[f'{metric_name}_OneStep'] = metric_value
         for metric_name, metric in self.metrics.items():
             metric_value = metric(pred, yi)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
+                    to_return[f'{metric_name}_{self._dim_name_map[dim_idx]}'] = metric_v
             else:
                 to_return[metric_name] = metric_value
         return to_return

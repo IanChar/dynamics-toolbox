@@ -21,7 +21,7 @@ from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
 ###########################################################################
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, required=True)
-parser.add_argument('--save_path', type=str, default='gifs/pendulum/mlp')
+parser.add_argument('--save_path', type=str, default='gifs/pendulum/gpt')
 parser.add_argument('--data_path', type=str, default='data/pendulum_holdout.hdf5')
 parser.add_argument('--path_len', type=int, default=200)
 parser.add_argument('--max_paths', type=int, default=3)

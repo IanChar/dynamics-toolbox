@@ -15,6 +15,7 @@ from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.modules.attention import GPTBlock
+from dynamics_toolbox.utils.pytorch.modules.embeddings import PositionalEncoding
 
 
 class GPT(AbstractSequentialModel):
@@ -83,6 +84,7 @@ class GPT(AbstractSequentialModel):
             'IndvEV': ExplainedVariance('raw_values'),
         }
         # Initialize the modules.
+        self.posn_encoder = PositionalEncoding(self.embed_dim, max_len=self.block_size)
         self.encoder = nn.Linear(input_dim, self.embed_dim, bias=False)
         self.blocks = nn.ModuleList([GPTBlock(
             embed_dim_per_head=embed_dim_per_head,
@@ -121,7 +123,7 @@ class GPT(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        encoded = self.encoder(batch[0])
+        encoded = self.posn_encoder(self.encoder(batch[0]))
         for block in self.blocks:
             encoded = block(encoded)
         mean = self.mean_decoder(encoded)

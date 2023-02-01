@@ -22,6 +22,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             input_dim: int,
             output_dim: int,
             normalizer: Optional[Normalizer] = None,
+            dim_name_map: Optional[Sequence[str]] = None,
             **kwargs
     ):
         """Constructor.
@@ -34,6 +35,13 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         super().__init__()
         self._input_dim = input_dim
         self._output_dim = output_dim
+        if dim_name_map is None:
+            self._dim_name_map = [f'dim{didx}' for didx in range(output_dim)]
+        else:
+            if len(dim_name_map) != output_dim:
+                raise ValueError(f'Got {len(dim_name_map)} dim names but '
+                                 f'output dim is {output_dim}')
+            self._dim_name_map = dim_name_map
         if normalizer is None:
             normalizer = NoNormalizer()
         self.normalizer = normalizer
@@ -261,8 +269,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             metric_value = metric(pred, yi)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_dim{dim_idx}'] = metric_v
+                    to_return[f'{metric_name}_{self._dim_name_map[dim_idx]}'] = metric_v
             else:
                 to_return[metric_name] = metric_value
         return to_return
-

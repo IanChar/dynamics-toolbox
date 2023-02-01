@@ -2,6 +2,6 @@ _target_: dynamics_toolbox.models.pl_models.sequential_models.transformers.gpt.G
 num_blocks: 4
 embed_dim_per_head: 16
 n_heads: 4
-block_size: 64
+block_size: 200
 logvar_lower_bound: -10
 logvar_upper_bound: 0.5

@@ -17,7 +17,7 @@ from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
 
-class MLP(AbstractPlModel):
+class ResidualMLPBlocks(AbstractPlModel):
     """Fully connected network for dynamics."""
 
     def __init__(

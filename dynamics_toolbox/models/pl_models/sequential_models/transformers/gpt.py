@@ -7,6 +7,8 @@ Date: January 30, 2023
 import math
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
+import hydra
+from omegaconf import DictConfig
 import torch
 import torch.nn as nn
 from torchmetrics import ExplainedVariance
@@ -15,7 +17,6 @@ from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.modules.attention import GPTBlock
-from dynamics_toolbox.utils.pytorch.modules.embeddings import PositionalEncoding
 
 
 class GPT(AbstractSequentialModel):
@@ -32,6 +33,7 @@ class GPT(AbstractSequentialModel):
         embed_dim_per_head: int,
         n_heads: int,
         block_size: int,
+        posn_embedding: Optional[DictConfig],
         dropout: float = 0.0,
         bias: bool = False,
         warm_up_period: int = 0,
@@ -50,6 +52,7 @@ class GPT(AbstractSequentialModel):
             embed_dim_per_head: The dimension of the embedding per head.
             n_heads: The number of heads.
             block_size: Size of the block, i.e. the sequence length.
+            posn_embedding: The configuration for the positional embedding.
             dropout: The amount of dropout.
             bias: Whether to have bias in the linear layer.
             warm_up_period: The amount of data to take in before predictions begin to
@@ -84,7 +87,10 @@ class GPT(AbstractSequentialModel):
             'IndvEV': ExplainedVariance('raw_values'),
         }
         # Initialize the modules.
-        self.posn_encoder = PositionalEncoding(self.embed_dim, max_len=self.block_size)
+        if posn_embedding is None:
+            self.posn_embedder = None
+        else:
+            self.posn_embedder = hydra.utils.instantiate(posn_embedding)
         self.encoder = nn.Linear(input_dim, self.embed_dim, bias=False)
         self.blocks = nn.ModuleList([GPTBlock(
             embed_dim_per_head=embed_dim_per_head,
@@ -123,7 +129,9 @@ class GPT(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        encoded = self.posn_encoder(self.encoder(batch[0]))
+        encoded = self.encoder(batch[0])
+        if self.posn_embedder is not None:
+            encoded = self.posn_embedder(encoded)
         for block in self.blocks:
             encoded = block(encoded)
         mean = self.mean_decoder(encoded)

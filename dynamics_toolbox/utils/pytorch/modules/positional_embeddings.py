@@ -1,5 +1,5 @@
 """
-Collection of different embeddings.
+Collection of different positional embeddings.
 
 Author: Ian Char
 Date January 31, 2023
@@ -10,7 +10,34 @@ import torch
 import torch.nn as nn
 
 
-class PositionalEncoding(nn.Module):
+class LearnedEmbedding(nn.Module):
+    """Learn the positional embedding."""
+
+    def __init__(
+        self,
+        embed_dim: int,
+        max_len: int,
+    ):
+        """Constructor.
+
+        Args:
+            embed_dim: The dimension of the embedding.
+            max_len: Maximum length of the sequence.
+        """
+        super().__init__()
+        self.posn_embed = nn.Parameter(torch.zeros(1, max_len, embed_dim))
+
+    def forward(self, net_in: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+            net_in: Shape of (batch_size, sequence length, embed dim)
+        """
+        length = net_in.shape[1]
+        return net_in + self.posn_embed[:, :length]
+
+
+class SinCosEmbedding(nn.Module):
     """Taken from the pytorch transformers tutorial."""
 
     def __init__(
@@ -38,6 +65,10 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, net_in: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
+        """Forward pass.
+
+        Args:
+            net_in: Shape of (batch_size, sequence length, embed dim)
+        """
         net_in = net_in + self.pe[:net_in.size(0), :]
         return self.dropout(net_in)

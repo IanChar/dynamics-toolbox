@@ -11,6 +11,7 @@ import hydra
 from omegaconf import DictConfig
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.constants import sampling_modes
@@ -116,6 +117,27 @@ class GPT(AbstractSequentialModel):
             if pn.endswith('c_proj.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * num_blocks))
 
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward function for network
+
+        Args:
+            x: The input to the network with shape (batch_size, seq_length, dim)
+
+        Returns:
+            The mean and log variance with the same shapes as input.
+        """
+        encoded = self.encoder(x)
+        if self.posn_embedder is not None:
+            encoded = self.posn_embedder(encoded)
+        for block in self.blocks:
+            encoded = block(encoded)
+        mean = self.mean_decoder(encoded)
+        logvar = self.std_decoder(encoded)
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
+        return mean, logvar
+
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
 
@@ -128,13 +150,7 @@ class GPT(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        encoded = self.encoder(batch[0])
-        if self.posn_embedder is not None:
-            encoded = self.posn_embedder(encoded)
-        for block in self.blocks:
-            encoded = block(encoded)
-        mean = self.mean_decoder(encoded)
-        logvar = self.std_decoder(encoded)
+        mean, logvar = self.get_net_out(batch[0])
         return {'mean': mean, 'logvar': logvar}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \

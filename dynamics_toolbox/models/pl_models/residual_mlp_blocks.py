@@ -77,10 +77,12 @@ class ResidualMLPBlocks(AbstractPlModel):
             x: The input to the network.
 
         Returns:
-            The output of the networ.
+            The output of the network.
         """
-        for bnum in range(self.num_blocks):
+        x = self.block_0(x)
+        for bnum in range(1, self.num_blocks - 1):
             x = x + getattr(self, f'block_{bnum}')(x)
+        x = getattr(self, f'block_{self.num_blocks - 1}')(x)
         return x
 
     def single_sample_output_from_torch(

@@ -150,7 +150,7 @@ class GPT(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        mean, logvar = self.get_net_out(batch[0])
+        mean, logvar = self.forward(batch[0])
         return {'mean': mean, 'logvar': logvar}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \

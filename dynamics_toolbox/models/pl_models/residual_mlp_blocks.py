@@ -52,9 +52,10 @@ class ResidualMLPBlocks(AbstractPlModel):
         self.num_blocks = num_blocks
         hidden_sizes = get_architecture(num_layers_per_block, embed_dim, None)
         for bnum in range(num_blocks):
+            indim = embed_dim if bnum > 0 else input_dim
             outdim = embed_dim if bnum < num_blocks - 1 else output_dim
             setattr(self, f'block_{bnum}', FCNetwork(
-                input_dim=input_dim,
+                input_dim=indim,
                 output_dim=outdim,
                 hidden_sizes=hidden_sizes,
                 hidden_activation=get_activation(hidden_activation),

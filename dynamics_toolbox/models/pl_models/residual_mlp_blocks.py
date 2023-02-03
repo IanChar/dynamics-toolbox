@@ -49,6 +49,8 @@ class ResidualMLPBlocks(AbstractPlModel):
             weight_decay: The weight decay for the optimizer.
         """
         super().__init__(input_dim, output_dim, **kwargs)
+        if num_blocks < 3:
+            raise ValueError('Require number of blocks to be greater than 3.')
         self.num_blocks = num_blocks
         hidden_sizes = get_architecture(num_layers_per_block, embed_dim, None)
         for bnum in range(num_blocks):

@@ -9,12 +9,12 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 import hydra.utils
 import torch
 from omegaconf import DictConfig
-from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.constants import losses, sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
+from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
 
 
 class RPNN(AbstractSequentialModel):
@@ -117,8 +117,8 @@ class RPNN(AbstractSequentialModel):
         self._logvar_bound_loss_coef = logvar_bound_loss_coef
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
-            'EV': ExplainedVariance(),
-            'IndvEV': ExplainedVariance('raw_values'),
+            'EV': SequentialExplainedVariance(),
+            'IndvEV': SequentialExplainedVariance('raw_values'),
         }
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:

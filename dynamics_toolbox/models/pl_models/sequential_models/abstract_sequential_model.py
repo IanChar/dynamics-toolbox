@@ -57,24 +57,11 @@ class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
             pred = net_out['mean']
         else:
             raise ValueError('Need either prediction or mean in the net_out')
-        one_step_pred = pred[:, self._warm_up_period, ...]
-        pred = pred.reshape(-1, pred.shape[-1])
         if len(batch) > 3:  # Check if we are doing RL data or (x, y, mask) data.
-            yi = batch[3]
-        else:
-            yi = batch[1]
-        one_step_yi = yi[:, self._warm_up_period, ...]
-        yi = yi.reshape(-1, yi.shape[-1])
+            raise NotImplementedError('RL data needs to be reimplemented.')
+        yi, mask = batch[1:]
         for metric_name, metric in self.metrics.items():
-            metric_value = metric(one_step_pred, one_step_yi)
-            if len(metric_value.shape) > 0:
-                for dim_idx, metric_v in enumerate(metric_value):
-                    to_return[f'{metric_name}_{self._dim_name_map[dim_idx]}_OneStep'] =\
-                        metric_v
-            else:
-                to_return[f'{metric_name}_OneStep'] = metric_value
-        for metric_name, metric in self.metrics.items():
-            metric_value = metric(pred, yi)
+            metric_value = metric(pred, yi, mask)
             if len(metric_value.shape) > 0:
                 for dim_idx, metric_v in enumerate(metric_value):
                     to_return[f'{metric_name}_{self._dim_name_map[dim_idx]}'] = metric_v

@@ -12,12 +12,12 @@ from omegaconf import DictConfig
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.modules.attention import GPTBlock
+from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
 
 
 class GPT(AbstractSequentialModel):
@@ -83,8 +83,8 @@ class GPT(AbstractSequentialModel):
                              and logvar_upper_bound is not None)
         self._logvar_bound_loss_coef = logvar_bound_loss_coef
         self._metrics = {
-            'EV': ExplainedVariance(),
-            'IndvEV': ExplainedVariance('raw_values'),
+            'EV': SequentialExplainedVariance(),
+            'IndvEV': SequentialExplainedVariance('raw_values'),
         }
         # Initialize the modules.
         if posn_embedding is None:

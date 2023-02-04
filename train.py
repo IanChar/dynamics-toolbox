@@ -43,7 +43,10 @@ def train(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     save_path = os.getcwd()
     OmegaConf.save(cfg, os.path.join(save_path, 'config.yaml'))
-    logger.log_hyperparams(dict(cfg['model'], **cfg['data_module']))
+    logger_hparams = dict(cfg['model'], **cfg['data_module'])
+    if 'dim_name_map' in logger_hparams:
+        del logger_hparams['dim_name_map']
+    logger.log_hyperparams(logger_hparams)
     trainer.fit(model, data)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]

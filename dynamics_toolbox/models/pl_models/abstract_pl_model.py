@@ -35,6 +35,11 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         super().__init__()
         self._input_dim = input_dim
         self._output_dim = output_dim
+        if normalizer is None:
+            normalizer = NoNormalizer()
+        self.normalizer = normalizer
+        self._normalize_inputs = True
+        self._unnormalize_outputs = True
         if dim_name_map is None:
             self._dim_name_map = [f'dim{didx}' for didx in range(output_dim)]
         else:
@@ -42,11 +47,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
                 raise ValueError(f'Got {len(dim_name_map)} dim names but '
                                  f'output dim is {output_dim}')
             self._dim_name_map = dim_name_map
-        if normalizer is None:
-            normalizer = NoNormalizer()
-        self.normalizer = normalizer
-        self._normalize_inputs = True
-        self._unnormalize_outputs = True
+        self.save_hyperparameters(ignore=['dim_name_map'])
 
     def training_step(
             self,

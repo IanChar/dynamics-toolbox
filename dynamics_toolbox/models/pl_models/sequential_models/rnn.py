@@ -68,6 +68,7 @@ class RNN(AbstractSequentialModel):
             output_dim=output_dim,
             _recursive_=False,
         )
+        self.rnn_type = rnn_type.lower()
         if rnn_type.lower() == 'gru':
             rnn_class = torch.nn.GRU
         elif rnn_type.lower() == 'lstm':
@@ -150,12 +151,21 @@ class RNN(AbstractSequentialModel):
             The predictions for a single function sample.
         """
         if self._hidden_state is None:
-            self._hidden_state = torch.zeros(self._num_layers, net_in.shape[0],
-                                             self._hidden_size, device=self.device)
-        elif self._hidden_state.shape[1] != net_in.shape[0]:
-            raise ValueError('Number of inputs does not match previously given number.'
-                             f' Expected {self._hidden_state.shape[1]} but received'
-                             f' {net_in.shape[0]}.')
+            if self.rnn_type == 'gru':
+                self._hidden_state = torch.zeros(self._num_layers, net_in.shape[0],
+                                                 self._hidden_size, device=self.device)
+            else:
+                self._hidden_state = tuple(
+                    torch.zeros(self._num_layers, net_in.shape[0],
+                                self._hidden_size, device=self.device)
+                    for _ in range(2))
+        else:
+            tocompare = (self._hidden_state if self.rnn_type == 'gru'
+                         else self._hidden_state[0])
+            if tocompare.shape[1] != net_in.shape[0]:
+                raise ValueError('Number of inputs does not match previously given '
+                                 f'number. Expected {topcompare.shape[1]} but received'
+                                 f' {net_in.shape[0]}.')
         with torch.no_grad():
             encoded = self._encoder(net_in).unsqueeze(1)
             if self._use_layer_norm:

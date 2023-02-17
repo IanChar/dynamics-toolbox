@@ -76,7 +76,7 @@ class SequentialDataModule(LightningDataModule):
             if predict_deltas:
                 nexts -= ds['observations']
             if learn_rewards:
-                nexts = np.hstack([ds['rewards'][..., np.newaxis], ds['nexts']])
+                nexts = np.concatenate([ds['rewards'], nexts], axis=-1)
             xdata = np.concatenate((ds['observations'], ds['actions']), axis=-1)
             datasets.append(TensorDataset(
                 torch.Tensor(xdata),

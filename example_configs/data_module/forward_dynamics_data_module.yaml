@@ -1,7 +1,7 @@
 _target_: dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module.ForwardDynamicsDataModule
 batch_size: 256
-learn_rewards: False
+learn_rewards: True
 val_proportion: 0.1
-test_proportion: 0.0
+test_proportion: 0.1
 pin_memory: True
 num_workers: 1

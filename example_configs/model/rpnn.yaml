@@ -27,3 +27,8 @@ pnn_decoder_cfg:
      num_layers: 0
      layer_size: 128
      hidden_activation: "relu"
+dim_name_map:
+  - "Rewards"
+  - "X Position"
+  - "Y Position"
+  - "Angular Velocity"

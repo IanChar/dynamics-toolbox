@@ -1,2 +1,2 @@
 # Settings for the pytorch lightning trainer.
-max_epochs: 100
+max_epochs: 10

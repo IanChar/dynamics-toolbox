@@ -1,0 +1,6 @@
+_target_: dynamics_toolbox.models.pl_models.residual_mlp_blocks.ResidualMLPBlocks
+embed_dim: 16
+num_layers_per_block: 1
+num_blocks: 5
+learning_rate: 3e-4
+hidden_activation: "relu"

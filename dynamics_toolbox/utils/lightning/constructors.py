@@ -73,7 +73,10 @@ def construct_all_pl_components_for_training(
         model.set_additional_model_params({'iterations': max_epochs})
     if data_module.num_validation > 0:
         callbacks.append(ModelCheckpoint(monitor='val/loss'))
-    callbacks.append(SingleProgressBar(max_epochs))
+    if cfg['trainer'].get('gpus', 0) <= 1:
+        # Only do progress bar if we are not doing multi-GPU. This is because
+        # tqdm is not able to be pickled.
+        callbacks.append(SingleProgressBar(max_epochs))
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
         experiment = cfg.get('experiment_name', 'experiment')

@@ -116,5 +116,5 @@ class GPTBlock(nn.Module):
         net_in = net_in + self.attn(self.ln1(net_in))
         net_in = (net_in
                   + self.mlp_dropout(self.c_proj(self.hidden_activation(self.c_fc(
-                    net_in)))))
+                    self.ln2(net_in))))))
         return net_in

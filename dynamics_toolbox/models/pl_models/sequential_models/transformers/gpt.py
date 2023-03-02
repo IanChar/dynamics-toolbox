@@ -35,6 +35,7 @@ class GPT(AbstractSequentialModel):
         n_heads: int,
         block_size: int,
         posn_embedding: Optional[DictConfig],
+        shortcut_encoding: Optional[DictConfig] = None,
         dropout: float = 0.0,
         bias: bool = False,
         warm_up_period: int = 0,
@@ -54,6 +55,7 @@ class GPT(AbstractSequentialModel):
             n_heads: The number of heads.
             block_size: Size of the block, i.e. the sequence length.
             posn_embedding: The configuration for the positional embedding.
+            shortcut_encoding: Encoding of the current state, action.
             dropout: The amount of dropout.
             bias: Whether to have bias in the linear layer.
             warm_up_period: The amount of data to take in before predictions begin to
@@ -99,6 +101,14 @@ class GPT(AbstractSequentialModel):
             dropout=dropout,
             bias=bias,
         ) for _ in range(num_blocks)])
+        if shortcut_encoding is None:
+            self.shortcut_encoding = None
+        else:
+            self.shortcut_encoding = hydra.utils.instantiate(
+                shortcut_encoding,
+                input_dim=input_dim,
+            )
+            self.embed_dim += self.shortcut_encoding.output_dim
         self.mean_decoder = nn.Linear(self.embed_dim, output_dim, bias=False)
         self.std_decoder = nn.Linear(self.embed_dim, output_dim, bias=False)
         if self._var_pinning:
@@ -131,6 +141,8 @@ class GPT(AbstractSequentialModel):
             encoded = self.posn_embedder(encoded)
         for block in self.blocks:
             encoded = block(encoded)
+        if self.shortcut_encoding is not None:
+            encoded = torch.cat([encoded, self.shortcut_encoding(x)], dim=-1)
         mean = self.mean_decoder(encoded)
         logvar = self.std_decoder(encoded)
         if self._var_pinning:

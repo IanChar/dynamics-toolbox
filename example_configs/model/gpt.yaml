@@ -9,7 +9,14 @@ posn_embedding:
   _target_: dynamics_toolbox.utils.pytorch.modules.positional_embeddings.LearnedEmbedding
   embed_dim: 64
   max_len: 200
+shortcut_encoding:
+    _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+    output_dim: 64
+    num_layers: 1
+    layer_size: 256
+    hidden_activation: "relu"
 dim_name_map:
+  - "Rewards"
   - "X Position"
   - "Y Position"
   - "Angular Velocity"

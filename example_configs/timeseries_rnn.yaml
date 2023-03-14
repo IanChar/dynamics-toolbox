@@ -4,7 +4,8 @@ data_source: "data/weather_feature_1.h5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"
-cuda_device: null
+cuda_device: 1
+gpus: 1
 defaults:
     - model: rnn
     - trainer: pl_trainer

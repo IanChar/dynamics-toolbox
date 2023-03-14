@@ -5,12 +5,16 @@ seed: 1
 logger: tensorboard
 normalization: "standardize"
 cuda_device: 1
-gpus: 1
 defaults:
     - model: rnn
     - trainer: pl_trainer
     - data_module: timeseries_data_module
     - early_stopping: default
+# overrides
+trainer:
+    max_epochs: 100
+    gpus: 1
+
 #hydra:
 #    job:
 #        name: ${name}

@@ -5,4 +5,4 @@ val_proportion: 0.1
 test_proportion: 0.1
 pin_memory: False
 num_workers: 1
-snippet_size: 3
+snippet_size: 10

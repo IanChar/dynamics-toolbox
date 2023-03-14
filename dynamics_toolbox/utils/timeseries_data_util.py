@@ -72,10 +72,10 @@ def parse_into_timeseries_snippet_datasets(
         raise ValueError('Invalid validation and test proportions: '
                          f'{val_proportion} and {test_proportion}.')
     # create "next_observations" if provided data only has "observations"
-    if "next_observation" not in qset:
-        qset["next_observation"] = qset["observations"].copy()[1:]
+    if "next_observations" not in qset:
+        qset["next_observations"] = qset["observations"].copy()[1:]
         qset["observations"] = qset["observations"].copy()[:-1]
-        assert qset["observations"].shape == qset["next_observation"].shape
+        assert qset["observations"].shape == qset["next_observations"].shape
 
     if not is_single_timeseries:
         import pdb; pdb.set_trace()

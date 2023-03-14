@@ -10,10 +10,13 @@ defaults:
     - trainer: pl_trainer
     - data_module: timeseries_data_module
     - early_stopping: default
-# overrides
+# Overrides
 trainer:
-    max_epochs: 100
+    max_epochs: 500
     gpus: 1
+model:
+    learning_rate: 0.001
+    rnn_num_layers: 3
 
 #hydra:
 #    job:

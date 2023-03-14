@@ -1,6 +1,6 @@
 name: "test_weather_rnn"
 save_path: "trained_models"
-data_source: "data/weather_feature_1.h5"
+data_source: "data/weather_1_small.h5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"

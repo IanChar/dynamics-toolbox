@@ -24,13 +24,40 @@ def parse_into_separate_timeseries(
     start_idx = 0
     for end_idx in range(1, dataset['observations'].shape[0]):
         if end_idx == dataset['observations'].shape[0] - 1 or not np.allclose(
-            dataset['next_observations'][end_idx - 1],
-            dataset['observations'][end_idx],
+                dataset['next_observations'][end_idx - 1],
+                dataset['observations'][end_idx],
         ):
             timeseries.append({k: v[start_idx:end_idx]
-                                 for k, v in dataset.items()})
+                               for k, v in dataset.items()})
             start_idx = end_idx
     return timeseries
+
+
+def split_single_timeseries_separate_timeseries(
+        dataset: Dict[str, np.ndarray],
+        select_idx: np.ndarray,
+) -> List[Dict[str, np.ndarray]]:
+    """Split a single timeseries into two separate timeseries, based on select_idx.
+
+    Args:
+        dataset: Full dataset with multiple trajectories. The dataset at least has
+            "observations" and "next_observations".
+        select_idx: Indices of the selected timeseries, must be a flat array of element
+            indices, e.g. np.arange(10).
+
+    Returns:
+        The selected timeseries and the non-selected timeseries.
+    """
+
+    selected_timeseries = [
+        {k: v[select_idx] for k, v in dataset.items()}
+    ]
+    non_seleted_idx = np.setdiff1d(np.arange(dataset['observations'].shape[0]),
+                                   select_idx)
+    non_selected_timeseries = [
+        {k: v[non_seleted_idx] for k, v in dataset.items()}
+    ]
+    return selected_timeseries, non_selected_timeseries
 
 
 def parse_into_timeseries_snippet_datasets(
@@ -51,6 +78,8 @@ def parse_into_timeseries_snippet_datasets(
             at least has "observations".
         is_single_timeseries: True means qset consists of a single data-stream,
             instead of e.g. concatenated trajectories.
+            If False, qset must have "next_observations" since it's impossible to know
+            the next observation of disparate trajectories otherwise.
         snippet_size: The length of the snippet size (i.e. sequence length).
         val_proportion: Proportion of the trajectories to be used for validation.
         test_proportion: Proportion of the trajectories to be used for testing.
@@ -71,20 +100,21 @@ def parse_into_timeseries_snippet_datasets(
     if val_proportion + test_proportion > 1:
         raise ValueError('Invalid validation and test proportions: '
                          f'{val_proportion} and {test_proportion}.')
-    # create "next_observations" if provided data only has "observations"
-    if "next_observations" not in qset:
-        qset["next_observations"] = qset["observations"].copy()[1:]
-        qset["observations"] = qset["observations"].copy()[:-1]
-        assert qset["observations"].shape == qset["next_observations"].shape
 
     if not is_single_timeseries:
-        import pdb; pdb.set_trace()
+        assert "next_observations" in qset
         timeseries = parse_into_separate_timeseries(qset)
     else:
+        # create "next_observations" if provided data only has "observations"
+        if "next_observations" not in qset:
+            qset["next_observations"] = qset["observations"].copy()[1:]
+            qset["observations"] = qset["observations"].copy()[:-1]
+            assert qset["observations"].shape == qset["next_observations"].shape
         timeseries = [qset]
 
     if shuffle:
         np.random.shuffle(timeseries)
+
     min_ts_length = np.min([len(ts['observations']) for ts in timeseries])
     max_ts_length = np.max([len(ts['observations']) for ts in timeseries])
     avg_ts_length = np.mean([len(ts['observations']) for ts in timeseries])
@@ -97,10 +127,22 @@ def parse_into_timeseries_snippet_datasets(
             raise ValueError(f'Cannot have snippet size ({snippet_size}) greater '
                              f'than min trajectory length ({min_ts_length}).')
 
-    num_te = int(test_proportion * len(timeseries))
-    te_timeseries, timeseries = timeseries[:num_te], timeseries[num_te:]
-    num_val = int(val_proportion * len(timeseries))
-    val_timeseries, timeseries = timeseries[:num_val], timeseries[num_val:]
+    if is_single_timeseries:
+        # if it is a single timeseries, split val and test from the single timeseries
+        assert len(timeseries) == 1
+        num_te = int(test_proportion * timeseries[0]["observations"].shape[0])
+        num_val = int(val_proportion * timeseries[0]["observations"].shape[0])
+        te_timeseries, timeseries = split_single_timeseries_separate_timeseries(
+            timeseries[0], np.arange(num_te))
+        val_timeseries, timeseries = split_single_timeseries_separate_timeseries(
+            timeseries[0], np.arange(num_val))
+    else:
+        # if it is a multiple timeseries, split val and test with disparate timeseries
+        num_te = int(test_proportion * len(timeseries))
+        num_val = int(val_proportion * len(timeseries))
+        te_timeseries, timeseries = timeseries[:num_te], timeseries[num_te:]
+        val_timeseries, timeseries = timeseries[:num_val], timeseries[num_val:]
+
     datasets = [{
         'observations': [],
         'next_observations': [],

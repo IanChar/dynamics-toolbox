@@ -5,8 +5,38 @@ seed: 1
 logger: tensorboard
 normalization: "standardize"
 cuda_device: 1
+model:
+    _target_: dynamics_toolbox.models.pl_models.sequential_models.rpnn.RPNN
+    encode_dim: 128
+    rnn_hidden_size: 32
+    logvar_lower_bound: -10
+    logvar_upper_bound: 0.5
+    learning_rate: 0.001
+    rnn_num_layers: 3
+    encoder_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 1
+       layer_size: 128
+       hidden_activation: "relu"
+    pnn_decoder_cfg:
+      _target_: dynamics_toolbox.models.pl_models.pnn.PNN
+      encoder_output_dim: 200
+      encoder_cfg:
+         _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+         num_layers: 1
+         layer_size: 128
+         hidden_activation: "relu"
+      mean_net_cfg:
+         _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+         num_layers: 0
+         layer_size: 128
+         hidden_activation: "relu"
+      logvar_net_cfg:
+         _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+         num_layers: 0
+         layer_size: 128
+         hidden_activation: "relu"
 defaults:
-    - model: rpnn
     - trainer: pl_trainer
     - data_module: timeseries_data_module
     - early_stopping: default
@@ -14,10 +44,6 @@ defaults:
 trainer:
     max_epochs: 500
     gpus: 1
-model:
-    learning_rate: 0.001
-    rnn_num_layers: 3
-
 #hydra:
 #    job:
 #        name: ${name}

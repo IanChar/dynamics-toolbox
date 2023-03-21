@@ -94,8 +94,8 @@ class TimeseriesDataModule(LightningDataModule):
                 masks.squeeze(1)
             datasets.append(TensorDataset(xdata, nexts, masks))
             if self._xdata is None:
-                self._xdata = xdata.reshape(-1, xdata.shape[-1])
-                self._ydata = nexts.reshape(-1, nexts.shape[-1])
+                self._xdata = xdata.numpy().reshape(-1, xdata.shape[-1])
+                self._ydata = nexts.numpy().reshape(-1, nexts.shape[-1])
         self._tr_dataset, self._val_dataset, self._te_dataset = datasets
         self._batch_size = batch_size
         self._num_workers = num_workers

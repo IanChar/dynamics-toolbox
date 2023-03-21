@@ -1,0 +1,25 @@
+name: "test_weather_rpnn"
+save_path: "trained_models"
+data_source: "data/weather_1_small.h5"
+seed: 1
+logger: tensorboard
+normalization: "standardize"
+cuda_device: 1
+defaults:
+    - model: rpnn
+    - trainer: pl_trainer
+    - data_module: timeseries_data_module
+    - early_stopping: default
+# Overrides
+trainer:
+    max_epochs: 500
+    gpus: 1
+model:
+    learning_rate: 0.001
+    rnn_num_layers: 3
+
+#hydra:
+#    job:
+#        name: ${name}
+#    run:
+#        dir: ${save_path}/${name}

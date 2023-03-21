@@ -11,8 +11,9 @@ import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset
 
-from dynamics_toolbox.utils.sarsa_data_util import parse_into_snippet_datasets
-from dynamics_toolbox.utils.timeseries_data_util import parse_into_timeseries_snippet_datasets
+from dynamics_toolbox.utils.timeseries_data_util import (
+    parse_into_timeseries_snippet_datasets,
+)
 from dynamics_toolbox.utils.storage.qdata import get_data_from_source
 
 
@@ -84,12 +85,14 @@ class TimeseriesDataModule(LightningDataModule):
             nexts = ds['next_observations']
             if predict_deltas:
                 nexts -= ds['observations']
-            xdata = ds['observations']
-            datasets.append(TensorDataset(
-                torch.Tensor(xdata),
-                torch.Tensor(nexts),
-                torch.Tensor(ds['mask']).unsqueeze(-1),
-            ))
+            xdata = torch.Tensor(ds['observations'])
+            nexts = torch.Tensor(nexts)
+            masks = torch.Tensor(ds['mask']).unsqueeze(-1)
+            if snippet_size == 1:  # In this case assume we are not working w seq model
+                xdata.squeeze(1)
+                nexts.squeeze(1)
+                masks.squeeze(1)
+            datasets.append(TensorDataset(xdata, nexts, masks))
             if self._xdata is None:
                 self._xdata = xdata.reshape(-1, xdata.shape[-1])
                 self._ydata = nexts.reshape(-1, nexts.shape[-1])

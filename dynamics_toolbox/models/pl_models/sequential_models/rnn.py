@@ -164,7 +164,7 @@ class RNN(AbstractSequentialModel):
                          else self._hidden_state[0])
             if tocompare.shape[1] != net_in.shape[0]:
                 raise ValueError('Number of inputs does not match previously given '
-                                 f'number. Expected {topcompare.shape[1]} but received'
+                                 f'number. Expected {tocompare.shape[1]} but received'
                                  f' {net_in.shape[0]}.')
         with torch.no_grad():
             encoded = self._encoder(net_in).unsqueeze(1)

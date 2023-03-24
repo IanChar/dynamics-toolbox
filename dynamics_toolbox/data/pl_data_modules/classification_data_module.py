@@ -6,7 +6,7 @@ Author: Youngseog Chung
 from typing import Dict, Union, List, Sequence
 
 import numpy as np
-from imblearn.over_sampling import SMOTE
+# from imblearn.over_sampling import SMOTE
 import torch
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader, TensorDataset, random_split
@@ -41,7 +41,7 @@ class ClassificationDataModule(LightningDataModule):
             batch_size: Batch size.
             learn_rewards: Whether to include the rewards for learning in xdata.
             val_proportion: Proportion of data to use as validation.
-            val_proportion: Proportion of data to use as test.
+            test_proportion: Proportion of data to use as test.
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.

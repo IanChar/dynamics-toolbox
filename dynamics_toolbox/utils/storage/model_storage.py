@@ -40,6 +40,8 @@ def load_model_from_log_dir(
     if checkpoint_path is None:
         raise ValueError(f'Checkpoint directory not found in {path}')
     checkpoints = os.listdir(checkpoint_path)
+    if not len(checkpoints):
+        raise ValueError(f'No checkpoints found in {checkpoint_path}')
     epochs = [int(ck.split('-')[0].split('=')[1]) for ck in checkpoints]
     if epoch is not None:
         if epoch not in epochs:

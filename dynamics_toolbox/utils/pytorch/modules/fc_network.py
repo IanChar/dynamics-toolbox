@@ -80,6 +80,10 @@ class FCNetwork(torch.nn.Module):
         """Number of layers in the network."""
         return self._out_activation
 
+    def get_layer(self, layer_num: int) -> torch.nn.Linear:
+        """Return a specific layer."""
+        return getattr(self, f'linear_{layer_num}')
+
     def _add_linear_layer(
             self,
             lin_in: int,

@@ -8,6 +8,8 @@ from typing import Optional, Callable, Any, Dict, Tuple, Union, List
 import gym
 import numpy as np
 
+from dynamics_toolbox.rl.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
 
 
@@ -134,10 +136,10 @@ class ModelEnv(gym.Env):
         self._state = nxt
         return nxt.flatten(), float(rew), done, info
 
-    def unroll_from_policy(
+    def model_rollout_from_policy(
             self,
             num_rollouts: int,
-            policy: Callable[[np.ndarray], np.ndarray],
+            policy: Policy,
             horizon: int,
             starts: Optional[np.ndarray] = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -152,8 +154,9 @@ class ModelEnv(gym.Env):
         Returns:
             - All observations (num_rollouts, horizon + 1, obs_dim)
             - The actions taken (num_rollouts, horizon, act_dim)
-            - The rewards received (num_rollouts, horizon)
-            - The terminals (num_rollouts, horizon)
+            - The rewards received (num_rollouts, horizon, 1)
+            - The terminals (num_rollouts, horizon, 1)
+            - The logprobabilities of taking actions (num_rollouts, horizon, 1)
         """
         if starts is None:
             if self._start_dist is None:
@@ -162,13 +165,15 @@ class ModelEnv(gym.Env):
         else:
             assert len(starts) == num_rollouts, 'Number of starts must match.'
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
-        rewards = np.zeros((starts.shape[0], horizon))
-        terminals = np.full((starts.shape[0], horizon), True)
+        rewards = np.zeros((starts.shape[0], horizon, 1))
+        terminals = np.full((starts.shape[0], horizon, 1), True)
+        logprobs = np.zeros((starts.shape[0], horizon, 1))
         obs[:, 0, :] = starts
         acts = None
         for h in range(horizon):
             state = obs[:, h, :]
-            act = policy(state)
+            act, logprob = policy.get_actions(state)
+            logprobs[:, h] = logprobs
             if acts is None:
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
@@ -181,9 +186,9 @@ class ModelEnv(gym.Env):
             else:
                 terminals[:, h] = np.array([self._terminal_function(nxt)
                                             for nxt in nxts])
-        return obs, acts, rewards, terminals
+        return obs, acts, rewards, terminals, logprobs
 
-    def unroll_from_actions(
+    def model_rollout_from_actions(
             self,
             num_rollouts: int,
             actions: np.ndarray,
@@ -202,16 +207,10 @@ class ModelEnv(gym.Env):
             - The actions taken (num_starts, horizon, act_dim)
             - The rewards received (num_starts, horizon)
             - The terminals (num_starts, horizon)
+            - The logprobabilities of the actions.
         """
-        act_idx = 0
         horizon = actions.shape[1]
-
-        def policy_wrap(state: np.ndarray):
-            nonlocal act_idx
-            to_return = actions[:, act_idx, :]
-            act_idx += 1
-            return to_return
-
+        policy_wrap = ActionPlanPolicy(actions)
         return self.unroll_from_policy(num_rollouts, policy_wrap, horizon, starts)
 
     def render(self, mode='human'):

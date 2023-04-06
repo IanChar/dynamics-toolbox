@@ -12,10 +12,12 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import functional as F
 
+from dynamics_toolbox.rl.policies.abstract_policy import Policy
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
+from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
 
-class TanhGaussianPolicy(FCNetwork):
+class TanhGaussianPolicy(FCNetwork, Policy):
     """Policy outputting tanh gaussian distribution."""
 
     def __init__(
@@ -51,6 +53,7 @@ class TanhGaussianPolicy(FCNetwork):
             hidden_sizes=hidden_sizes,
             hidden_activation=hidden_activation,
         )
+        self.act_dim = act_dim
         self._min_log_std = min_log_std
         self._max_log_std = max_log_std
         self.deterministic = False
@@ -76,9 +79,6 @@ class TanhGaussianPolicy(FCNetwork):
                 -last_layer_uinit,
                 last_layer_uinit,
             )
-
-    def reset(self):
-        pass
 
     def forward(self, obs: Tensor) -> Tuple[Tensor]:
         """Forward pass of the network.
@@ -109,17 +109,17 @@ class TanhGaussianPolicy(FCNetwork):
             std = self.std
             log_std = torch.log(std)
         # Create samples.
-        normal_sample = torch.normal(0, 1, size=mean.shape, device=ptu.device)
+        normal_sample = dm.randn(size=mean.shape)
         actions = torch.tanh(normal_sample * std + mean)
         logprobs = torch.sum(
             -0.5 * ((normal_sample - mean) / std).pow(2)
             - torch.log(std)
-            - 0.5 * ptu.from_numpy(np.log([2.0 * np.pi])),
+            - 0.5 * dm.from_numpy(np.log([2.0 * np.pi])),
             dim=-1,
             keepdim=True,
         )
         logprobs -= 2.0 * (
-            ptu.from_numpy(np.log([2.]))
+            dm.from_numpy(np.log([2.]))
             - normal_sample
             - torch.nn.functional.softplus(-2.0 * normal_sample)
         ).sum(dim=-1, keepdim=True)
@@ -150,9 +150,14 @@ class TanhGaussianPolicy(FCNetwork):
         """
         # Do forward pass.
         with torch.no_grad():
-            actions, logprobs, mean, std = self.forward(torch_ify(obs_np))
+            actions, logprobs, mean, std = self.forward(dm.torch_ify(obs_np))
         # Sample actions.
         if self.deterministic:
             actions = torch.tanh(mean)
-            logprobs = ptu.ones(len(actions))
-        return ptu.get_numpy(actions), ptu.get_numpy(logprobs.squeeze(-1))
+            logprobs = dm.ones(len(actions))
+        return dm.get_numpy(actions), dm.get_numpy(logprobs.squeeze(-1))
+
+    @property
+    def act_dim(self) -> int:
+        """Action dimension."""
+        return self.act_dim

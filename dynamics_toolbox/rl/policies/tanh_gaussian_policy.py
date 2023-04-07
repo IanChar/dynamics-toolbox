@@ -157,6 +157,9 @@ class TanhGaussianPolicy(FCNetwork, Policy):
             logprobs = dm.ones(len(actions))
         return dm.get_numpy(actions), dm.get_numpy(logprobs.squeeze(-1))
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+
     @property
     def act_dim(self) -> int:
         """Action dimension."""

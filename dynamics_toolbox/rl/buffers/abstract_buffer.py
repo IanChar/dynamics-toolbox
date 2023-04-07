@@ -38,3 +38,6 @@ class ReplayBuffer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def sample_starts(self, num_samples: int) -> np.ndarray:
         """Sample a batch from the buffer."""
+
+    def end_epoch(self):
+        pass

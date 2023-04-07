@@ -159,3 +159,8 @@ class SAC(RLAlgorithm):
     def optimizer(self):
         """Optimzier."""
         return self._optimizer
+
+    @property
+    def policy(self):
+        """Optimzier."""
+        return self.policy

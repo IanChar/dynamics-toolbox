@@ -15,6 +15,12 @@ class Policy(metaclass=abc.ABCMeta):
     def reset(self):
         pass
 
+    def train(self, mode: bool = True):
+        pass
+
+    def eval(self):
+        self.train(False)
+
     @abc.abstractmethod
     def get_action(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Get action.

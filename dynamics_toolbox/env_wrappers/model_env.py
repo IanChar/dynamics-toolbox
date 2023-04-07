@@ -142,7 +142,7 @@ class ModelEnv(gym.Env):
             policy: Policy,
             horizon: int,
             starts: Optional[np.ndarray] = None,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Dict[str, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
         Args:
@@ -152,11 +152,11 @@ class ModelEnv(gym.Env):
             starts: All of the states to unroll from should have shape
                 (num_rollouts, obs_dim).
         Returns:
-            - All observations (num_rollouts, horizon + 1, obs_dim)
-            - The actions taken (num_rollouts, horizon, act_dim)
-            - The rewards received (num_rollouts, horizon, 1)
-            - The terminals (num_rollouts, horizon, 1)
-            - The logprobabilities of taking actions (num_rollouts, horizon, 1)
+            - obs: All observations (num_rollouts, horizon + 1, obs_dim)
+            - acts: The actions taken (num_rollouts, horizon, act_dim)
+            - rews: The rewards received (num_rollouts, horizon, 1)
+            - terms: The terminals (num_rollouts, horizon, 1)
+            - logprobs: The logprobabilities of actions (num_rollouts, horizon, 1)
         """
         if starts is None:
             if self._start_dist is None:
@@ -165,8 +165,8 @@ class ModelEnv(gym.Env):
         else:
             assert len(starts) == num_rollouts, 'Number of starts must match.'
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
-        rewards = np.zeros((starts.shape[0], horizon, 1))
-        terminals = np.full((starts.shape[0], horizon, 1), True)
+        rews = np.zeros((starts.shape[0], horizon, 1))
+        terms = np.full((starts.shape[0], horizon, 1), True)
         logprobs = np.zeros((starts.shape[0], horizon, 1))
         obs[:, 0, :] = starts
         acts = None
@@ -180,13 +180,19 @@ class ModelEnv(gym.Env):
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
-            rewards[:, h] = self._compute_reward(state, act, nxts, infos)[0]
+            rews[:, h] = self._compute_reward(state, act, nxts, infos)[0]
             if self._terminal_function is None:
-                terminals[:, h] = np.full(starts.shape[0], False)
+                terms[:, h] = np.full(starts.shape[0], False)
             else:
-                terminals[:, h] = np.array([self._terminal_function(nxt)
-                                            for nxt in nxts])
-        return obs, acts, rewards, terminals, logprobs
+                terms[:, h] = np.array([self._terminal_function(nxt)
+                                        for nxt in nxts])
+        return {
+            'obs': obs,
+            'acts': acts,
+            'rews': rews,
+            'terms': terms,
+            'logprobs': logprobs,
+        }
 
     def model_rollout_from_actions(
             self,

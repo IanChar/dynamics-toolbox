@@ -25,6 +25,8 @@ class RLAlgorithm(metaclass=abc.ABCMeta):
         Returns: Dictionary of loss statistics.
         """
         pt_batch = {k: dm.torch_ify(v) for k, v in batch.items()}
+        self.policy.deterministic = False
+        self.policy.train()
         loss, loss_stats = self._compute_losses(pt_batch)
         self.optimizer.zero_grad()
         loss.backward()
@@ -45,3 +47,8 @@ class RLAlgorithm(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def optimizer(self):
         """Optimzier."""
+
+    @property
+    @abc.abstractmethod
+    def policy(self):
+        """The policy."""

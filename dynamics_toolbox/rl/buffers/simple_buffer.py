@@ -35,25 +35,21 @@ class SimpleReplayBuffer(ReplayBuffer):
         self._size = 0
         self._max_size = max_buffer_size
 
-    def add_paths(
-        self,
-        obs: np.ndarray,
-        acts: np.ndarray,
-        rews: np.ndarray,
-        terminals: np.ndarray,
-    ):
+    def add_paths(self, paths: Dict[str, np.ndarray]):
         """Add paths taken in the environment.
 
         Args:
+            Dict with...
             obs: The observations with shape (num_paths, horizon + 1, obs_dim)
                 or (horizon + 1, obs_dim).
             acts: The actions with shape (num_paths, horizon, act_dim)
                 or (horizon, act_dim).
             rews: The rewards with shape (num_paths, horizon, 1)
                 or (horizon, 1).
-            terminals: The terminals with shape (num_paths, horizon, 1)
+            terms: The terminals with shape (num_paths, horizon, 1)
                 or (horizon, 1).
         """
+        obs, acts, rews, terms = [paths[k] for k in ('obs', 'acts', 'rews', 'terms')]
         # Restructure the data
         if len(obs.shape) > 2:
             curr_obs = obs[:, :-1].reshape(-1, obs.shape[-1])
@@ -61,8 +57,8 @@ class SimpleReplayBuffer(ReplayBuffer):
         else:
             curr_obs = obs[:-1]
             nxt_obs = obs[1:]
-        acts, rews, terminals = [d.reshape(-1, d.shape[-1])
-                                 for d in (acts, rews, terminals)]
+        acts, rews, terms = [d.reshape(-1, d.shape[-1])
+                             for d in (acts, rews, terms)]
         # Figure out if we will wrap around on the buffer.
         num2add = len(curr_obs)
         if self._max_size - self._ptr < num2add:
@@ -77,7 +73,7 @@ class SimpleReplayBuffer(ReplayBuffer):
                 (self._next_obs, nxt_obs),
                 (self._acts, acts),
                 (self._rews, rews),
-                (self._terms, terminals)):
+                (self._terms, terms)):
             buffer[self._ptr:self._ptr + from_ptr] = data[:from_ptr]
             if from_bottom > 0:
                 buffer[:from_bottom] = data[-from_bottom:]

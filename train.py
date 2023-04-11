@@ -61,4 +61,3 @@ def train(cfg: DictConfig) -> None:
 
 if __name__ == '__main__':
     train()
-

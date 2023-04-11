@@ -21,6 +21,7 @@ class QNet(FCNetwork):
         act_dim: int,
         hidden_sizes: Sequence[int],
         hidden_activation: Callable[Tensor, Tensor] = F.relu,
+        **kwargs
     ):
         """Constructor.
 

@@ -1,0 +1,41 @@
+name: ???
+env_name: "Pendulum-v1"
+seed: 0
+env:
+  _target_: gym.make
+  id: ${env_name}
+train_loop:
+  _target_: dynamics_toolbox.rl.train_loops.batch_online_rl_training
+  epochs: 1000
+  num_expl_steps_per_epoch: 1000
+  num_eval_eps: 10
+  horizon: 200
+  num_gradient_steps_per_epoch: 1000
+  num_expl_steps_before_training: 0
+  batch_size: 256
+  replay_buffer:
+    _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
+    max_buffer_size: 1e6
+  logger:
+    _target_: dynamics_toolbox.rl.rl_logger.RLLogger
+algorithm:
+  _target_: dynamics_toolbox.rl.algorithms.sac.SAC
+  discount: 0.99
+  learning_rate: 3e-4
+  soft_target_update_weight: 5e-3
+  soft_target_update_frequency: 1
+  entropy_tune: True
+  num_qnets: 2
+  policy:
+    _target_: dynamics_toolbox.rl.policies.tanh_gaussian_policy.TanhGaussianPolicy
+    hidden_sizes:
+      - 64
+      - 64
+  qnet:
+    _target_: dynamics_toolbox.rl.valnets.qnet.QNet
+    hidden_sizes:
+      - 128
+      - 128
+hydra:
+  run:
+    dir: logs/${name}/${seed}

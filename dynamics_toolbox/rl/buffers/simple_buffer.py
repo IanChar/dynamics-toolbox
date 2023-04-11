@@ -26,6 +26,7 @@ class SimpleReplayBuffer(ReplayBuffer):
             act_dim: Dimension of the action space.
             max_buffer_size: The maximum buffer size.
         """
+        max_buffer_size = int(max_buffer_size)
         self._obs = np.zeros((max_buffer_size, obs_dim))
         self._next_obs = np.zeros((max_buffer_size, obs_dim))
         self._acts = np.zeros((max_buffer_size, act_dim))

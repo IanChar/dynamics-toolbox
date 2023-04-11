@@ -53,7 +53,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
             hidden_sizes=hidden_sizes,
             hidden_activation=hidden_activation,
         )
-        self.act_dim = act_dim
+        self._act_dim = act_dim
         self._min_log_std = min_log_std
         self._max_log_std = max_log_std
         self.deterministic = False
@@ -163,4 +163,4 @@ class TanhGaussianPolicy(FCNetwork, Policy):
     @property
     def act_dim(self) -> int:
         """Action dimension."""
-        return self.act_dim
+        return self._act_dim

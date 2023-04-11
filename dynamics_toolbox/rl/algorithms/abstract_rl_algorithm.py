@@ -6,7 +6,7 @@ Author: Ian Char
 Date: April 6, 2023
 """
 import abc
-from typing import Dict, Tuple
+from typing import Dict
 
 import numpy as np
 from torch import Tensor
@@ -27,39 +27,18 @@ class RLAlgorithm(metaclass=abc.ABCMeta):
         pt_batch = {k: dm.torch_ify(v) for k, v in batch.items()}
         self.policy.deterministic = False
         self.policy.train()
-        losses, loss_stats = self._compute_losses(pt_batch)
-        # Do updates to both policy and value.
-        self.policy_optimizer.zero_grad()
-        losses['policy_loss'].backward()
-        self.policy_optimizer.step()
-        self.val_optimizer.zero_grad()
-        losses['val_loss'].backward()
-        self.val_optimizer.step()
-        self._post_grad_step_updates()
+        loss_stats = self._compute_losses(pt_batch)
         return loss_stats
 
-    def _post_grad_step_updates(self):
-        pass
-
     @abc.abstractmethod
-    def _compute_losses(self, pt_batch: Dict[str, Tensor]) -> Tuple[Dict[str, float]]:
+    def _compute_losses(self, pt_batch: Dict[str, Tensor]) -> Dict[str, float]:
         """Compute the loasses.
 
         Args:
             pt_batch: Dictionary of fields w shape (batch_size, *)
 
-        Returns: Dictionary of loss statistics and dicionary of losses.
+        Returns: Dictionary of loss statistics.
         """
-
-    @property
-    @abc.abstractmethod
-    def policy_optimizer(self):
-        """Optimzer for policy."""
-
-    @property
-    @abc.abstractmethod
-    def val_optimizer(self):
-        """Optimzier for value functions."""
 
     @property
     @abc.abstractmethod

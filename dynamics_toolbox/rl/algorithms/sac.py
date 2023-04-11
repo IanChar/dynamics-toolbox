@@ -72,6 +72,15 @@ class SAC(RLAlgorithm):
         self.soft_target_update_weight = soft_target_update_weight
         self.soft_target_update_frequency = soft_target_update_frequency
         self._steps_since_last_soft_update = 0
+        # Set up optimizers.
+        self._policy_optimizer = torch.optim.Adam(
+            self.policy.parameters(),
+            lr=policy_learning_rate,
+        )
+        self._val_optimizer = torch.optim.Adam(
+            self.qnets.parameters(),
+            lr=val_learning_rate,
+        )
         # Possibly set up entropy tuning.
         self.entropy_tune = entropy_tune
         if entropy_tune:
@@ -80,36 +89,45 @@ class SAC(RLAlgorithm):
             else:
                 self.target_entropy = target_entropy
             self.log_alpha = dm.zeros(1, requires_grad=True)
-            self._policy_optimizer = torch.optim.Adam(
-                list(self.policy.parameters()) + [self.log_alpha],
+            self._alpha_optimizer = torch.optim.Adam(
+                [self.log_alpha],
                 lr=policy_learning_rate)
         else:
-            self._policy_optimizer = torch.optim.Adam(self.policy.parameters,
-                                                      lr=policy_learning_rate)
-        self._val_optimizer = torch.optim.Adam(self.qnets.parameters(),
-                                               lr=val_learning_rate)
+            self._alpha_optimizer = None
 
     def _compute_losses(
         self,
         pt_batch: Dict[str, Tensor],
-    ) -> Tuple[Dict[str, float]]:
+    ) -> Dict[str, float]:
         """Compute the loasses.
 
         Args:
             pt_batch: Dictionary of fields w shape (batch_size, *)
 
-        Returns: Total loss and the diictionary of loss statistics.
+        Returns: Dictionary of loss statistics.
         """
         obs, acts, rews, nxts, terms = [pt_batch[k] for k in
                                         ('obs', 'acts', 'rews', 'nxts', 'terms')]
-        losses = {}
+        stats = {}
+        # Policy loss.
         loss, loss_stats = self._compute_policy_loss(obs)
-        losses['policy_loss'] = loss
-        qloss, qloss_stats = self._compute_q_loss(
-            obs, acts, rews, nxts, terms)
-        loss_stats.update(qloss_stats)
-        losses['val_loss'] = qloss
-        return losses, loss_stats
+        stats.update(loss_stats)
+        self._policy_optimizer.zero_grad()
+        loss.backward()
+        self._policy_optimizer.step()
+        # QNet loss.
+        loss, loss_stats = self._compute_val_loss(obs, acts, rews, nxts, terms)
+        stats.update(loss_stats)
+        self._val_optimizer.zero_grad()
+        loss.backward()
+        self._val_optimizer.step()
+        if self.entropy_tune:
+            loss, loss_stats = self._compute_alpha_loss(obs)
+            stats.update(loss_stats)
+            self._alpha_optimizer.zero_grad()
+            loss.backward()
+            self._alpha_optimizer.step()
+        return stats
 
     def _post_grad_step_updates(self):
         self._steps_since_last_soft_update += 1
@@ -117,6 +135,24 @@ class SAC(RLAlgorithm):
             self._steps_since_last_soft_update = 0
             for qnet, qtarget in zip(self.qnets, self.target_qnets):
                 soft_update_net(qtarget, qnet, self.soft_target_update_weight)
+
+    def _compute_alpha_loss(
+        self,
+        obs: Tensor,
+    ) -> Tuple[Tensor, Dict[str, float]]:
+        """Compute the policy loss.
+
+        Args:
+            obs: The observations w shape (batch_size, obs_dim).
+
+        Returns: The loss and the dictionary of loss stats.
+        """
+        assert self.entropy_tune, 'Should not have been called if not tuning.'
+        loss_stats = {}
+        pi_acts, logprobs = self.policy(obs)[:2]
+        mean_logprobs = logprobs.mean().item()
+        loss = -self.log_alpha.exp() * (mean_logprobs + self.target_entropy)
+        loss_stats['alpha_loss'] = loss.item()
 
     def _compute_policy_loss(
         self,
@@ -129,24 +165,19 @@ class SAC(RLAlgorithm):
 
         Returns: The loss and the dictionary of loss stats.
         """
-        pi_acts, logprobs = self.policy(obs)[:2]
         loss_stats = {}
-        total_loss = 0
+        pi_acts, logprobs = self.policy(obs)[:2]
         if self.entropy_tune:
-            mean_logprobs = logprobs.mean().item()
-            total_loss -= self.log_alpha.exp() * (mean_logprobs + self.target_entropy)
-            alpha = self.log_alpha.exp().item()
-            loss_stats['alpha_loss'] = total_loss.item()
-            loss_stats['alpha'] = alpha
+            alpha = self.exp().item()
         else:
             alpha = 1
         values = torch.min(torch.stack([
             qnet(obs, pi_acts) for qnet in self.qnets
         ]), dim=0)[0]
-        policy_loss = (alpha * logprobs - values).mean()
-        loss_stats['policy_loss'] = policy_loss.item()
-        total_loss += policy_loss
-        return total_loss, loss_stats
+        loss = (alpha * logprobs - values).mean()
+        loss_stats['policy_loss'] = loss.item()
+        loss_stats['alpha'] = alpha
+        return loss, loss_stats
 
     def _compute_q_loss(
         self,

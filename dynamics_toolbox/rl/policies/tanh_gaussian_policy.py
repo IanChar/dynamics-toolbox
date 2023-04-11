@@ -109,8 +109,8 @@ class TanhGaussianPolicy(FCNetwork, Policy):
             std = self.std
             log_std = torch.log(std)
         # Create samples.
-        normal_sample = dm.randn(size=mean.shape)
-        actions = torch.tanh(normal_sample * std + mean)
+        normal_sample = dm.randn(size=mean.shape) * std + mean
+        actions = torch.tanh(normal_sample)
         logprobs = torch.sum(
             -0.5 * ((normal_sample - mean) / std).pow(2)
             - torch.log(std)

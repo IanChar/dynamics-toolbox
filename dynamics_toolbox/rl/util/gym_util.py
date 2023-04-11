@@ -46,7 +46,7 @@ def gym_rollout_from_policy(
         rews.append(rew)
         terms.append(term)
         h += 1
-        running = (not term) or ((horizon is not None) and h >= horizon)
+        running = (not term) and ((horizon is None) or h < horizon)
     return {
         'obs': np.array(obs),
         'acts': np.array(acts),

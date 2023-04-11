@@ -71,7 +71,6 @@ class SAC(RLAlgorithm):
         self.discount = discount
         self.soft_target_update_weight = soft_target_update_weight
         self.soft_target_update_frequency = soft_target_update_frequency
-        params = list(policy.parameters()) + list(self.qnets.parameters())
         self._steps_since_last_soft_update = 0
         # Possibly set up entropy tuning.
         self.entropy_tune = entropy_tune
@@ -81,7 +80,6 @@ class SAC(RLAlgorithm):
             else:
                 self.target_entropy = target_entropy
             self.log_alpha = dm.zeros(1, requires_grad=True)
-            params.append(self.log_alpha)
             self._policy_optimizer = torch.optim.Adam(
                 list(self.policy.parameters()) + [self.log_alpha],
                 lr=policy_learning_rate)
@@ -114,9 +112,9 @@ class SAC(RLAlgorithm):
         return losses, loss_stats
 
     def _post_grad_step_updates(self):
-        self._post_grad_step_updates += 1
-        if self._post_grad_step_updates % self.soft_target_update_frequency == 0:
-            self._post_grad_step_updates = 0
+        self._steps_since_last_soft_update += 1
+        if self._steps_since_last_soft_update % self.soft_target_update_frequency == 0:
+            self._steps_since_last_soft_update = 0
             for qnet, qtarget in zip(self.qnets, self.target_qnets):
                 soft_update_net(qtarget, qnet, self.soft_target_update_weight)
 
@@ -144,7 +142,7 @@ class SAC(RLAlgorithm):
             alpha = 1
         values = torch.min(torch.stack([
             qnet(obs, pi_acts) for qnet in self.qnets
-        ]), dim=0)
+        ]), dim=0)[0]
         policy_loss = (alpha * logprobs - values).mean()
         loss_stats['policy_loss'] = policy_loss.item()
         total_loss += policy_loss
@@ -183,10 +181,10 @@ class SAC(RLAlgorithm):
         for qpred, qloss in zip(qpreds, losses):
             loss_dict.update({
                 f'Q{qidx}_loss': qloss.item(),
-                f'Q{qidx}_pred': qpred.item(),
+                f'Q{qidx}_pred': qpred.mean().item(),
             })
             qidx += 1
-        return torch.sum(losses), loss_dict
+        return torch.sum(torch.stack(losses), dim=0), loss_dict
 
     @property
     def policy_optimizer(self):

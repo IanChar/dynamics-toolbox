@@ -30,6 +30,8 @@ def batch_online_rl_training(
     eval_frequency: int = 1,
     num_expl_steps_before_training: int = 0,
     batch_size: int = 256,
+    debug: bool = False,
+    **kwargs
 ):
     """Training loop that does rollout(s) in the environment then trains.
 
@@ -47,7 +49,10 @@ def batch_online_rl_training(
         num_expl_steps_before_training: Number of exploration steps to warm
             start the buffer with.
         batch_size: Size of batch for each gradient step.
+        debug: Whether to set a breakpoint.
     """
+    if debug:
+        breakpoint()
     num_steps_taken = 0
     # Possibly collect initial information.
     if num_expl_steps_before_training > 0:

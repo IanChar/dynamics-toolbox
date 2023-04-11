@@ -14,8 +14,6 @@ from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
 def train_rl(cfg: DictConfig):
-    if cfg.get('debug', False):
-        breakpoint()
     # Instantiate the gym environment and get the obs and act dims.
     env = hydra.utils.instantiate(cfg['env'])
     obs_dim = env.observation_space.low.shape[0]
@@ -31,6 +29,7 @@ def train_rl(cfg: DictConfig):
         algorithm=algorithm,
         env=env,
         logger={'run_dir': os.getcwd()},
+        debug=cfg.get('debug', False),
     )
 
 

@@ -157,6 +157,8 @@ class ModelEnv(gym.Env):
             - rews: The rewards received (num_rollouts, horizon, 1)
             - terms: The terminals (num_rollouts, horizon, 1)
             - logprobs: The logprobabilities of actions (num_rollouts, horizon, 1)
+            - masks: Mask for whether the data is real or not. 0 if the transition
+                happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
         if starts is None:
             if self._start_dist is None:
@@ -168,6 +170,7 @@ class ModelEnv(gym.Env):
         rews = np.zeros((starts.shape[0], horizon, 1))
         terms = np.full((starts.shape[0], horizon, 1), True)
         logprobs = np.zeros((starts.shape[0], horizon, 1))
+        masks = np.ones((starts.shape[0], horizon, 1))
         obs[:, 0, :] = starts
         acts = None
         for h in range(horizon):
@@ -186,12 +189,16 @@ class ModelEnv(gym.Env):
             else:
                 terms[:, h] = np.array([self._terminal_function(nxt)
                                         for nxt in nxts])
+                if np.sum(terms[:, h]) > 0:
+                    term_idxs = np.argwhere(terms[:, h].flatten())
+                    masks[term_idxs, h + 1:] = 0
         return {
             'obs': obs,
             'acts': acts,
             'rews': rews,
             'terms': terms,
             'logprobs': logprobs,
+            'masks': masks,
         }
 
     def model_rollout_from_actions(
@@ -214,6 +221,8 @@ class ModelEnv(gym.Env):
             - The rewards received (num_starts, horizon)
             - The terminals (num_starts, horizon)
             - The logprobabilities of the actions.
+            - masks: Mask for whether the data is real or not. 0 if the transition
+                happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
         horizon = actions.shape[1]
         policy_wrap = ActionPlanPolicy(actions)

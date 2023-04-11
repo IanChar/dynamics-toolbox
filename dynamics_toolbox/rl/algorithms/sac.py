@@ -27,7 +27,7 @@ class SAC(RLAlgorithm):
         qnet: QNet,
         discount: float,
         policy_learning_rate: float = 3e-4,
-        val_learning_rate: float = 3e-4,
+        q_learning_rate: float = 3e-4,
         soft_target_update_weight: float = 5e-3,
         soft_target_update_frequency: int = 1,
         target_entropy: Optional[float] = None,
@@ -43,7 +43,7 @@ class SAC(RLAlgorithm):
                 corresponding target networks.
             discount: Discount factor for bellman loss.
             policy_learning_rate: Learning rate for the policy optimizer.
-            val_learning_rate: Learning rate for the val optimizer.
+            q_learning_rate: Learning rate for the q optimizer.
             soft_target_update_weight: Weighting for how much to update target
                 network in the soft update.
             soft_target_update_frequency: How frequently to do soft update of target
@@ -77,9 +77,9 @@ class SAC(RLAlgorithm):
             self.policy.parameters(),
             lr=policy_learning_rate,
         )
-        self._val_optimizer = torch.optim.Adam(
+        self._q_optimizer = torch.optim.Adam(
             self.qnets.parameters(),
-            lr=val_learning_rate,
+            lr=q_learning_rate,
         )
         # Possibly set up entropy tuning.
         self.entropy_tune = entropy_tune
@@ -116,25 +116,24 @@ class SAC(RLAlgorithm):
         loss.backward()
         self._policy_optimizer.step()
         # QNet loss.
-        loss, loss_stats = self._compute_val_loss(obs, acts, rews, nxts, terms)
+        loss, loss_stats = self._compute_q_loss(obs, acts, rews, nxts, terms)
         stats.update(loss_stats)
-        self._val_optimizer.zero_grad()
+        self._q_optimizer.zero_grad()
         loss.backward()
-        self._val_optimizer.step()
+        self._q_optimizer.step()
         if self.entropy_tune:
             loss, loss_stats = self._compute_alpha_loss(obs)
             stats.update(loss_stats)
             self._alpha_optimizer.zero_grad()
             loss.backward()
             self._alpha_optimizer.step()
-        return stats
-
-    def _post_grad_step_updates(self):
+        # Soft update to target networks.
         self._steps_since_last_soft_update += 1
         if self._steps_since_last_soft_update % self.soft_target_update_frequency == 0:
             self._steps_since_last_soft_update = 0
             for qnet, qtarget in zip(self.qnets, self.target_qnets):
                 soft_update_net(qtarget, qnet, self.soft_target_update_weight)
+        return stats
 
     def _compute_alpha_loss(
         self,
@@ -153,6 +152,7 @@ class SAC(RLAlgorithm):
         mean_logprobs = logprobs.mean().item()
         loss = -self.log_alpha.exp() * (mean_logprobs + self.target_entropy)
         loss_stats['alpha_loss'] = loss.item()
+        return loss, loss_stats
 
     def _compute_policy_loss(
         self,
@@ -168,7 +168,7 @@ class SAC(RLAlgorithm):
         loss_stats = {}
         pi_acts, logprobs = self.policy(obs)[:2]
         if self.entropy_tune:
-            alpha = self.exp().item()
+            alpha = self.log_alpha.exp().item()
         else:
             alpha = 1
         values = torch.min(torch.stack([
@@ -201,31 +201,22 @@ class SAC(RLAlgorithm):
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         qpreds = [qnet(obs, acts) for qnet in self.qnets]
         nxt_acts, nxt_logpis = self.policy(nxts)[:2]
-        target_qs = torch.min(torch.stack([
-            tqnet(nxts, nxt_acts) for tqnet in self.target_qnets
-        ]), dim=0)[0] - alpha * nxt_logpis
+        qtarget_preds = [tqnet(nxts, nxt_acts) for tqnet in self.target_qnets]
+        target_qs = torch.min(torch.stack(qtarget_preds), dim=0)[0]
+        target_qs -= alpha * nxt_logpis
         bellman_targets = (rews + (1. - terms) * self.discount * target_qs).detach()
         losses = [(qpred - bellman_targets).pow(2).mean()
                   for qpred in qpreds]
         loss_dict = {}
         qidx = 1
-        for qpred, qloss in zip(qpreds, losses):
+        for qpred, qloss, qtarget in zip(qpreds, losses, qtarget_preds):
             loss_dict.update({
                 f'Q{qidx}_loss': qloss.item(),
                 f'Q{qidx}_pred': qpred.mean().item(),
+                f'Q{qidx}_target_pred': qtarget.mean().item(),
             })
             qidx += 1
         return torch.sum(torch.stack(losses), dim=0), loss_dict
-
-    @property
-    def policy_optimizer(self):
-        """Optimzier."""
-        return self._policy_optimizer
-
-    @property
-    def val_optimizer(self):
-        """Optimzier."""
-        return self._policy_optimizer
 
     @property
     def policy(self):

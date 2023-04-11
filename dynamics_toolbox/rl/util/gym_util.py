@@ -41,7 +41,7 @@ def gym_rollout_from_policy(
         act, logprob = policy.get_action(obs[-1])
         acts.append(act)
         logprobs.append(logprob)
-        ob, rew, term, _ = env.step(act)
+        ob, rew, term, _ = env.step(unnormalize_action(env, act))
         obs.append(ob)
         rews.append(rew)
         terms.append(term)
@@ -112,3 +112,20 @@ def evaluate_policy_in_gym(
     scores = [np.sum(gym_rollout_from_policy(env, policy, horizon)['rews'])
               for _ in range(num_eps)]
     return np.mean(scores), np.std(scores)
+
+
+def unnormalize_action(
+    env: gym.Env,
+    action: np.ndarray,
+) -> np.ndarray:
+    """Convert action from between -1 and 1 to whatever the gym action bounds are.
+
+    Args:
+        env: The gym environment.
+        action: The action between -1 and 1.
+
+    Returns: The action in the true action space.
+    """
+    act_space = env.action_space
+    act_spread = act_space.high - act_space.low
+    return (action + 1) / 2 * act_spread + act_space.low

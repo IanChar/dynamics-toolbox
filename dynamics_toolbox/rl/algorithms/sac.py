@@ -151,7 +151,8 @@ class SAC(RLAlgorithm):
         pi_acts, logprobs = self.policy(obs)[:2]
         mean_logprobs = logprobs.mean().item()
         loss = -self.log_alpha.exp() * (mean_logprobs + self.target_entropy)
-        loss_stats['alpha_loss'] = loss.item()
+        loss_stats['Alpha/alpha_loss'] = loss.item()
+        loss_stats['Alpha/alpha'] = self.log_alpha.exp().item()
         return loss, loss_stats
 
     def _compute_policy_loss(
@@ -175,8 +176,7 @@ class SAC(RLAlgorithm):
             qnet(obs, pi_acts) for qnet in self.qnets
         ]), dim=0)[0]
         loss = (alpha * logprobs - values).mean()
-        loss_stats['policy_loss'] = loss.item()
-        loss_stats['alpha'] = alpha
+        loss_stats['Policy/policy_loss'] = loss.item()
         return loss, loss_stats
 
     def _compute_q_loss(
@@ -211,9 +211,9 @@ class SAC(RLAlgorithm):
         qidx = 1
         for qpred, qloss, qtarget in zip(qpreds, losses, qtarget_preds):
             loss_dict.update({
-                f'Q{qidx}_loss': qloss.item(),
-                f'Q{qidx}_pred': qpred.mean().item(),
-                f'Q{qidx}_target_pred': qtarget.mean().item(),
+                f'Q/Q{qidx}_loss': qloss.item(),
+                f'Q/Q{qidx}_pred': qpred.mean().item(),
+                f'Q/Q{qidx}_target_pred': qtarget.mean().item(),
             })
             qidx += 1
         return torch.sum(torch.stack(losses), dim=0), loss_dict

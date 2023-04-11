@@ -15,6 +15,8 @@ from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
 def train_rl(cfg: DictConfig):
     # Instantiate the gym environment and get the obs and act dims.
+    if 'MuJoCo' in cfg['env']['id'] or 'PyBullet' in cfg['env']['id']:
+        import pybulletgym
     env = hydra.utils.instantiate(cfg['env'])
     obs_dim = env.observation_space.low.shape[0]
     act_dim = env.action_space.low.shape[0]

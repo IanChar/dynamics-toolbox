@@ -94,9 +94,11 @@ class RLLogger:
         # Write to tensorboard.
         if self._summary_writer is not None:
             if returns_mean is not None:
-                self._summary_writer.add_scalar('Returns Mean', returns_mean, num_steps)
+                self._summary_writer.add_scalar('Eval/returns_mean', returns_mean,
+                                                num_steps)
             if returns_std is not None:
-                self._summary_writer.add_scalar('Returns Std', returns_std, num_steps)
+                self._summary_writer.add_scalar('Eval/returns_std', returns_std,
+                                                num_steps)
             for k, v in stats.items():
                 self._summary_writer.add_scalar(k, v, num_steps)
         # Possibly checkpoint policy.

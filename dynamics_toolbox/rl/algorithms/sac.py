@@ -177,6 +177,7 @@ class SAC(RLAlgorithm):
         ]), dim=0)[0]
         loss = (alpha * logprobs - values).mean()
         loss_stats['Policy/policy_loss'] = loss.item()
+        loss_stats['Policy/logprob_mean'] = logprobs.mean().item()
         return loss, loss_stats
 
     def _compute_q_loss(

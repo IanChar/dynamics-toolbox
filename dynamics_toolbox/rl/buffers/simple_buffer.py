@@ -153,3 +153,25 @@ class SimpleReplayBuffer(ReplayBuffer):
         """
         idxs = np.random.randint(0, self._size, size=num_samples)
         return self._obs[idxs]
+
+
+class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
+
+    def __init__(
+        self,
+        data: Dict[str, np.ndarray],
+    ):
+        """Constructor.
+
+        Args:
+            data with observations, next_observations, rewards, actions, terminals.
+        """
+        self._obs = data['observations']
+        self._next_obs = data['next_observations']
+        self._acts = data['actions']
+        self._rews = data['rews'].reshape(-1, 1)
+        self._terms = data['terminals'].reshape(-1, 1)
+        max_buffer_size = len(self._obs)
+        self._ptr = 0
+        self._size = max_buffer_size
+        self._max_size = max_buffer_size

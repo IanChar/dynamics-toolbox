@@ -103,6 +103,7 @@ def batch_online_rl_training(
             returns_std=ret_std,
             policy=algorithm.policy,
         )
+        replay_buffer.end_epoch()
     logger.end(algorithm.policy)
 
 
@@ -153,6 +154,7 @@ def mb_offline_rl_training(
     num_steps_taken = 0
     env_batch_size = int(batch_env_proportion * batch_size)
     model_batch_size = batch_size - env_batch_size
+    model_env.start_dist = env_buffer.sample_starts
     # Time to train!
     logger.start(epochs)
     for ep in range(epochs):
@@ -193,4 +195,6 @@ def mb_offline_rl_training(
             returns_std=ret_std,
             policy=algorithm.policy,
         )
+        model_buffer.end_epoch()
+        env_buffer.end_epoch()
     logger.end(algorithm.policy)

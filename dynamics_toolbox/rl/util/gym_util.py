@@ -88,7 +88,7 @@ def explore_gym_until_threshold_met(
             policy,
             steps_this_ep
         ))
-        num_steps_taken += len(paths[-1]['obs'])
+        num_steps_taken += len(paths[-1]['rews'])
     return paths
 
 

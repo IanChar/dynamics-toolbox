@@ -38,7 +38,7 @@ data_module:
     val_proportion: 0.05
     test_proportion: 0.0
     pin_memory: True
-    num_workers: 4
+    num_workers: 2
 hydra:
     job:
         name: ${name}

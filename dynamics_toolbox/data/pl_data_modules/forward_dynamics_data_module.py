@@ -62,9 +62,12 @@ class ForwardDynamicsDataModule(LightningDataModule):
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
             TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
             [self._num_tr, self._num_val, self._num_te],
+            generator=torch.Generator().manual_seed(seed),
         )
 
-    def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def train_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         return DataLoader(
             self._tr_dataset,
@@ -75,7 +78,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def val_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._val_dataset):
             return DataLoader(
@@ -89,7 +94,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
         else:
             None
 
-    def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def test_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._te_dataset):
             return DataLoader(

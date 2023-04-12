@@ -242,6 +242,14 @@ class ModelEnv(gym.Env):
         """Get the current state."""
         return self._state
 
+    @property
+    def start_dist(self) -> Callable[[int], np.ndarray]:
+        return self._start_dist
+
+    @start_dist.setter
+    def start_dist(self, dist: Callable[[int], np.ndarray]):
+        self._start_dist = dist
+
     def _compute_reward(
             self,
             state: np.ndarray,

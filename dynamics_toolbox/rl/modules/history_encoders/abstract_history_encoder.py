@@ -28,3 +28,8 @@ class HistoryEncoder(nn.Module, metaclass=abc.ABCMeta):
             * History of shape (num_layers, batch_size, rnn_hidden_size) and a tuple
               of these if it is an LSTM.
         """
+
+    @property
+    @abc.abstractmethod
+    def out_dim(self) -> int:
+        """Output dimension of the encoding."""

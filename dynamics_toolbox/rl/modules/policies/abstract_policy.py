@@ -5,7 +5,7 @@ Auhtor: Ian Char
 Date: April 6, 2023
 """
 import abc
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 
@@ -21,17 +21,14 @@ class Policy(metaclass=abc.ABCMeta):
     def eval(self):
         self.train(False)
 
-    @abc.abstractmethod
-    def get_action(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Get action.
+    def get_reward_feedback(self, rewards: Union[float, np.ndarray]):
+        """Get feedback from the environment about the last reward.
 
         Args:
-            obs_np: numpy array of shape (obs_dim,)
-
-        Returns:
-            * Sampled actions.
-            * Log probability.
+            rewards: The rewards as a float or list of rewards if doing multiple
+                     rollouts.
         """
+        pass
 
     @abc.abstractmethod
     def get_actions(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

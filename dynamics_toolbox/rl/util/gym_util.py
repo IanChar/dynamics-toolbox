@@ -38,7 +38,7 @@ def gym_rollout_from_policy(
     running = True
     h = 0
     while running:
-        act, logprob = policy.get_action(obs[-1])
+        act, logprob = policy.get_actions(obs[-1])
         acts.append(act)
         logprobs.append(logprob)
         ob, rew, term, _ = env.step(unnormalize_action(env, act))
@@ -47,6 +47,7 @@ def gym_rollout_from_policy(
         terms.append(term)
         h += 1
         running = (not term) and ((horizon is None) or h < horizon)
+        policy.get_reward_feedback(rew)
     return {
         'obs': np.array(obs),
         'acts': np.array(acts),

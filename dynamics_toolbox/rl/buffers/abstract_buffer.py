@@ -10,6 +10,10 @@ import numpy as np
 class ReplayBuffer(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
+    def clear_buffer(self):
+        """Clear the buffer."""
+
+    @abc.abstractmethod
     def add_paths(
         self,
         obs: np.ndarray,

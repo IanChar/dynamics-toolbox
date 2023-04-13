@@ -160,6 +160,7 @@ class ModelEnv(gym.Env):
             - masks: Mask for whether the data is real or not. 0 if the transition
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
+        policy.reset()
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
@@ -184,6 +185,7 @@ class ModelEnv(gym.Env):
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
             rews[:, h] = self._compute_reward(state, act, nxts, infos)[0]
+            policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
                 terms[:, h] = np.full(starts.shape[0], False)
             else:

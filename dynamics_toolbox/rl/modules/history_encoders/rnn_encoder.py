@@ -64,7 +64,7 @@ class RNNEncoder(HistoryEncoder):
         self._memory_unit = rnn_class(total_encode_dim, rnn_hidden_size,
                                       num_layers=rnn_num_layers,
                                       batch_first=True)
-        self.out_dim = rnn_hidden_size
+        self._out_dim = rnn_hidden_size
         self.encoder_activation = encoder_activation
         # default gru initialization is uniform, not recommended
         # https://smerity.com/articles/2016/orthogonal_init.html
@@ -109,3 +109,8 @@ class RNNEncoder(HistoryEncoder):
         encoding = torch.cat(encoding, dim=-1)
         encoding, new_history = self._memory_unit(encoding, history)
         return encoding, new_history, None
+
+    @property
+    def out_dim(self) -> int:
+        """Output dimension of the encoding."""
+        return self._out_dim

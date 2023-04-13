@@ -26,15 +26,20 @@ class SimpleReplayBuffer(ReplayBuffer):
             act_dim: Dimension of the action space.
             max_buffer_size: The maximum buffer size.
         """
+        self._obs_dim = obs_dim
+        self._act_dim = act_dim
         max_buffer_size = int(max_buffer_size)
-        self._obs = np.zeros((max_buffer_size, obs_dim))
-        self._next_obs = np.zeros((max_buffer_size, obs_dim))
-        self._acts = np.zeros((max_buffer_size, act_dim))
-        self._rews = np.zeros((max_buffer_size, 1))
-        self._terms = np.zeros((max_buffer_size, 1), dtype='uint8')
+        self._max_size = max_buffer_size
+
+    def clear_buffer(self):
+        """Clear the buffer."""
+        self._obs = np.zeros((self._max_size, self._obs_dim))
+        self._next_obs = np.zeros((self._max_size, self._obs_dim))
+        self._acts = np.zeros((self._max_size, self._act_dim))
+        self._rews = np.zeros((self._max_size, 1))
+        self._terms = np.zeros((self._max_size, 1), dtype='uint8')
         self._ptr = 0
         self._size = 0
-        self._max_size = max_buffer_size
 
     def add_paths(self, paths: Dict[str, np.ndarray]):
         """Add paths taken in the environment.

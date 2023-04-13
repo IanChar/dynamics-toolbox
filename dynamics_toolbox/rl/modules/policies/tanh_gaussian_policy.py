@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch import Tensor
 from torch.nn import functional as F
 
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
@@ -125,24 +125,24 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         ).sum(dim=-1, keepdim=True)
         return actions, logprobs, mean, std
 
-    def get_action(self, obs_np: np.ndarray) -> Tuple[np.ndarray, Dict]:
+    def get_action(self, obs: np.ndarray) -> Tuple[np.ndarray, Dict]:
         """Get action.
 
         Args:
-            obs_np: numpy array of shape (obs_dim,)
+            obs: numpy array of shape (obs_dim,)
 
         Returns:
             * Sampled actions.
             * Information dictionary.
         """
-        actions, logprobs = self.get_actions(obs_np[None])
+        actions, logprobs = self.get_actions(obs[None])
         return actions[0, :], {'logpi': float(logprobs)}
 
-    def get_actions(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def get_actions(self, obs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Get multiple actions.
 
         Args:
-            obs_np: numpy array of shape (batch_size, obs_dim)
+            obs: numpy array of shape (batch_size, obs_dim)
 
         Returns:
             * Sampled actions w shape (batch_size, act_dim)
@@ -150,7 +150,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         """
         # Do forward pass.
         with torch.no_grad():
-            actions, logprobs, mean, std = self.forward(dm.torch_ify(obs_np))
+            actions, logprobs, mean, std = self.forward(dm.torch_ify(obs))
         # Sample actions.
         if self.deterministic:
             actions = torch.tanh(mean)

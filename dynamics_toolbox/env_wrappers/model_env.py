@@ -8,8 +8,8 @@ from typing import Optional, Callable, Any, Dict, Tuple, Union, List
 import gym
 import numpy as np
 
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
-from dynamics_toolbox.rl.policies.action_plan_policy import ActionPlanPolicy
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
 
 

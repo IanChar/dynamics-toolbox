@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 
 
 def gym_rollout_from_policy(

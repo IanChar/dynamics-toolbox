@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch import Tensor
 
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
-from dynamics_toolbox.rl.valnets.qnet import QNet
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.valnets.qnet import QNet
 from dynamics_toolbox.rl.util.misc import soft_update_net
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.utils.pytorch.weight_inits import init_default_mlp

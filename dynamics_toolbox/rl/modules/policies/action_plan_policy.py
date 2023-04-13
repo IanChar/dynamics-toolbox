@@ -8,7 +8,7 @@ from typing import Tuple
 
 import numpy as np
 
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 
 
 class ActionPlanPolicy(Policy):

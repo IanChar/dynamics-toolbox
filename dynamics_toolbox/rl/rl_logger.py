@@ -11,7 +11,7 @@ import torch
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 
-from dynamics_toolbox.rl.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 
 
 class RLLogger:

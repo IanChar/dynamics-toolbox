@@ -16,7 +16,7 @@ import numpy as np
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
 
 
-class SequenceReplayBuffer(ReplayBuffer):
+class SequentialReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
@@ -124,20 +124,20 @@ class SequenceReplayBuffer(ReplayBuffer):
             batch_size: number of sequences to grab.
 
         Returns: Dictionary of information for the update.
-            observations: This is a history w shape (batch_size, L, obs_dim)
-            actions: This is the history of actions (batch_size, L + 1, act_dim)
-            rewards: This is the rewards at the last point (batch_size, L + 1, 1)
-            next_observation: This is a history of nexts (batch_size, L, obs_dim)
-            terminals: Whether last time step is terminals (batch_size, L, 1)
+            obs: This is a history w shape (batch_size, L, obs_dim)
+            acts: This is the history of actions (batch_size, L + 1, act_dim)
+            rews: This is the rewards at the last point (batch_size, L + 1, 1)
+            nxts: This is a history of nexts (batch_size, L, obs_dim)
+            terms: Whether last time step is terminals (batch_size, L, 1)
             masks: Masks of what is real and what data (batch_size, L, 1).
         """
         indices = np.random.randint(0, self._size, num_samples)
         batch = {}
-        batch['observations'] = self._observations[indices]
-        batch['next_observations'] = self._next_observations[indices]
-        batch['actions'] = self._actions[indices]
-        batch['rewards'] = self._rewards[indices]
-        batch['terminals'] = self._terminals[indices]
+        batch['obs'] = self._observations[indices]
+        batch['nxts'] = self._next_observations[indices]
+        batch['acts'] = self._actions[indices]
+        batch['rews'] = self._rewards[indices]
+        batch['terms'] = self._terminals[indices]
         batch['masks'] = self._masks[indices]
         return batch
 
@@ -147,13 +147,7 @@ class SequenceReplayBuffer(ReplayBuffer):
         Args:
             batch_size: number of sequences to grab.
 
-        Returns: Dictionary of information for the update.
-            observations: This is a history w shape (batch_size, L, obs_dim)
-            actions: This is the history of actions (batch_size, L + 1, act_dim)
-            rewards: This is the rewards at the last point (batch_size, L + 1, 1)
-            next_observation: This is a history of nexts (batch_size, L, obs_dim)
-            terminals: Whether last time step is terminals (batch_size, L, 1)
-            masks: Masks of what is real and what data (batch_size, L, 1).
+        Returns: Start states (num_samples, obs_dim)
         """
         indices = np.random.randint(0, self._size, num_samples)
         return self._observations[indices][:, -1]

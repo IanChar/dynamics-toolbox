@@ -1,8 +1,8 @@
 """
-The soft actor critic algorithm.
+Soft actor critic but encodes previous observations.
 
 Author: Ian Char
-Date: April 6, 2023
+Date: April 13, 2023
 """
 from copy import deepcopy
 from typing import Dict, Optional, Tuple
@@ -12,19 +12,21 @@ import torch.nn as nn
 from torch import Tensor
 
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
-from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
-from dynamics_toolbox.rl.modules.valnets.qnet import QNet
+from dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy import (
+    SequentialTanhGaussianPolicy,
+)
+from dynamics_toolbox.rl.modules.valnets.qnet import SequentialQNet
 from dynamics_toolbox.rl.util.misc import soft_update_net
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.utils.pytorch.weight_inits import init_net
 
 
-class SAC(RLAlgorithm):
+class SequentialSAC(RLAlgorithm):
 
     def __init__(
         self,
-        policy: Policy,
-        qnet: QNet,
+        policy: SequentialTanhGaussianPolicy,
+        qnet: SequentialQNet,
         discount: float,
         policy_learning_rate: float = 3e-4,
         q_learning_rate: float = 3e-4,
@@ -106,17 +108,43 @@ class SAC(RLAlgorithm):
 
         Returns: Dictionary of loss statistics.
         """
-        obs, acts, rews, nxts, terms = [pt_batch[k] for k in
-                                        ('obs', 'acts', 'rews', 'nxts', 'terms')]
+        # Extract stuff from the batch we need.
+        obs = pt_batch['obs']
+        nxts = pt_batch['nxts']
+        terms = pt_batch['terms']
+        masks = pt_batch['masks']
+        acts = pt_batch['acts'][:, 1:]
+        prev_acts = pt_batch['acts'][:, :-1]
+        rews = pt_batch['rews'][:, 1:]
+        prev_rews = pt_batch['rews'][:, :-1]
+        full_obs = torch.cat([obs, nxts[:, [-1]]], dim=1)
+        full_acts = pt_batch['acts']
+        full_rews = pt_batch['rews']
         stats = {}
         # Policy loss.
-        loss, loss_stats = self._compute_policy_loss(obs)
+        loss, loss_stats = self._compute_policy_loss(
+            obs,
+            prev_acts,
+            prev_rews,
+            masks,
+        )
         stats.update(loss_stats)
         self._policy_optimizer.zero_grad()
         loss.backward()
         self._policy_optimizer.step()
         # QNet loss.
-        loss, loss_stats = self._compute_q_loss(obs, acts, rews, nxts, terms)
+        loss, loss_stats = self._compute_q_loss(
+            obs,
+            acts,
+            rews,
+            terms,
+            prev_acts,
+            prev_rews,
+            full_obs,
+            full_acts,
+            full_rews,
+            masks,
+        )
         stats.update(loss_stats)
         self._q_optimizer.zero_grad()
         loss.backward()
@@ -159,26 +187,30 @@ class SAC(RLAlgorithm):
     def _compute_policy_loss(
         self,
         obs: Tensor,
+        prev_acts: Tensor,
+        prev_rews: Tensor,
+        masks: Tensor,
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the policy loss.
 
         Args:
-            obs: The observations w shape (batch_size, obs_dim).
+            obs: The observations w shape (batch_size, L, obs_dim).
+            prev_acts: Shape (batch_size, L, act_dim).
+            prev_rews: Shape (batch_size, L, 1).
+            masks: Shape (batch_size, L, 1).
 
         Returns: The loss and the dictionary of loss stats.
         """
         loss_stats = {}
-        pi_acts, logprobs = self.policy(obs)[:2]
-        if self.entropy_tune:
-            alpha = self.log_alpha.exp().item()
-        else:
-            alpha = 1
+        num_valid = masks.sum()
+        acts, logprobs, means, stds = self.policy(obs, prev_acts, prev_rews)[:4]
+        alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         values = torch.min(torch.stack([
-            qnet(obs, pi_acts) for qnet in self.qnets
+            qnet(obs, prev_acts, prev_rews, acts) for qnet in self.qnets
         ]), dim=0)[0]
-        loss = (alpha * logprobs - values).mean()
-        loss_stats['Policy/policy_loss'] = loss.item()
-        loss_stats['Policy/logprob_mean'] = logprobs.mean().item()
+        loss = ((alpha * logprobs - values) * masks).sum() / num_valid
+        loss_stats['Policy/polic_loss'] = loss.item()
+        loss_stats['Policy/logprob_mean'] = (logprobs * masks).sum().item() / num_valid
         return loss, loss_stats
 
     def _compute_q_loss(
@@ -186,28 +218,41 @@ class SAC(RLAlgorithm):
         obs: Tensor,
         acts: Tensor,
         rews: Tensor,
-        nxts: Tensor,
         terms: Tensor,
+        prev_acts: Tensor,
+        prev_rews: Tensor,
+        full_obs: Tensor,
+        full_acts: Tensor,
+        full_rews: Tensor,
+        masks: Tensor,
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the Q Loss
 
         Args:
-            obs: The observations w shape (batch_size, obs_dim).
-            acts: The actions w shape (batch_size, act_dim).
-            rews: The rewards w shape (batch_size, 1).
-            nxts: The next observations w shape (batch_size, obs_dim).
-            terms: The terminals w shape (batch_size, 1).
+            obs: (batch_size, L, obs_dim)
+            acts: (batch_size, L, act_dim)
+            rews: (batch_size, L, 1)
+            terms: (batch_size, L, 1)
+            prev_acts: (batch_size, L, act_dim)
+            prev_rews: (batch_size, L, 1)
+            full_obs: (batch_size, L + 1, obs_dim)
+            full_acts: (batch_size, L + 1, act_dim)
+            full_rews: (batch_size, L + 1, 1)
+            masks: (batch_size, L, 1)
 
         Returns: The loss and the dictionary of loss stats.
         """
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
-        qpreds = [qnet(obs, acts) for qnet in self.qnets]
-        nxt_acts, nxt_logprobs = self.policy(nxts)[:2]
-        qtarget_preds = [tqnet(nxts, nxt_acts) for tqnet in self.target_qnets]
+        num_valid = masks.sum()
+        qpreds = [qnet(obs, prev_acts, prev_rews, acts)
+                  for qnet in self.qnets]
+        nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews)[:2]
+        qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts)
+                         for tqnet in self.target_qnets]
         target_qs = torch.min(torch.stack(qtarget_preds), dim=0)[0]
         target_qs -= alpha * nxt_logprobs
         bellman_targets = (rews + (1. - terms) * self.discount * target_qs).detach()
-        losses = [(qpred - bellman_targets).pow(2).mean()
+        losses = [((qpred - bellman_targets) * masks).pow(2).sum() / num_valid
                   for qpred in qpreds]
         loss_dict = {}
         qidx = 1
@@ -219,8 +264,3 @@ class SAC(RLAlgorithm):
             })
             qidx += 1
         return torch.sum(torch.stack(losses), dim=0), loss_dict
-
-    @property
-    def policy(self):
-        """Optimzier."""
-        return self._policy

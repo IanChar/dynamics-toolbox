@@ -202,7 +202,7 @@ class SequentialSAC(RLAlgorithm):
         Returns: The loss and the dictionary of loss stats.
         """
         loss_stats = {}
-        num_valid = masks.sum()
+        num_valid = masks.sum().item()
         acts, logprobs, means, stds = self.policy(obs, prev_acts, prev_rews)[:4]
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         values = torch.min(torch.stack([

@@ -1,6 +1,6 @@
 import gym
 from gym.envs.registration import register
-import pybulletgym
+import pybullet_envs
 
 from dynamics_toolbox.rl.envs.pybullet.pybullet_wrappers import POMDPWrapper
 
@@ -28,7 +28,7 @@ register(
     "HopperBLT-F-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HopperPyBulletEnv-v0"),
+        env=gym.make("HopperBulletEnv-v0"),
         partially_obs_dims=list(range(15)),
     ),  # full obs
     max_episode_steps=1000,
@@ -38,7 +38,7 @@ register(
     "HopperBLT-P-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HopperPyBulletEnv-v0"),
+        env=gym.make("HopperBulletEnv-v0"),
         partially_obs_dims=[0, 1, 2, 6, 7, 8, 10, 12, 14],  # one foot
     ),  # pos
     max_episode_steps=1000,
@@ -48,7 +48,7 @@ register(
     "HopperBLT-V-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HopperPyBulletEnv-v0"),
+        env=gym.make("HopperBulletEnv-v0"),
         partially_obs_dims=[3, 4, 5, 9, 11, 13],
     ),  # vel
     max_episode_steps=1000,
@@ -58,7 +58,7 @@ register(
     "WalkerBLT-F-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("Walker2DPyBulletEnv-v0"),
+        env=gym.make("Walker2DBulletEnv-v0"),
         partially_obs_dims=list(range(22)),
     ),  # full obs
     max_episode_steps=1000,
@@ -68,7 +68,7 @@ register(
     "WalkerBLT-P-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("Walker2DPyBulletEnv-v0"),
+        env=gym.make("Walker2DBulletEnv-v0"),
         partially_obs_dims=[0, 1, 2, 6, 7, 8, 10, 12, 14, 16, 18, 20, 21],  # 2 feet
     ),  # pos
     max_episode_steps=1000,
@@ -78,7 +78,7 @@ register(
     "WalkerBLT-V-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("Walker2DPyBulletEnv-v0"),
+        env=gym.make("Walker2DBulletEnv-v0"),
         partially_obs_dims=[3, 4, 5, 9, 11, 13, 15, 17, 19],
     ),  # vel
     max_episode_steps=1000,
@@ -88,7 +88,7 @@ register(
     "AntBLT-F-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("AntPyBulletEnv-v0"),
+        env=gym.make("AntBulletEnv-v0"),
         partially_obs_dims=list(range(28)),
     ),  # full obs
     max_episode_steps=1000,
@@ -98,7 +98,7 @@ register(
     "AntBLT-P-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("AntPyBulletEnv-v0"),
+        env=gym.make("AntBulletEnv-v0"),
         partially_obs_dims=[
             0,
             1,
@@ -126,7 +126,7 @@ register(
     "AntBLT-V-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("AntPyBulletEnv-v0"),
+        env=gym.make("AntBulletEnv-v0"),
         partially_obs_dims=[3, 4, 5, 9, 11, 13, 15, 17, 19, 21, 23],
     ),  # vel
     max_episode_steps=1000,
@@ -136,7 +136,7 @@ register(
     "HalfCheetahBLT-F-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HalfCheetahPyBulletEnv-v0"),
+        env=gym.make("HalfCheetahBulletEnv-v0"),
         partially_obs_dims=list(range(26)),
     ),  # full obs
     max_episode_steps=1000,
@@ -146,7 +146,7 @@ register(
     "HalfCheetahBLT-P-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HalfCheetahPyBulletEnv-v0"),
+        env=gym.make("HalfCheetahBulletEnv-v0"),
         partially_obs_dims=[
             0,
             1,
@@ -174,7 +174,7 @@ register(
     "HalfCheetahBLT-V-v0",
     entry_point=POMDPWrapper,
     kwargs=dict(
-        env=gym.make("HalfCheetahPyBulletEnv-v0"),
+        env=gym.make("HalfCheetahBulletEnv-v0"),
         partially_obs_dims=[3, 4, 5, 9, 11, 13, 15, 17, 19],
     ),  # vel
     max_episode_steps=1000,

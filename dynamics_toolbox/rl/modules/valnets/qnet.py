@@ -56,12 +56,17 @@ class QNet(FCNetwork):
         return super().forward(torch.cat([obs, act], dim=-1))
 
 
-class SequentialQNet(QNet):
+class SequentialQNet(FCNetwork):
 
     def __init__(
         self,
+        obs_dim: int,
+        act_dim: int,
+        hidden_sizes: Sequence[int],
         history_encoder: HistoryEncoder,
         obs_act_encode_dim: int,
+        hidden_activation: Callable[Tensor, Tensor] = F.relu,
+        input_dim: Optional[int] = None,
         **kwargs
     ):
         """Constructor.
@@ -72,9 +77,15 @@ class SequentialQNet(QNet):
             All the rest are the same as QNet.
         """
         super().__init__(
-            input_dim=history_encoder.out_dim + obs_act_encode_dim,
+            input_dim=(input_dim if input_dim is not None
+                       else history_encoder.out_dim + obs_act_encode_dim),
+            output_dim=1,
+            hidden_sizes=hidden_sizes,
+            hidden_activation=hidden_activation,
             **kwargs
         )
+        self._obs_dim = obs_dim
+        self._act_dim = act_dim
         self._history_encoder = history_encoder
         self._obs_act_encoder = nn.Linear(self._obs_dim + self._act_dim,
                                           obs_act_encode_dim)
@@ -99,5 +110,5 @@ class SequentialQNet(QNet):
         """
         encoding = self._history_encoder(obs_seq, prev_act_seq, rew_seq)[0]
         obs_act_encoding = self.hidden_activation(self._obs_act_encoder(
-            torch.cat([obs_seq, act_seq]), dim=-1))
+            torch.cat([obs_seq, act_seq], dim=-1)))
         return super().forward(torch.cat([encoding, obs_act_encoding], dim=-1))

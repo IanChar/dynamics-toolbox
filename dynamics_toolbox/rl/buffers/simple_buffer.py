@@ -30,6 +30,7 @@ class SimpleReplayBuffer(ReplayBuffer):
         self._act_dim = act_dim
         max_buffer_size = int(max_buffer_size)
         self._max_size = max_buffer_size
+        self.clear_buffer()
 
     def clear_buffer(self):
         """Clear the buffer."""

@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch import Tensor
 
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
-from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
-from dynamics_toolbox.rl.modules.valnets.qnet import QNet
+from dynamics_toolbox.rl.modules.policies import Policy
+from dynamics_toolbox.rl.modules.valnets import QNet
 from dynamics_toolbox.rl.util.misc import soft_update_net
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.utils.pytorch.weight_inits import init_net
@@ -124,7 +124,7 @@ class SAC(RLAlgorithm):
         # Alpha loss.
         if self.entropy_tune:
             loss, loss_stats = self._compute_alpha_loss(
-                loss_stats['Policy/logprob_mean'])
+                stats['Policy/logprob_mean'])
             stats.update(loss_stats)
             self._alpha_optimizer.zero_grad()
             loss.backward()

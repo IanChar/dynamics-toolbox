@@ -96,19 +96,21 @@ class SequentialReplayBuffer(ReplayBuffer):
                 or (horizon, 1).
             Optionaly masks: shape (num_paths, horizon, 1) or (horizon, 1).
         """
-        if len(paths['actions'].shape) < 3:
+        if len(paths['acts'].shape) < 3:
             paths = {k: v[np.newaxis] for k, v in paths.items()}
-        for pidx in range(len(paths['actions'])):
-            path = {k: v[pidx] for k, v in paths.items}
-            length = len(path['actions'])
+        paths['nxts'] = paths['obs'][:, 1:]
+        paths['obs'] = paths['obs'][:, :-1]
+        for pidx in range(len(paths['acts'])):
+            path = {k: v[pidx] for k, v in paths.items()}
+            length = len(path['acts'])
             for strt in range(0, max(length - self._lookback + 1, 1)):
                 end = min(strt + self._lookback, strt + length)
-                for k, buff in (('actions', self._actions), ('rewards', self._rewards)):
+                for k, buff in (('acts', self._actions), ('rews', self._rewards)):
                     buff[self._top, 1:end - strt + 1] = path[k][strt:end]
                 for k, buff in (
-                        ('observations', self._observations),
-                        ('next_observations', self._next_observations),
-                        ('terminals', self._terminals)):
+                        ('obs', self._observations),
+                        ('nxts', self._next_observations),
+                        ('terms', self._terminals)):
                     buff[self._top, :end - strt] = path[k][strt:end]
                 if 'masks' in path:
                     self._masks[self._top, :end - strt] = path['masks'][strt:end]
@@ -166,6 +168,6 @@ class SequentialReplayBuffer(ReplayBuffer):
         raise NotImplementedError('This would require a lot more logic :(')
 
     def _advance(self):
-        self._top = (self._top + 1) % self._max_buffer_size
-        if self._size < self._max_buffer_size:
+        self._top = (self._top + 1) % self._max_size
+        if self._size < self._max_size:
             self._size += 1

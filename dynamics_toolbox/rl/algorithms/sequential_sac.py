@@ -152,7 +152,7 @@ class SequentialSAC(RLAlgorithm):
         # Alpha loss.
         if self.entropy_tune:
             loss, loss_stats = self._compute_alpha_loss(
-                loss_stats['Policy/logprob_mean'])
+                stats['Policy/logprob_mean'])
             stats.update(loss_stats)
             self._alpha_optimizer.zero_grad()
             loss.backward()
@@ -247,10 +247,12 @@ class SequentialSAC(RLAlgorithm):
         qpreds = [qnet(obs, prev_acts, prev_rews, acts)
                   for qnet in self.qnets]
         nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews)[:2]
-        qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts)
+        # Note that we have to trim off first step because we do not care about
+        # it for next values.
+        qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts)[:, 1:]
                          for tqnet in self.target_qnets]
         target_qs = torch.min(torch.stack(qtarget_preds), dim=0)[0]
-        target_qs -= alpha * nxt_logprobs
+        target_qs -= alpha * nxt_logprobs[:, 1:]
         bellman_targets = (rews + (1. - terms) * self.discount * target_qs).detach()
         losses = [((qpred - bellman_targets) * masks).pow(2).sum() / num_valid
                   for qpred in qpreds]
@@ -264,3 +266,8 @@ class SequentialSAC(RLAlgorithm):
             })
             qidx += 1
         return torch.sum(torch.stack(losses), dim=0), loss_dict
+
+    @property
+    def policy(self):
+        """Optimzier."""
+        return self._policy

@@ -165,7 +165,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         return self._act_dim
 
 
-class SeqeuntialTanhGaussianPolicy(TanhGaussianPolicy):
+class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
 
     def __init__(
         self,
@@ -208,7 +208,7 @@ class SeqeuntialTanhGaussianPolicy(TanhGaussianPolicy):
         if encoding.shape[1] == 1:
             obs_encoding = obs_encoding[:, [-1]]
         actions, logprobs, means, stds = super().forward(torch.cat([
-            encoding, obs_encoding], dim=1))
+            encoding, obs_encoding], dim=-1))
         return actions, logprobs, means, stds, history
 
     def get_actions(self, obs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -228,7 +228,7 @@ class SeqeuntialTanhGaussianPolicy(TanhGaussianPolicy):
         obs = dm.torch_ify(obs).unsqueeze(1)
         if self._obs_history is None:
             self._obs_history = obs
-            self._act_history = dm.zeros(len(obs), 1, self.action_dim)
+            self._act_history = dm.zeros(len(obs), 1, self.act_dim)
             self._rew_history = dm.zeros(len(obs), 1, 1)
         else:
             self._obs_history = torch.cat([self._obs_history, obs], dim=1)
@@ -248,7 +248,7 @@ class SeqeuntialTanhGaussianPolicy(TanhGaussianPolicy):
             logprobs = dm.ones(len(actions))
         self._act_history = torch.cat([self._act_history, actions.unsqueeze(1)],
                                       dim=1)
-        return dm.get_numpy(actions), dm.get_numpy(logprobs.squeeze(-1))
+        return dm.get_numpy(actions.squeeze()), dm.get_numpy(logprobs.squeeze())
 
     def get_reward_feedback(self, rewards: Union[float, np.ndarray]):
         """Get feedback from the environment about the last reward.
@@ -264,4 +264,4 @@ class SeqeuntialTanhGaussianPolicy(TanhGaussianPolicy):
         if self._rew_history is None:
             self._rew_history = rewards
         else:
-            self._rew_history = torch.cat([self.rew_history, rewards], dim=1)
+            self._rew_history = torch.cat([self._rew_history, rewards], dim=1)

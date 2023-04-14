@@ -9,14 +9,14 @@ import os
 import hydra
 from omegaconf import DictConfig, open_dict
 
+from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
 def train_rl(cfg: DictConfig):
     # Instantiate the gym environment and get the obs and act dims.
-    if 'MuJoCo' in cfg['env']['id'] or 'PyBullet' in cfg['env']['id']:
-        import pybulletgym
+    extra_imports_for_env(cfg['env']['id'])
     env = hydra.utils.instantiate(cfg['env'])
     obs_dim = env.observation_space.low.shape[0]
     act_dim = env.action_space.low.shape[0]
@@ -37,7 +37,7 @@ def train_rl(cfg: DictConfig):
 
 def update_cfgs_with_dims(cfg: DictConfig, obs_dim: int, act_dim: int) -> DictConfig:
     """Go through and every field that needs obs_dim and act_dim update."""
-    required_keys = {'qnet', 'policy', 'replay_buffer'}
+    required_keys = {'qnet', 'policy', 'replay_buffer', 'history_encoder'}
     for k, v in cfg.items():
         if k in required_keys:
             with open_dict(v):

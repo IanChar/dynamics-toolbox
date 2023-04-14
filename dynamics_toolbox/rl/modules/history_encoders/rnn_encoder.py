@@ -108,7 +108,7 @@ class RNNEncoder(HistoryEncoder):
             encoding.append(self.encoder_activation(self.rew_encoder(rew_seq)))
         encoding = torch.cat(encoding, dim=-1)
         encoding, new_history = self._memory_unit(encoding, history)
-        return encoding, new_history, None
+        return encoding, new_history
 
     @property
     def out_dim(self) -> int:

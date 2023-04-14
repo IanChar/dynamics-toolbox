@@ -130,3 +130,30 @@ def unnormalize_action(
     act_space = env.action_space
     act_spread = act_space.high - act_space.low
     return (action + 1) / 2 * act_spread + act_space.low
+
+
+###########################################################################
+#                           GYM IMPORT UTILS                              #
+###########################################################################
+D4RL_ENVIRONMENTS = set([])
+for env_name in ['halfcheetah', 'walker2D', 'hopper', 'ant']:
+    for dset in ['random', 'medium', 'expert', 'medium_replay', 'full_replay',
+                 'medium_expert']:
+        for version in ['v0', 'v1', 'v2']:
+            D4RL_ENVIRONMENTS.add(f'{env_name}_{dset}-{version}')
+PYBULLET_ENVIRONMENTS = set([])
+# Add the occluded environments.
+for env_name in ['HopperBLT', 'WalkerBLT', 'HalfCheetahBLT']:
+    for obs_type in ['P', 'V', 'F']:
+        PYBULLET_ENVIRONMENTS.add('-'.join([env_name, obs_type, 'v0']))
+
+
+def extra_imports_for_env(env_name: str):
+    """Make any additional imports needed for an environment.
+
+    Better to isolate these imports because they should be optional.
+    """
+    if env_name in D4RL_ENVIRONMENTS:
+        import d4rl
+    if env_name in PYBULLET_ENVIRONMENTS:
+        import dynamics_toolbox.rl.envs.pybullet

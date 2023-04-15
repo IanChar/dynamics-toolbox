@@ -49,10 +49,10 @@ def gym_rollout_from_policy(
         running = (not term) and ((horizon is None) or h < horizon)
         policy.get_reward_feedback(rew)
     return {
-        'obs': np.array(obs),
-        'acts': np.array(acts),
-        'rews': np.array(rews).reshape(-1, 1),
-        'terms': np.array(terms).reshape(-1, 1),
+        'observations': np.array(obs),
+        'actions': np.array(acts),
+        'rewards': np.array(rews).reshape(-1, 1),
+        'terminals': np.array(terms).reshape(-1, 1),
         'logprobs': np.array(logprobs).reshape(-1, 1),
     }
 
@@ -89,7 +89,7 @@ def explore_gym_until_threshold_met(
             policy,
             steps_this_ep
         ))
-        num_steps_taken += len(paths[-1]['rews'])
+        num_steps_taken += len(paths[-1]['rewards'])
     return paths
 
 
@@ -110,7 +110,7 @@ def evaluate_policy_in_gym(
     Returns: Average and standard deviation of score across episodes.
     """
     policy.deterministic = True
-    scores = [np.sum(gym_rollout_from_policy(env, policy, horizon)['rews'])
+    scores = [np.sum(gym_rollout_from_policy(env, policy, horizon)['rewards'])
               for _ in range(num_eps)]
     return np.mean(scores), np.std(scores)
 

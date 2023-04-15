@@ -107,7 +107,8 @@ class SAC(RLAlgorithm):
         Returns: Dictionary of loss statistics.
         """
         obs, acts, rews, nxts, terms = [pt_batch[k] for k in
-                                        ('obs', 'acts', 'rews', 'nxts', 'terms')]
+                                        ('observations', 'actions', 'rewards',
+                                         'next_observations', 'terminals')]
         stats = {}
         # Policy loss.
         loss, loss_stats = self._compute_policy_loss(obs)

@@ -109,17 +109,17 @@ class SequentialSAC(RLAlgorithm):
         Returns: Dictionary of loss statistics.
         """
         # Extract stuff from the batch we need.
-        obs = pt_batch['obs']
-        nxts = pt_batch['nxts']
-        terms = pt_batch['terms']
+        obs = pt_batch['observations']
+        nxts = pt_batch['next_observations']
+        terms = pt_batch['terminals']
         masks = pt_batch['masks']
-        acts = pt_batch['acts'][:, 1:]
-        prev_acts = pt_batch['acts'][:, :-1]
-        rews = pt_batch['rews'][:, 1:]
-        prev_rews = pt_batch['rews'][:, :-1]
+        acts = pt_batch['actions'][:, 1:]
+        prev_acts = pt_batch['actions'][:, :-1]
+        rews = pt_batch['rewards'][:, 1:]
+        prev_rews = pt_batch['rewards'][:, :-1]
         full_obs = torch.cat([obs, nxts[:, [-1]]], dim=1)
-        full_acts = pt_batch['acts']
-        full_rews = pt_batch['rews']
+        full_acts = pt_batch['actions']
+        full_rews = pt_batch['rewards']
         stats = {}
         # Policy loss.
         loss, loss_stats = self._compute_policy_loss(

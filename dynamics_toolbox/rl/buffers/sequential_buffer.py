@@ -14,6 +14,7 @@ from typing import Dict, Union
 import numpy as np
 
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
+from dynamics_toolbox.util.sarsa_data_util import parse_into_trajectories
 
 
 class SequentialReplayBuffer(ReplayBuffer):
@@ -98,19 +99,25 @@ class SequentialReplayBuffer(ReplayBuffer):
         """
         if len(paths['acts'].shape) < 3:
             paths = {k: v[np.newaxis] for k, v in paths.items()}
-        paths['nxts'] = paths['obs'][:, 1:]
-        paths['obs'] = paths['obs'][:, :-1]
+        paths['next_observations'] = paths['observations'][:, 1:]
+        paths['observations'] = paths['observations'][:, :-1]
         for pidx in range(len(paths['acts'])):
             path = {k: v[pidx] for k, v in paths.items()}
-            length = len(path['acts'])
+            length = None
+            if 'masks' in path:
+                idxs = np.argwhere(path['masks'] - 1).flatten()
+                if len(idxs):
+                    length = idxs[0]
+            else:
+                length = len(path['acts'])
             for strt in range(0, max(length - self._lookback + 1, 1)):
                 end = min(strt + self._lookback, strt + length)
-                for k, buff in (('acts', self._actions), ('rews', self._rewards)):
+                for k, buff in (('acts', self._actions), ('rewards', self._rewards)):
                     buff[self._top, 1:end - strt + 1] = path[k][strt:end]
                 for k, buff in (
-                        ('obs', self._observations),
-                        ('nxts', self._next_observations),
-                        ('terms', self._terminals)):
+                        ('observations', self._observations),
+                        ('next_observations', self._next_observations),
+                        ('terminals', self._terminals)):
                     buff[self._top, :end - strt] = path[k][strt:end]
                 if 'masks' in path:
                     self._masks[self._top, :end - strt] = path['masks'][strt:end]
@@ -135,11 +142,11 @@ class SequentialReplayBuffer(ReplayBuffer):
         """
         indices = np.random.randint(0, self._size, num_samples)
         batch = {}
-        batch['obs'] = self._observations[indices]
-        batch['nxts'] = self._next_observations[indices]
+        batch['observations'] = self._observations[indices]
+        batch['next_observations'] = self._next_observations[indices]
         batch['acts'] = self._actions[indices]
-        batch['rews'] = self._rewards[indices]
-        batch['terms'] = self._terminals[indices]
+        batch['rewards'] = self._rewards[indices]
+        batch['terminals'] = self._terminals[indices]
         batch['masks'] = self._masks[indices]
         return batch
 
@@ -152,7 +159,7 @@ class SequentialReplayBuffer(ReplayBuffer):
         Returns: Start states (num_samples, obs_dim)
         """
         indices = np.random.randint(0, self._size, num_samples)
-        return self._observations[indices][:, -1]
+        return self._observations[indices][:, 0]
 
     def add_step(
         self,
@@ -171,3 +178,26 @@ class SequentialReplayBuffer(ReplayBuffer):
         self._top = (self._top + 1) % self._max_size
         if self._size < self._max_size:
             self._size += 1
+
+
+class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
+
+    def __init__(
+        self,
+        data: Dict[str, np.ndarray],
+        lookback: int,
+    ):
+        """Constructor.
+
+        Args:
+            data with observations, next_observations, rewards, actions, terminals.
+        """
+        super().__init__(
+            obs_dim=data['observations'].shape[-1],
+            act_dim=data['actions'].shape[-1],
+            max_buffer_size=len(data['actions']),
+            lookback=lookback,
+        )
+        paths = parse_into_trajectories(data)
+        for path in paths:
+            self.add_paths(path)

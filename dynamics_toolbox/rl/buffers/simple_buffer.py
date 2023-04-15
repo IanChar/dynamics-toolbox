@@ -57,7 +57,8 @@ class SimpleReplayBuffer(ReplayBuffer):
                 or (horizon, 1).
             Optionaly masks: shape (num_paths, horizon, 1) or (horizon, 1).
         """
-        obs, acts, rews, terms = [paths[k] for k in ('obs', 'acts', 'rews', 'terms')]
+        obs, acts, rews, terms = [paths[k] for k in ('observations', 'actions',
+                                                     'rewards', 'terminals')]
         # Restructure the data
         if len(obs.shape) > 2:
             curr_obs = obs[:, :-1].reshape(-1, obs.shape[-1])
@@ -141,11 +142,11 @@ class SimpleReplayBuffer(ReplayBuffer):
         """
         idxs = np.random.randint(0, self._size, size=num_samples)
         return {
-            'obs': self._obs[idxs],
-            'acts': self._acts[idxs],
-            'rews': self._rews[idxs],
-            'nxts': self._next_obs[idxs],
-            'terms': self._terms[idxs],
+            'observations': self._obs[idxs],
+            'actions': self._acts[idxs],
+            'rewards': self._rews[idxs],
+            'next_observations': self._next_obs[idxs],
+            'terminals': self._terms[idxs],
         }
 
     def sample_starts(self, num_samples: int) -> np.ndarray:
@@ -175,7 +176,7 @@ class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
         self._obs = data['observations']
         self._next_obs = data['next_observations']
         self._acts = data['actions']
-        self._rews = data['rews'].reshape(-1, 1)
+        self._rews = data['rewards'].reshape(-1, 1)
         self._terms = data['terminals'].reshape(-1, 1)
         max_buffer_size = len(self._obs)
         self._ptr = 0

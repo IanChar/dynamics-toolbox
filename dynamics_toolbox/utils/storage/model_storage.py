@@ -4,7 +4,8 @@ Utility for loading a model.
 Author: Ian Char
 """
 import os
-from typing import Optional, List
+import pickle as pkl
+from typing import Dict, Optional, List
 
 import hydra
 from omegaconf import OmegaConf
@@ -83,6 +84,9 @@ def load_ensemble_from_parent_dir(
     parent_dir: str,
     sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
     member_sample_mode: Optional[str] = None,
+    load_n_best_models: Optional[int] = None,
+    select_statistic: str = 'val/nll',
+    lower_stat_is_better: bool = True,
 ) -> Ensemble:
     """Load all the models contained in the parent directory
 
@@ -90,9 +94,22 @@ def load_ensemble_from_parent_dir(
         parent_dir: The directory containing other directories of members.
         sample_mode: The sampling mode for the ensemble.
         member_sample_mode: How each of the children should sample.
+        load_n_best_models: Load only the N best models based on validation score.
+            Load all models if this is not specified.
+        select_statistic: Statistic to evaluate based on.
+        lower_stat_is_better: Whether the lower the statistic the better.
     """
     children = os.listdir(parent_dir)
     paths = []
+    if load_n_best_models:
+        children_stats = [
+            get_model_stats(os.path.join(parent_dir, child))[select_statistic]
+            for child in children
+        ]
+        best_idxs = np.argsort(children_stats)
+        if not lower_stat_is_better:
+            best_idxs = best_idxs[::-1]
+        children = [children[cidx] for cidx in best_idxs[:load_n_best_models]]
     for child in children:
         child = os.path.join(parent_dir, child)
         if os.path.isdir(child) and 'config.yaml' in os.listdir(child):
@@ -135,3 +152,27 @@ def load_model_from_tensorboard_log(
     else:
         path = os.path.join(path, f'version_{max(versions)}')
     return load_model_from_log_dir(path, epoch=epoch)
+
+
+def get_model_stats(
+    model_dir: str,
+    stat_type: str = 'val',
+) -> Dict[str, float]:
+    """Load in final statistics about the model.
+
+    Args:
+        model_dir: Path pointing to the model.
+        stat_type: The type of statistics, either val or te.
+
+    Returns: Dictionary of statitics.
+    """
+    stats = None
+    stat_name = f'{stat_type}_eval_stats.pkl'
+    for root, dirs, files in os.walk(model_dir):
+        if stat_name in files:
+            with open(os.path.join(root, stat_name), 'rb') as f:
+                stats = pkl.load(f)
+            break
+    if isinstance(stats, list):
+        stats = stats[0]
+    return stats

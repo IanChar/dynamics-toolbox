@@ -158,6 +158,8 @@ class SequentialReplayBuffer(ReplayBuffer):
 
         Returns: Start states (num_samples, obs_dim)
         """
+        # TODO: Currently this has a slight bug where we do not consider all of the
+        # states for start states. Just the first state in the window.
         indices = np.random.randint(0, self._size, num_samples)
         return self._observations[indices][:, 0]
 
@@ -198,6 +200,18 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
             max_buffer_size=len(data['actions']),
             lookback=lookback,
         )
+        self._starts = data['observations']
         paths = parse_into_trajectories(data)
         for path in paths:
             self.add_paths(path)
+
+    def sample_starts(self, num_samples: int) -> np.ndarray:
+        """Get a random batch of data.
+
+        Args:
+            batch_size: number of sequences to grab.
+
+        Returns: Start states (num_samples, obs_dim)
+        """
+        indices = np.random.randint(0, len(self._starts), num_samples)
+        return self._starts[indices]

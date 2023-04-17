@@ -3,11 +3,14 @@ Data for loading and saving qdata to train on.
 
 Author: Ian Char
 """
+import os
 from typing import Dict
 
 import gym
 import h5py
 import numpy as np
+
+from dynamics_model import DYNAMICS_TOOLBOX_PATH
 
 
 def get_data_from_source(data_source: str) -> Dict[str, np.ndarray]:
@@ -33,15 +36,22 @@ def get_data_from_source(data_source: str) -> Dict[str, np.ndarray]:
                          'file or environment.')
 
 
-def load_from_hdf5(hdf5_path: str) -> Dict[str, np.ndarray]:
+def load_from_hdf5(
+        hdf5_path: str,
+        relative_path: bool = False,
+) -> Dict[str, np.ndarray]:
     """Get qdata from a a hdf5 file.
 
     Args:
         hdf5_path: Path to hdf5 file.
+        relative_path: Whether this should be a relative path from top level of this
+            repo.
 
     Returns:
         Dictionary of the data in the file.
     """
+    if relative_path:
+        hdf5_path = os.path.join(DYNAMICS_TOOLBOX_PATH, hdf5_path)
     data = {}
     with h5py.File(hdf5_path, 'r') as hdata:
         for k, v in hdata.items():

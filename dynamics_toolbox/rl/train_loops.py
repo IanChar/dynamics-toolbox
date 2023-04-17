@@ -152,6 +152,7 @@ def mb_offline_rl_training(
     if debug:
         breakpoint()
     num_steps_taken = 0
+    num_expl_paths_per_epoch = int(num_expl_paths_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)
     model_batch_size = batch_size - env_batch_size
     model_env.start_dist = env_buffer.sample_starts

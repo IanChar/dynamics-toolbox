@@ -21,7 +21,7 @@ class ModelEnv(gym.Env):
             start_distribution: Optional[Callable[[int], np.ndarray]] = None,
             horizon: Optional[int] = None,
             penalizer: Optional[Callable[[Dict[str, Any]], np.ndarray]] = None,
-            penalty_coefficient: float = 1,
+            penalty_coefficient: float = 1.0,
             terminal_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
             reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray],
                                                np.ndarray]] = None,
@@ -182,9 +182,11 @@ class ModelEnv(gym.Env):
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
+            rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
+            if self._reward_is_first_dim:
+                model_out = model_out[:, 1:]
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
-            rews[:, h] = self._compute_reward(state, act, nxts, infos)[0]
             policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
                 terms[:, h] = np.full(starts.shape[0], False)

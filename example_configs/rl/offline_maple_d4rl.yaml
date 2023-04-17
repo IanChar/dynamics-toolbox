@@ -1,0 +1,76 @@
+name: ???
+env_name: ???
+seed: 0
+history_size: 10
+env:
+  _target_: gym.make
+  id: ${env_name}
+train_loop:
+  _target_: dynamics_toolbox.rl.train_loops.mb_offline_rl_training
+  epochs: 1000
+  num_expl_paths_per_epoch: 50e3
+  num_eval_eps: 10
+  model_horizon: 10
+  num_gradient_steps_per_epoch: 1000
+  batch_size: 64
+  model_env:
+    _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
+    dynamics_model:
+      _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
+      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+      sample_mode: 'sample_member_every_step'
+    penalizer: dynamics_model.env_wrappers.penalizers.std_width_penalizer
+    penalty_coefficient: 1.0
+    terminal_function:
+      _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
+      env_name: ${env_name}
+  model_buffer:
+    _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
+    max_buffer_size: 1e6
+    lookback: ${history_size}
+  env_buffer:
+    _target_: dynamics_toolbox.rl.buffers.simple_buffer.SequentialOfflineReplayBuffer
+    data:
+      _target_: load_from_hdf5
+      hdf5_path: 'data/d4rl/${env_name}.hdf5'
+      relative_path: True
+    lookback: ${history_size}
+  logger:
+    _target_: dynamics_toolbox.rl.rl_logger.RLLogger
+algorithm:
+  _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
+  discount: 0.99
+  learning_rate: 3e-4
+  soft_target_update_weight: 5e-3
+  soft_target_update_frequency: 1
+  entropy_tune: True
+  num_qnets: 2
+  policy:
+    _target_: dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy.SequentialTanhGaussianPolicy
+    history_encoder:
+      _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
+      rnn_type: 'GRU'
+      rnn_hidden_size: 128
+      obs_encode_dim: 64
+      act_encode_dim: 16
+      rew_encode_dim: 16
+    obs_encode_dim: 64
+    hidden_sizes:
+      - 256
+      - 256
+  qnet:
+    _target_: dynamics_toolbox.rl.modules.valnets.qnet.SequentialQNet
+    history_encoder:
+      _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
+      rnn_type: 'GRU'
+      rnn_hidden_size: 128
+      obs_encode_dim: 64
+      act_encode_dim: 16
+      rew_encode_dim: 16
+    obs_act_encode_dim: 64
+    hidden_sizes:
+      - 256
+      - 256
+hydra:
+  run:
+    dir: logs/${name}/${seed}

@@ -11,6 +11,7 @@ import hydra
 from omegaconf import OmegaConf
 import numpy as np
 
+from dynamics_model import DYNAMICS_TOOLBOX_PATH
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.abstract_model import\
         AbstractModel
@@ -21,6 +22,7 @@ from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
+    relative_path: bool = True,
 ) -> AbstractPlModel:
     """Load a model from a log directory.
 
@@ -32,6 +34,8 @@ def load_model_from_log_dir(
     Returns:
         The loaded dynamics model.
     """
+    if relative_path:
+        path = os.path.join(DYNAMICS_TOOLBOX_PATH, path)
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
     checkpoint_path = None
     for root, dirs, files in os.walk(path):

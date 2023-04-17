@@ -3,6 +3,7 @@ A dynamics model that is an ensemble of other dynamics models.
 
 Author: Ian Char
 """
+from collections import defaultdict
 from typing import Sequence, Tuple, Dict, Any, Optional, List
 
 import numpy as np
@@ -65,13 +66,15 @@ class Ensemble(AbstractModel):
         Returns:
             The output of the model and give a dictionary of related quantities.
         """
-        info_dict = {}
+        info_dict = defaultdict(list)
         nxts = []
         for member_idx, member in enumerate(self.members):
             nxt, info = member.predict(model_input)
             nxts.append(nxt)
-            info_dict[f'member_{member_idx}'] = info
+            for k, v in info.items():
+                info_dict[k].append(v)
         nxts = np.array(nxts)
+        info_dict = {k: np.array(v) for k, v in info_dict.items()}
         num_membs = len(self.members)
         if self._sample_mode == sampling_modes.RETURN_MEAN:
             return np.mean(nxts, axis=0), info_dict

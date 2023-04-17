@@ -11,7 +11,7 @@ import hydra
 from omegaconf import OmegaConf
 import numpy as np
 
-from dynamics_model import DYNAMICS_TOOLBOX_PATH
+from dynamics_toolbox import DYNAMICS_TOOLBOX_PATH
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.abstract_model import\
         AbstractModel
@@ -22,7 +22,7 @@ from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
-    relative_path: bool = True,
+    relative_path: bool = False,
 ) -> AbstractPlModel:
     """Load a model from a log directory.
 
@@ -30,6 +30,7 @@ def load_model_from_log_dir(
         path: The path to the log directory.
         epoch: Epoch of the checkpoint to load in. If not specified, load the
             last checkpoint recorded.
+        relative_path: Whether to look in the top level of the repo.
 
     Returns:
         The loaded dynamics model.
@@ -91,6 +92,7 @@ def load_ensemble_from_parent_dir(
     load_n_best_models: Optional[int] = None,
     select_statistic: str = 'val/nll',
     lower_stat_is_better: bool = True,
+    relative_path: bool = True,
 ) -> Ensemble:
     """Load all the models contained in the parent directory
 
@@ -102,7 +104,10 @@ def load_ensemble_from_parent_dir(
             Load all models if this is not specified.
         select_statistic: Statistic to evaluate based on.
         lower_stat_is_better: Whether the lower the statistic the better.
+        relative_path: Whether to look in the top level of the repo.
     """
+    if relative_path:
+        parent_dir = os.path.join(DYNAMICS_TOOLBOX_PATH, parent_dir)
     children = os.listdir(parent_dir)
     paths = []
     if load_n_best_models:
@@ -130,6 +135,7 @@ def load_model_from_tensorboard_log(
         version: Optional[int] = None,
         epoch: Optional[int] = None,
         default_root: str = 'trained_models',
+        relative_path: bool = True,
 ) -> AbstractModel:
     """Load in a model.
 
@@ -141,6 +147,7 @@ def load_model_from_tensorboard_log(
         epoch: Epoch of the checkpoint to load in. If not specified, load the
             last checkpoint recorded.
         default_root: The root directory to models.
+        relative_path: Whether to look in the top level of the repo.
 
     Returns:
         The loaded dynamics model.

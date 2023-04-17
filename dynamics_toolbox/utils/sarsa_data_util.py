@@ -3,7 +3,7 @@ Utility for gym environments and gym data.
 
 Author: Ian Char
 """
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 

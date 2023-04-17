@@ -11,6 +11,7 @@ train_loop:
   num_expl_paths_per_epoch: 50e3
   num_eval_eps: 10
   model_horizon: 10
+  eval_horizon: 1000
   num_gradient_steps_per_epoch: 1000
   batch_size: 64
   model_env:
@@ -19,8 +20,10 @@ train_loop:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
       parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
       sample_mode: 'sample_member_every_step'
-    penalizer: dynamics_model.env_wrappers.penalizers.std_width_penalizer
-    penalty_coefficient: 1.0
+    penalizer:
+      _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
+      pen_name: 'std'
+    penalty_coefficient: 0.25
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
@@ -29,9 +32,9 @@ train_loop:
     max_buffer_size: 1e6
     lookback: ${history_size}
   env_buffer:
-    _target_: dynamics_toolbox.rl.buffers.simple_buffer.SequentialOfflineReplayBuffer
+    _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialOfflineReplayBuffer
     data:
-      _target_: load_from_hdf5
+      _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
       hdf5_path: 'data/d4rl/${env_name}.hdf5'
       relative_path: True
     lookback: ${history_size}

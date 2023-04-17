@@ -12,6 +12,8 @@ from omegaconf import DictConfig, open_dict
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
+import d4rl
+
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
 def train_rl(cfg: DictConfig):
@@ -37,7 +39,8 @@ def train_rl(cfg: DictConfig):
 
 def update_cfgs_with_dims(cfg: DictConfig, obs_dim: int, act_dim: int) -> DictConfig:
     """Go through and every field that needs obs_dim and act_dim update."""
-    required_keys = {'qnet', 'policy', 'replay_buffer', 'history_encoder'}
+    required_keys = {'qnet', 'policy', 'replay_buffer', 'history_encoder',
+                     'model_buffer', 'env_buffer'}
     for k, v in cfg.items():
         if k in required_keys:
             with open_dict(v):

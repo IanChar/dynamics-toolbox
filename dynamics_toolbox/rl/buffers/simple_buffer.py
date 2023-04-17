@@ -69,9 +69,9 @@ class SimpleReplayBuffer(ReplayBuffer):
         acts, rews, terms = [d.reshape(-1, d.shape[-1])
                              for d in (acts, rews, terms)]
         if 'masks' in paths:
-            masks = np.argwhere(paths['masks'].flatten())
-            obs, nxt_obs, acts, rews, terms = [d[masks] for d in (obs, nxt_obs, acts,
-                                                                  rews, terms)]
+            masks = np.argwhere(paths['masks'].flatten()).flatten()
+            curr_obs, nxt_obs, acts, rews, terms = [
+                d[masks] for d in (curr_obs, nxt_obs, acts, rews, terms)]
         # Figure out if we will wrap around on the buffer.
         num2add = len(curr_obs)
         if self._max_size - self._ptr < num2add:
@@ -167,6 +167,7 @@ class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
     def __init__(
         self,
         data: Dict[str, np.ndarray],
+        **kwargs
     ):
         """Constructor.
 

@@ -14,7 +14,7 @@ from typing import Dict, Union
 import numpy as np
 
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
-from dynamics_toolbox.util.sarsa_data_util import parse_into_trajectories
+from dynamics_toolbox.utils.sarsa_data_util import parse_into_trajectories
 
 
 class SequentialReplayBuffer(ReplayBuffer):
@@ -87,32 +87,32 @@ class SequentialReplayBuffer(ReplayBuffer):
 
         Args:
             Dict with...
-            obs: The observations with shape (num_paths, horizon + 1, obs_dim)
+            observations: The observations with shape (num_paths, horizon + 1, obs_dim)
                 or (horizon + 1, obs_dim).
-            acts: The actions with shape (num_paths, horizon, act_dim)
+            actions: The actions with shape (num_paths, horizon, act_dim)
                 or (horizon, act_dim).
-            rews: The rewards with shape (num_paths, horizon, 1)
+            rewards: The rewards with shape (num_paths, horizon, 1)
                 or (horizon, 1).
-            terms: The terminals with shape (num_paths, horizon, 1)
+            terminals: The terminals with shape (num_paths, horizon, 1)
                 or (horizon, 1).
             Optionaly masks: shape (num_paths, horizon, 1) or (horizon, 1).
         """
-        if len(paths['acts'].shape) < 3:
+        if len(paths['actions'].shape) < 3:
             paths = {k: v[np.newaxis] for k, v in paths.items()}
         paths['next_observations'] = paths['observations'][:, 1:]
         paths['observations'] = paths['observations'][:, :-1]
-        for pidx in range(len(paths['acts'])):
+        for pidx in range(len(paths['actions'])):
             path = {k: v[pidx] for k, v in paths.items()}
             length = None
             if 'masks' in path:
                 idxs = np.argwhere(path['masks'] - 1).flatten()
                 if len(idxs):
                     length = idxs[0]
-            else:
-                length = len(path['acts'])
+            if length is None:
+                length = len(path['actions'])
             for strt in range(0, max(length - self._lookback + 1, 1)):
                 end = min(strt + self._lookback, strt + length)
-                for k, buff in (('acts', self._actions), ('rewards', self._rewards)):
+                for k, buff in (('actions', self._actions), ('rewards', self._rewards)):
                     buff[self._top, 1:end - strt + 1] = path[k][strt:end]
                 for k, buff in (
                         ('observations', self._observations),
@@ -133,18 +133,18 @@ class SequentialReplayBuffer(ReplayBuffer):
             batch_size: number of sequences to grab.
 
         Returns: Dictionary of information for the update.
-            obs: This is a history w shape (batch_size, L, obs_dim)
-            acts: This is the history of actions (batch_size, L + 1, act_dim)
-            rews: This is the rewards at the last point (batch_size, L + 1, 1)
-            nxts: This is a history of nexts (batch_size, L, obs_dim)
-            terms: Whether last time step is terminals (batch_size, L, 1)
+            observations: This is a history w shape (batch_size, L, obs_dim)
+            actions: This is the history of actions (batch_size, L + 1, act_dim)
+            rewards: This is the rewards at the last point (batch_size, L + 1, 1)
+            next_observations: This is a history of nexts (batch_size, L, obs_dim)
+            terminals: Whether last time step is terminals (batch_size, L, 1)
             masks: Masks of what is real and what data (batch_size, L, 1).
         """
         indices = np.random.randint(0, self._size, num_samples)
         batch = {}
         batch['observations'] = self._observations[indices]
         batch['next_observations'] = self._next_observations[indices]
-        batch['acts'] = self._actions[indices]
+        batch['actions'] = self._actions[indices]
         batch['rewards'] = self._rewards[indices]
         batch['terminals'] = self._terminals[indices]
         batch['masks'] = self._masks[indices]
@@ -188,6 +188,7 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
         self,
         data: Dict[str, np.ndarray],
         lookback: int,
+        **kwargs
     ):
         """Constructor.
 
@@ -201,8 +202,14 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
             lookback=lookback,
         )
         self._starts = data['observations']
+        data['rewards'] = data['rewards'].reshape(-1, 1)
+        data['terminals'] = data['terminals'].reshape(-1, 1)
         paths = parse_into_trajectories(data)
         for path in paths:
+            path['observations'] = np.concatenate([
+                path['observations'],
+                path['next_observations'][[0]],
+            ], axis=0)
             self.add_paths(path)
 
     def sample_starts(self, num_samples: int) -> np.ndarray:

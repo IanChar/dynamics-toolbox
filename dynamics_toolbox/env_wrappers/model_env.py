@@ -3,7 +3,7 @@ Gym environment that uses models.
 
 Author: Ian Char
 """
-from typing import Optional, Callable, Any, Dict, Tuple, Union, List
+from typing import Optional, Callable, Any, Dict, Tuple, Union
 
 import gym
 import numpy as np
@@ -177,7 +177,7 @@ class ModelEnv(gym.Env):
         for h in range(horizon):
             state = obs[:, h, :]
             act, logprob = policy.get_actions(state)
-            logprobs[:, h] = logprobs
+            logprobs[:, h] = logprob.reshape(-1, 1)
             if acts is None:
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
@@ -197,10 +197,10 @@ class ModelEnv(gym.Env):
                     term_idxs = np.argwhere(terms[:, h].flatten())
                     masks[term_idxs, h + 1:] = 0
         return {
-            'obs': obs,
-            'acts': acts,
-            'rews': rews,
-            'terms': terms,
+            'observations': obs,
+            'actions': acts,
+            'rewards': rews,
+            'terminals': terms,
             'logprobs': logprobs,
             'masks': masks,
         }
@@ -259,7 +259,7 @@ class ModelEnv(gym.Env):
             state: np.ndarray,
             action: Union[float, np.ndarray],
             nxt: np.ndarray,
-            model_info: Union[Dict[str, Any], List[Dict[str, Any]]],
+            model_info: Dict[str, Any],
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Compute the rewards.
@@ -272,10 +272,10 @@ class ModelEnv(gym.Env):
         Returns:
             The corresponding rewards.
         """
-        rew = np.zeros(len(state))
+        rew = np.zeros((len(state), 1))
         info = {}
         if self._reward_is_first_dim:
-            rew = nxt[:, 0]
+            rew = nxt[:, [0]]
         elif self._reward_function is not None:
             if len(state.shape) == 1:
                 state = state.reshape(1, -1)
@@ -287,9 +287,7 @@ class ModelEnv(gym.Env):
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
         if self._penalizer is not None:
-            if isinstance(model_info, dict):
-                model_info = [model_info]
-            raw_penalty = np.array([self._penalizer(mi) for mi in model_info])
+            raw_penalty = self._penalizer(model_info)
             rew -= self._penalty_coefficient * raw_penalty
             info['raw_penalty'] = raw_penalty
         return rew, info

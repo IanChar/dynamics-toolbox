@@ -100,6 +100,9 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         else:
             output, infos = self.single_sample_output_from_torch(model_input)
         output = self._unnormalize_prediction_output(output)
+        for k, v in infos.items():
+            if isinstance(v, torch.Tensor):
+                infos[k] = v.detach().cpu().numpy()
         return output.cpu().numpy(), infos
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
@@ -110,7 +113,10 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             weight_decay=self.weight_decay,
         )
 
-    def get_eval_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+    def get_eval_net_out(
+        self,
+        batch: Sequence[torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
         """Get the validation output of the network and organize into dictionary.
 
         Args:

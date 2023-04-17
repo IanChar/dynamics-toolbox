@@ -10,7 +10,7 @@ import gym
 import h5py
 import numpy as np
 
-from dynamics_model import DYNAMICS_TOOLBOX_PATH
+from dynamics_toolbox import DYNAMICS_TOOLBOX_PATH
 
 
 def get_data_from_source(data_source: str) -> Dict[str, np.ndarray]:

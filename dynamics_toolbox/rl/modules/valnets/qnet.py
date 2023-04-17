@@ -24,7 +24,7 @@ class QNet(FCNetwork):
         obs_dim: int,
         act_dim: int,
         hidden_sizes: Sequence[int],
-        hidden_activation: Callable[Tensor, Tensor] = F.relu,
+        hidden_activation: Callable[[Tensor], Tensor] = F.relu,
         input_dim: Optional[int] = None,
         **kwargs
     ):
@@ -65,7 +65,7 @@ class SequentialQNet(FCNetwork):
         hidden_sizes: Sequence[int],
         history_encoder: HistoryEncoder,
         obs_act_encode_dim: int,
-        hidden_activation: Callable[Tensor, Tensor] = F.relu,
+        hidden_activation: Callable[[Tensor], Tensor] = F.relu,
         input_dim: Optional[int] = None,
         **kwargs
     ):

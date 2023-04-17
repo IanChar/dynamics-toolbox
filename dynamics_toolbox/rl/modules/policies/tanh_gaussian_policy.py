@@ -30,7 +30,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         hidden_sizes: Sequence[int],
         hardcoded_std: Optional[float] = None,
         last_layer_uinit: float = 1e-3,
-        hidden_activation: Callable[torch.Tensor, torch.Tensor] = F.relu,
+        hidden_activation: Callable[[torch.Tensor], torch.Tensor] = F.relu,
         min_log_std: float = -20.0,
         max_log_std: float = 2.0,
         input_dim: Optional[int] = None,

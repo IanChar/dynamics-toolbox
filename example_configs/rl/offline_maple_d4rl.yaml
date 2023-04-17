@@ -20,6 +20,7 @@ train_loop:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
       parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
       sample_mode: 'sample_member_every_step'
+      load_n_best_models: 14
     penalizer:
       _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
       pen_name: 'std'

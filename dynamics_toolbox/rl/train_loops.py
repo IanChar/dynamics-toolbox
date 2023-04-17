@@ -12,6 +12,7 @@ from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
 from dynamics_toolbox.rl.rl_logger import RLLogger
+from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.rl.util.gym_util import (
     explore_gym_until_threshold_met,
     evaluate_policy_in_gym,
@@ -151,6 +152,7 @@ def mb_offline_rl_training(
     """
     if debug:
         breakpoint()
+    model_env.to(dm.device)
     num_steps_taken = 0
     num_expl_paths_per_epoch = int(num_expl_paths_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)

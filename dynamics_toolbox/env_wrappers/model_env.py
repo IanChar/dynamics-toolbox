@@ -7,10 +7,12 @@ from typing import Optional, Callable, Any, Dict, Tuple, Union
 
 import gym
 import numpy as np
+import torch.nn as nn
 
 from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
+from dynamics_toolbox.models.ensemble import Ensemble
 
 
 class ModelEnv(gym.Env):
@@ -235,6 +237,19 @@ class ModelEnv(gym.Env):
     def render(self, mode='human'):
         """TODO: Figure out how to render given the real environment."""
         pass
+
+    def to(self, device: str):
+        """For any pytorch modules put on the device.
+
+        Args:
+            device: The device to put onto.
+        """
+        if isinstance(self._dynamics, Ensemble):
+            for member in self._dynamics.members:
+                if isinstance(member, nn.Module):
+                    member.to(device)
+        elif isinstance(self._dynamics, nn.Module):
+            self._dynamics.to(device)
 
     @property
     def t(self) -> int:

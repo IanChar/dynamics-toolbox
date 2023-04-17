@@ -69,8 +69,8 @@ algorithm:
       rnn_type: 'GRU'
       rnn_hidden_size: 128
       obs_encode_dim: 64
-      act_encode_dim: 16
-      rew_encode_dim: 16
+      act_encode_dim: 32
+      rew_encode_dim: 0
     obs_act_encode_dim: 64
     hidden_sizes:
       - 256

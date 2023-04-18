@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict
 import numpy as np
 
 
-def get_penalizer(pen_name: str) -> Callable[Dict[str, Any], np.ndarray]:
+def get_penalizer(pen_name: str) -> Callable[[Dict[str, Any]], np.ndarray]:
     """Get penalizer function
 
     Args:

@@ -1,5 +1,5 @@
 name: ???
-save_path: "trained_models/d4rl"
+save_path: "trained_models/d4rl_v0"
 data_source: "data/d4rl_datasets/${name}.hdf5"
 seed: 1
 logger: tensorboard
@@ -27,7 +27,7 @@ model:
     logvar_upper_bound: 0.5
 trainer:
     gpus: 1
-    max_epochs: 1000
+    max_epochs: 2000
 early_stopping:
     patience: 100
     min_delta: 0.0
@@ -38,7 +38,7 @@ data_module:
     val_proportion: 0.05
     test_proportion: 0.0
     pin_memory: True
-    num_workers: 2
+    num_workers: 4
 hydra:
     job:
         name: ${name}

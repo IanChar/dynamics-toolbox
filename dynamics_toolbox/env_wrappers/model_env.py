@@ -8,6 +8,7 @@ from typing import Optional, Callable, Any, Dict, Tuple, Union
 import gym
 import numpy as np
 import torch.nn as nn
+from tqdm import tqdm
 
 from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
@@ -51,8 +52,6 @@ class ModelEnv(gym.Env):
                 actual full state.
         """
         super().__init__()
-        if not reward_is_first_dim and reward_function is None:
-            raise ValueError('Need a way to compute the reward.')
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
@@ -144,6 +143,7 @@ class ModelEnv(gym.Env):
             policy: Policy,
             horizon: int,
             starts: Optional[np.ndarray] = None,
+            show_progress: bool = False,
     ) -> Dict[str, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
@@ -153,6 +153,7 @@ class ModelEnv(gym.Env):
             horizon: The amount of time to unroll for.
             starts: All of the states to unroll from should have shape
                 (num_rollouts, obs_dim).
+            show_progress: Whether to show the progress of the rollout.
         Returns:
             - obs: All observations (num_rollouts, horizon + 1, obs_dim)
             - acts: The actions taken (num_rollouts, horizon, act_dim)
@@ -176,6 +177,8 @@ class ModelEnv(gym.Env):
         masks = np.ones((starts.shape[0], horizon, 1))
         obs[:, 0, :] = starts
         acts = None
+        if show_progress:
+            pbar = tqdm(total=horizon)
         for h in range(horizon):
             state = obs[:, h, :]
             act, logprob = policy.get_actions(state)
@@ -198,6 +201,10 @@ class ModelEnv(gym.Env):
                 if np.sum(terms[:, h]) > 0:
                     term_idxs = np.argwhere(terms[:, h].flatten())
                     masks[term_idxs, h + 1:] = 0
+            if show_progress:
+                pbar.update(1)
+        if show_progress:
+            pbar.close()
         return {
             'observations': obs,
             'actions': acts,
@@ -212,6 +219,7 @@ class ModelEnv(gym.Env):
             num_rollouts: int,
             actions: np.ndarray,
             starts: Optional[np.ndarray] = None,
+            show_progress: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
@@ -232,7 +240,8 @@ class ModelEnv(gym.Env):
         """
         horizon = actions.shape[1]
         policy_wrap = ActionPlanPolicy(actions)
-        return self.unroll_from_policy(num_rollouts, policy_wrap, horizon, starts)
+        return self.model_rollout_from_policy(num_rollouts, policy_wrap, horizon,
+                                              starts, show_progress)
 
     def render(self, mode='human'):
         """TODO: Figure out how to render given the real environment."""

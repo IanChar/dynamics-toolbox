@@ -116,7 +116,7 @@ else:
 # %% Calculate miscalibration.
 ###########################################################################
 print('Calculating scores...')
-miscals, overconfs = [], []
+miscals, overconfs, ev_errs = [], [], []
 for h in tqdm(range(args.horizon)):
     miscal, overconf = miscalibration_from_samples(
         preds[:, :, h],
@@ -126,7 +126,16 @@ for h in tqdm(range(args.horizon)):
     )
     miscals.append(miscal)
     overconfs.append(overconf)
-miscals, overconfs = np.array(miscals), np.array(overconfs)
+    resids = np.array([
+        np.mean(preds[:, :, h, d], axis=1) - obs[:, h, d]
+        for d in range(preds.shape[-1])
+    ])
+    ev_errs.append(np.array([
+        (np.var(resids[d] - np.mean(resids[d]))
+         / np.var(obs[:, h, d] - np.mean(obs[:, h, d])))
+        for d in range(preds.shape[-1])
+    ]))
+miscals, overconfs, ev_errs = np.array(miscals), np.array(overconfs), np.array(ev_errs)
 
 ###########################################################################
 # %% Make miscalibration plots.
@@ -134,15 +143,20 @@ miscals, overconfs = np.array(miscals), np.array(overconfs)
 plt.style.use('seaborn')
 
 
-def plot_miscal(mcal, oconf, title, save_path=None, show=False):
+def plot_miscal(mcal, oconf, ev_errs, title, save_path=None, show=False):
     tstep = np.arange(1, len(mcal) + 1)
-    plt.plot(tstep, mcal)
-    plt.plot(tstep, oconf, ls='--', alpha=0.6)
-    plt.fill_between(tstep, np.zeros(len(oconf)), oconf, color='red', alpha=0.4)
-    plt.fill_between(tstep, oconf, mcal, color='blue', alpha=0.4)
-    plt.xlabel('Time Step')
-    plt.ylabel('Miscalibration')
-    plt.title(title)
+    fig, axs = plt.subplots(1, 2)
+    axs[0].plot(tstep, mcal)
+    axs[0].plot(tstep, oconf, ls='--', alpha=0.6)
+    axs[0].fill_between(tstep, np.zeros(len(oconf)), oconf, color='red', alpha=0.4)
+    axs[0].fill_between(tstep, oconf, mcal, color='blue', alpha=0.4)
+    axs[0].set_xlabel('Time Step')
+    axs[0].set_ylabel('Miscalibration')
+    axs[0].set_title(title)
+    axs[1].plot(tstep, ev_errs)
+    axs[1].set_xlabel('Time Step')
+    axs[1].set_ylabel('1 - EV')
+    plt.tight_layout()
     if save_path is not None:
         plt.savefig(save_path)
     if show:
@@ -152,9 +166,10 @@ def plot_miscal(mcal, oconf, title, save_path=None, show=False):
 
 os.makedirs(args.save_dir, exist_ok=True)
 for dim in range(miscals.shape[1]):
-    plot_miscal(miscals[:, dim], overconfs[:, dim],
+    plot_miscal(miscals[:, dim], overconfs[:, dim], ev_errs[:, dim],
                 title=f'Dimension {dim + 1}',
                 save_path=os.path.join(args.save_dir, f'dim_{dim+1}.png'))
 plot_miscal(np.mean(miscals, axis=-1), np.mean(overconfs, axis=-1),
+            np.mean(ev_errs, axis=-1),
             title='Average',
             save_path=os.path.join(args.save_dir, 'average.png'))

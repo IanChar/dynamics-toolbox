@@ -116,7 +116,7 @@ else:
 # %% Calculate miscalibration.
 ###########################################################################
 print('Calculating scores...')
-miscals, overconfs, ev_errs = [], [], []
+miscals, overconfs, avg_ev, median_ev, best_ev = [[] for _ in range(5)]
 for h in tqdm(range(args.horizon)):
     miscal, overconf = miscalibration_from_samples(
         preds[:, :, h],
@@ -126,16 +126,35 @@ for h in tqdm(range(args.horizon)):
     )
     miscals.append(miscal)
     overconfs.append(overconf)
-    resids = np.array([
-        np.mean(preds[:, :, h, d], axis=1) - obs[:, h, d]
+    all_resids = np.array([
+        preds[:, :, h, d] - obs[:, h, d][:, np.newaxis]
         for d in range(preds.shape[-1])
     ])
-    ev_errs.append(np.array([
-        (np.var(resids[d] - np.mean(resids[d]))
+    avg_resids = np.mean(all_resids, axis=-1)
+    mode_resids = np.median(all_resids, axis=-1)
+    min_mag_idxs = np.argmin(np.abs(all_resids), axis=-1)
+    best_resids = np.take_along_axis(
+        all_resids,
+        np.expand_dims(min_mag_idxs, axis=-1),
+        axis=-1,
+    )
+    avg_ev.append(np.array([
+        (np.var(avg_resids[d] - np.mean(avg_resids[d]))
          / np.var(obs[:, h, d] - np.mean(obs[:, h, d])))
         for d in range(preds.shape[-1])
     ]))
-miscals, overconfs, ev_errs = np.array(miscals), np.array(overconfs), np.array(ev_errs)
+    median_ev.append(np.array([
+        (np.var(mode_resids[d] - np.mean(mode_resids[d]))
+         / np.var(obs[:, h, d] - np.mean(obs[:, h, d])))
+        for d in range(preds.shape[-1])
+    ]))
+    best_ev.append(np.array([
+        (np.var(best_resids[d] - np.mean(best_resids[d]))
+         / np.var(obs[:, h, d] - np.mean(obs[:, h, d])))
+        for d in range(preds.shape[-1])
+    ]))
+miscals, overconfs, avg_ev, median_ev, best_ev = [
+    np.array(ar) for ar in (miscals, overconfs, avg_ev, median_ev, best_ev)]
 
 ###########################################################################
 # %% Make miscalibration plots.
@@ -143,7 +162,7 @@ miscals, overconfs, ev_errs = np.array(miscals), np.array(overconfs), np.array(e
 plt.style.use('seaborn')
 
 
-def plot_miscal(mcal, oconf, ev_errs, title, save_path=None, show=False):
+def plot_miscal(mcal, oconf, aev, mev, bev, title, save_path=None, show=False):
     tstep = np.arange(1, len(mcal) + 1)
     fig, axs = plt.subplots(1, 2)
     axs[0].plot(tstep, mcal)
@@ -153,9 +172,13 @@ def plot_miscal(mcal, oconf, ev_errs, title, save_path=None, show=False):
     axs[0].set_xlabel('Time Step')
     axs[0].set_ylabel('Miscalibration')
     axs[0].set_title(title)
-    axs[1].plot(tstep, ev_errs)
+    axs[1].plot(tstep, aev, label='Average')
+    axs[1].plot(tstep, mev, label='Median')
+    axs[1].plot(tstep, bev, label='Best')
     axs[1].set_xlabel('Time Step')
     axs[1].set_ylabel('1 - EV')
+    axs[1].legend()
+    axs[1].set_ylim([-0.1, 1.5])
     plt.tight_layout()
     if save_path is not None:
         plt.savefig(save_path)
@@ -166,10 +189,13 @@ def plot_miscal(mcal, oconf, ev_errs, title, save_path=None, show=False):
 
 os.makedirs(args.save_dir, exist_ok=True)
 for dim in range(miscals.shape[1]):
-    plot_miscal(miscals[:, dim], overconfs[:, dim], ev_errs[:, dim],
+    plot_miscal(miscals[:, dim], overconfs[:, dim], avg_ev[:, dim],
+                median_ev[:, dim], best_ev[:, dim],
                 title=f'Dimension {dim + 1}',
                 save_path=os.path.join(args.save_dir, f'dim_{dim+1}.png'))
 plot_miscal(np.mean(miscals, axis=-1), np.mean(overconfs, axis=-1),
-            np.mean(ev_errs, axis=-1),
+            np.mean(avg_ev, axis=-1),
+            np.mean(median_ev, axis=-1),
+            np.mean(best_ev, axis=-1),
             title='Average',
             save_path=os.path.join(args.save_dir, 'average.png'))

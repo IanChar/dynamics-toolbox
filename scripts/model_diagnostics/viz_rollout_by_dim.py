@@ -31,7 +31,7 @@ parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str, default='rollout_vizs')
 parser.add_argument('--horizon', type=int, default=10)
 parser.add_argument('--samples_per_start', type=int, default=1000)
-parser.add_argument('--num_starts', type=int, default=5)
+parser.add_argument('--num_starts', type=int, default=10)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
@@ -39,6 +39,7 @@ parser.add_argument('--ensemble_sampling_mode', type=str,
 parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--plots_per_row', type=int, default=4)
 parser.add_argument('--num_quantiles', type=int, default=10)
+parser.add_argument('--show_samples', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 args = parser.parse_args()
 np.random.seed(args.seed)
@@ -122,7 +123,7 @@ plt.style.use('seaborn')
 os.makedirs(args.save_dir, exist_ok=True)
 num_dims = preds.shape[-1]
 num_cols = args.plots_per_row
-num_rows = num_dims // num_cols
+num_rows = int(np.ceil(num_dims / num_cols))
 tsteps = np.arange(1, 1 + args.horizon)
 quantiles = np.linspace(0.05, 0.95, args.num_quantiles)
 cmap = pylab.cm.Blues(quantiles)
@@ -130,14 +131,17 @@ for pnum in range(len(preds)):
     fig, axs = plt.subplots(num_rows, num_cols)
     for didx in range(num_dims):
         ax = axs[didx // num_cols, didx % num_cols]
-        for quant, color in zip(quantiles, cmap):
-            ax.fill_between(
-                tsteps,
-                np.quantile(preds[pnum, :, :, didx], 0.5 - quant / 2, axis=0),
-                np.quantile(preds[pnum, :, :, didx], 0.5 + quant / 2, axis=0),
-                color=color,
-                alpha=0.2,
-            )
+        if args.show_samples:
+            ax.plot(tsteps, preds[pnum, :, :, didx].T, color='royalblue', alpha=0.05)
+        else:
+            for quant, color in zip(quantiles, cmap):
+                ax.fill_between(
+                    tsteps,
+                    np.quantile(preds[pnum, :, :, didx], 0.5 - quant / 2, axis=0),
+                    np.quantile(preds[pnum, :, :, didx], 0.5 + quant / 2, axis=0),
+                    color=color,
+                    alpha=0.2,
+                )
         ax.plot(tsteps, np.mean(preds[pnum, :, :, didx], axis=0), color='cyan',
                 alpha=0.8)
         ax.plot(tsteps, obs[pnum, :, didx], ls='--', color='red')

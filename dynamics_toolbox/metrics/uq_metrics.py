@@ -50,3 +50,32 @@ def miscalibration_from_samples(
     if include_overconfidence_scores:
         return np.array(miscals), np.array(overconfs)
     return np.array(miscals)
+
+
+def coverage_and_sharpness_from_samples(
+    samples: np.ndarray,
+    truths: np.ndarray,
+    coverage_amount: float,
+) -> Tuple[np.ndarray]:
+    """Calculate the amount the that is covered.
+
+    Args:
+        samples: Samples from the model w shape (num_tests, num_samples, dim)
+        truths: True points w shape (num_tests, dim)
+        coverage_amount: Target coverage.
+
+    Returns:
+        * Coverage for D dimensional box made from predictions.
+        * Coverage per dimension (dim,)
+        * Sharpness of each dimension (dim,)
+    """
+    bounds = [(np.quantile(samples[..., d], 0.5 - coverage_amount / 2, axis=1),
+               np.quantile(samples[..., d], 0.5 + coverage_amount / 2, axis=1))
+              for d in range(samples.shape[-1])]
+    sharpnesses = np.array([np.mean(b[1] - b[0]) for b in bounds])
+    covered = np.array([
+        np.logical_and(truths[..., d] >= bounds[d][0], truths[..., d] <= bounds[d][1])
+        for d in range(samples.shape[-1])
+    ])
+    coverages = np.mean(covered, axis=1)
+    return np.mean(np.prod(covered, axis=0)), coverages, sharpnesses

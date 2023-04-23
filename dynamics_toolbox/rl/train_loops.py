@@ -301,6 +301,7 @@ def online_mbrl_training(
         algorithm.policy.deterministic = False
         algorithm.policy.eval()
         all_stats = []
+        logger.start_inner_loop('Rollouts+Policy Updates', num_expl_steps_per_epoch)
         for _ in range(num_expl_steps_per_epoch):
             # Take a step in the environment.
             act, _ = algorithm.policy.get_actions(curr_obs)
@@ -337,6 +338,7 @@ def online_mbrl_training(
                     batch = {k: np.concatenate([v, env_batch[k]], axis=0)
                              for k, v in batch.items()}
                 all_stats.append(algorithm.grad_step(batch))
+            logger.end_inner_loop()
         # Log.
         if ep % eval_frequency == 0:
             logger.set_phase('Policy Evaluation')

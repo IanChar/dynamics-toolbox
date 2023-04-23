@@ -44,6 +44,8 @@ class RLLogger:
             self._summary_writer = None
         self.headers = None
         self.pbar = None
+        self.pbar_inner = None
+        self.num_inner_loops = 0
         self._last_returns = (0.0, 0.0)
         if checkpoint_policy_every is not None:
             os.mkdir(os.path.join(run_dir, 'checkpoints'))
@@ -55,7 +57,7 @@ class RLLogger:
             num_epochs: The number of epochs expected.
         """
         if self.show_pbar:
-            self.pbar = tqdm(total=num_epochs)
+            self.pbar = tqdm(total=num_epochs, position=0)
 
     def log_epoch(
         self,
@@ -123,10 +125,34 @@ class RLLogger:
         Args:
             status: What is currently happening.
         """
-        if self.pbar is not None:
-            self.pbar.set_postfix_str(f'{phase}...\t'
-                                      f'Returns: {self._last_returns[0]:0.2f} '
-                                      f'+- {self._last_returns[1]:0.2f}')
+        if self.pbar_inner is not None:
+            self.pbar_inner.set_description(phase)
+        elif self.pbar is not None:
+            self.pbar.set_description(phase)
+
+    def start_inner_loop(
+        self,
+        desc: str,
+        num_loops: int,
+    ):
+        """Start inner progress bar.
+
+        Args:
+            desc: Description.
+            num_loops: Number of inner loops.
+        """
+        if self.show_pbar:
+            self.pbar_inner = tqdm(total=num_loops, position=1, leave=False)
+            self.num_inner_loops = num_loops
+
+    def end_inner_loop(self):
+        """Mark the end of an inner loop"""
+        if self.pbar_inner is not None:
+            self.pbar_inner.update(1)
+            self.num_inner_loops -= 1
+            if self.num_inner_loops == 0:
+                self.pbar_inner.close()
+                self.pbar_inner = None
 
     def end(self, policy: Policy):
         """Called at the end of the run.
@@ -138,3 +164,5 @@ class RLLogger:
         if self.pbar is not None:
             self.pbar.close()
             self.pbar = None
+        if self.pbar_inner is not None:
+            self.pbar_inner.close()

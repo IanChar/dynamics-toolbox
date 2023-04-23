@@ -29,6 +29,7 @@ class SimultaneousEnsemble(AbstractPlModel):
             member_cfg: DictConfig,
             sample_mode: str = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
             diversity_coef: Optional[float] = 0.0,
+            efficient_sampling: bool = False,
             **kwargs,
     ):
         """Constructor
@@ -38,6 +39,9 @@ class SimultaneousEnsemble(AbstractPlModel):
             member_cfg: The hyperparameters for a member of the ensemble.
             sample_mode: The method to use for sampling.
             diversity_coef: Coefficient of diversity to add to loss.
+            efficient_sampling: If this is true then when sampling only do forward
+                passes for the networks that are chosen in the ensemble. This will
+                not be truly random anymore.
         """
         LightningModule.__init__(self)
         for member_idx in range(num_members):
@@ -49,6 +53,7 @@ class SimultaneousEnsemble(AbstractPlModel):
         self._normalize_inputs = True
         self._unnormalize_outputs = True
         self._curr_sample = None
+        self._efficient_sampling = efficient_sampling
         # TODO: Could be changed in the future.
         self._similarity = torch.nn.CosineSimilarity(dim=0)
 
@@ -144,6 +149,8 @@ class SimultaneousEnsemble(AbstractPlModel):
         """
         if self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
             self.reset()
+        if self._efficient_sampling:
+            return self._efficient_forward(net_in, single_sample=True)
         if self._curr_sample is None:
             self._curr_sample = self._draw_from_categorical(len(net_in))
         info_dict = defaultdict(list)
@@ -175,6 +182,8 @@ class SimultaneousEnsemble(AbstractPlModel):
         """
         if self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
             self.reset()
+        if self._efficient_sampling:
+            return self._efficient_forward(net_in, single_sample=False)
         if self._curr_sample is None:
             self._curr_sample = self._draw_from_categorical(len(net_in))
         elif len(self._curr_sample) < len(net_in):
@@ -196,6 +205,42 @@ class SimultaneousEnsemble(AbstractPlModel):
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
         info_dict['deltas'] = deltas
         return sampled_delta, info_dict
+
+    def _efficient_forward(
+        self,
+        net_in: torch.Tensor,
+        single_sample: bool,
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output for a single sample in the model.
+
+        Args:
+            net_in: The input for the network.
+            single_sample: Whether this should come from one network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if self._curr_sample is None:
+            self._curr_sample = np.arange(self._num_members)
+            np.random.shuffle(self._curr_sample)
+        if single_sample:
+            return getattr(
+                self,
+                f'_member_{self._curr_sample[0]}').single_sample_output_from_torch(
+                    net_in)
+        input_partion = np.linspace(0, len(net_in), self._num_members+1)
+        deltas = []
+        info_dict = defaultdict(list)
+        for part_idx, samp_idx in enumerate(self._curr_sample):
+            member = getattr(self, f'_member_{samp_idx}')
+            delta, info = member.multi_sample_output_from_torch(
+                net_in[int(input_partion[part_idx]):int(input_partion[part_idx + 1])]
+            )
+            deltas.append(delta)
+            for k, v in info.items():
+                info_dict[k].append(v)
+        return np.concatenate(deltas, axis=0), {k: np.concatenate(v)
+                                                for k, v in info_dict.items()}
 
     def _draw_from_categorical(self, num_samples) -> torch.Tensor:
         """Draw from categorical distribution.

@@ -51,6 +51,8 @@ class ModelEnv(gym.Env):
             real_env: The real environment being modelled.
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
+            action_bounds: The action bounds of the environment. If this is None we
+                assume it is a standard -1, 1 space.
         """
         super().__init__()
         self._dynamics = dynamics_model

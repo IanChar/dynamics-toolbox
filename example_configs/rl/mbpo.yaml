@@ -24,6 +24,7 @@ train_loop:
       _recursive_: False
       num_members: 5
       sample_mode: 'sample_member_every_step'
+      efficient_sampling: True
       member_cfg:
         _target_: dynamics_toolbox.models.pl_models.pnn.PNN
         encoder_output_dim: 200

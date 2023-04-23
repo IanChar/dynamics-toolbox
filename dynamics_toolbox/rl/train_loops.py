@@ -7,12 +7,12 @@ Date: April 7, 2023
 import gym
 
 import numpy as np
-import pytorch_lightning as pl
 
 from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 from dynamics_toolbox.env_wrappers.horizon_scheduler import HorizonScheduler
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
+from dynamics_toolbox.rl.dynamics_trainer import DynamicsTrainer
 from dynamics_toolbox.rl.rl_logger import RLLogger
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.rl.util.gym_util import (
@@ -213,7 +213,7 @@ def online_mbrl_training(
     model_buffer: ReplayBuffer,
     env_buffer: ReplayBuffer,
     logger: RLLogger,
-    dynamics_trainer: pl.Trainer,
+    dynamics_trainer: DynamicsTrainer,
     epochs: int,
     num_expl_steps_per_epoch: int,
     num_model_paths_per_step: int,
@@ -289,9 +289,7 @@ def online_mbrl_training(
             val_proportion=model_val_proportion,
             num_workers=4,
         )
-        dynamics_trainer.fit(model_env.dynamics_model, curr_data_module)
-        model_val_dict = dynamics_trainer.validate(model_env.dynamics_model,
-                                                   curr_data_module)
+        model_dict = dynamics_trainer.fit(model_env.dynamics_model, curr_data_module)
         # Inner loop taking steps in the environment.
         algorithm.policy.deterministic = False
         algorithm.policy.eval()
@@ -341,7 +339,7 @@ def online_mbrl_training(
         else:
             ret_mean, ret_std = None, None
         stats = {k: np.mean([d[k] for d in all_stats]) for k in all_stats[0].keys()}
-        stats.update({f'Model/{k}': v for k, v in model_val_dict.items()})
+        stats.update(model_dict)
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,

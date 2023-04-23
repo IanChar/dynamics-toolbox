@@ -58,16 +58,9 @@ train_loop:
   logger:
     _target_: dynamics_toolbox.rl.rl_logger.RLLogger
   dynamics_trainer:
-    _target_: pytorch_lightning.Trainer
+    _target_: dynamics_toolbox.rl.dynamics_trainer.DynamicsTrainer
+    patience: 10
     max_epochs: 100
-    gpus:
-      - ${cuda_device}
-    progress_bar_refresh_rate: 0
-    callbacks:
-      - _target_: dynamics_toolbox.utils.lightning.constructors.get_early_stopping_for_val_loss
-        cfg:
-          min_delta: 0.0
-          patience: 10
 algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sac.SAC
   discount: 0.99

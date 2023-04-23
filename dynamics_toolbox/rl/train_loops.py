@@ -287,6 +287,7 @@ def online_mbrl_training(
             batch_size=batch_size,
             learn_rewards=True,  # TODO: Maybe change this later?
             val_proportion=model_val_proportion,
+            num_workers=4,
         )
         dynamics_trainer.fit(model_env.dynamics_model, curr_data_module)
         model_val_dict = dynamics_trainer.validate(model_env.dynamics_model,
@@ -318,7 +319,7 @@ def online_mbrl_training(
                 paths = model_env.model_rollout_from_policy(
                     num_rollouts=num_model_paths_per_step,
                     policy=algorithm.policy,
-                    horizon=horizon_scheduler.get_horizon(),
+                    horizon=horizon_scheduler.get_horizon(num_steps_taken),
                 )
                 model_buffer.add_paths(paths)
             # Do updates to the policy.

@@ -46,6 +46,8 @@ class SimultaneousEnsemble(AbstractPlModel):
         self._num_members = num_members
         self._sample_mode = sample_mode
         self._diversity_coef = diversity_coef
+        self._normalize_inputs = True
+        self._unnormalize_outputs = True
         self._curr_sample = None
         # TODO: Could be changed in the future.
         self._similarity = torch.nn.CosineSimilarity(dim=0)

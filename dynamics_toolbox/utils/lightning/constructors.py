@@ -42,9 +42,9 @@ def construct_all_pl_components_for_training(
     with open_dict(cfg):
         cfg['model']['input_dim'] = data_module.input_dim
         cfg['model']['output_dim'] = data_module.output_dim
-        if 'member_config' in cfg['model']:
-            cfg['model']['member_config']['input_dim'] = data_module.input_dim
-            cfg['model']['member_config']['output_dim'] = data_module.output_dim
+        if 'member_cfg' in cfg['model']:
+            cfg['model']['member_cfg']['input_dim'] = data_module.input_dim
+            cfg['model']['member_cfg']['output_dim'] = data_module.output_dim
     if 'normalization' not in cfg:
         normalizer = None
     elif cfg['normalization'] == 'standardize':

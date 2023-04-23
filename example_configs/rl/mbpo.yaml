@@ -60,7 +60,8 @@ train_loop:
   dynamics_trainer:
     _target_: pytorch_lightning.Trainer
     max_epochs: 100
-    gpus: 1
+    gpus:
+      - ${cuda_device}
     progress_bar_refresh_rate: 0
     callbacks:
       - _target_: dynamics_toolbox.utils.lightning.constructors.get_early_stopping_for_val_loss

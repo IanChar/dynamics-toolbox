@@ -266,7 +266,6 @@ def online_mbrl_training(
     if debug:
         breakpoint()
     model_env.to(dm.device)
-    model_env.action_bounds = (env.action_space.low, env.action_space.high)
     num_steps_taken = 0
     num_expl_steps_per_epoch = int(num_expl_steps_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)

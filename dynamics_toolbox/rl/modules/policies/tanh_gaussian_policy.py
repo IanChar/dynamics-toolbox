@@ -154,7 +154,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         if self.deterministic:
             actions = torch.tanh(mean)
             logprobs = dm.ones(len(actions))
-        return dm.get_numpy(actions.squeeze()), dm.get_numpy(logprobs.squeeze())
+        return dm.get_numpy(actions.squeeze(0)), dm.get_numpy(logprobs.squeeze())
 
     def train(self, mode: bool = True):
         super().train(mode)

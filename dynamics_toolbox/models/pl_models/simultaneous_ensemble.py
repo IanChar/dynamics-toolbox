@@ -239,8 +239,8 @@ class SimultaneousEnsemble(AbstractPlModel):
             deltas.append(delta)
             for k, v in info.items():
                 info_dict[k].append(v)
-        return np.concatenate(deltas, axis=0), {k: np.concatenate(v)
-                                                for k, v in info_dict.items()}
+        return torch.cat(deltas, dim=0), {k: torch.cat(v, dim=0)
+                                          for k, v in info_dict.items()}
 
     def _draw_from_categorical(self, num_samples) -> torch.Tensor:
         """Draw from categorical distribution.

@@ -18,7 +18,7 @@ class DynamicsTrainer:
     def __init__(
         self,
         patience: int,
-        max_train_epochs: Optional[int] = None,
+        max_epochs: Optional[int] = None,
         val_monitor: str = 'val/loss',
         new_optimizer_each_train: bool = False,
     ):
@@ -26,13 +26,13 @@ class DynamicsTrainer:
 
         Args:
             patience: How long to wait on the val loss before overfitting.
-            max_train_epochs: Maximum amount of epochs to train for.
+            max_epochs: Maximum amount of epochs to train for.
             val_monitor: The validation statistic to look at for overfitting.
             new_optimizer_each_train: Whether a new optimizer should be initialized
                 for every train.
         """
         self._patience = patience
-        self._max_train_epochs = max_train_epochs
+        self._max_epochs = max_epochs
         self._val_monitor = val_monitor
         self._new_optimizer_each_train = new_optimizer_each_train
         self._optimizer = None
@@ -87,6 +87,6 @@ class DynamicsTrainer:
                 best_loss = val_loss
                 best_epoch = epoch_num
             running = (best_epoch - epoch_num > self._patience
-                       or (self._max_train_epochs is not None
-                           and (epoch_num >= self._max_train_epochs)))
+                       or (self._max_epochs is not None
+                           and (epoch_num >= self._max_epochs)))
         return {'Model/train_loss': tr_loss, 'Model/val_loss': val_loss}

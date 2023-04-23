@@ -274,6 +274,10 @@ class ModelEnv(gym.Env):
     def start_dist(self) -> Callable[[int], np.ndarray]:
         return self._start_dist
 
+    @property
+    def dynamics_model(self) -> AbstractModel:
+        return self._dynamics
+
     @start_dist.setter
     def start_dist(self, dist: Callable[[int], np.ndarray]):
         self._start_dist = dist

@@ -3,6 +3,7 @@ Ensemble of other pytorch models.
 
 Author: Ian Char
 """
+from collections import defaultdict
 from typing import Optional, Sequence, Dict, Callable, Tuple, Any
 
 import hydra.utils
@@ -13,6 +14,7 @@ import torch
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
+from dynamics_toolbox.utils.pytorch.modules.normalizer import Normalizer
 
 
 class SimultaneousEnsemble(AbstractPlModel):
@@ -142,17 +144,20 @@ class SimultaneousEnsemble(AbstractPlModel):
             self.reset()
         if self._curr_sample is None:
             self._curr_sample = self._draw_from_categorical(len(net_in))
-        infos = {}
+        info_dict = defaultdict(list)
         deltas = []
         for member_idx, member in enumerate(self.members):
-            delta, info = member.multi_sample_output_from_torch(net_in)
+            delta, info = member.single_sample_output_from_torch(net_in)
             deltas.append(delta)
-            infos.update({f'_member_{member_idx}_{k}': v for k, v in info.items()})
+            for k, v in info.items():
+                info_dict[k].append(v)
         deltas = torch.stack(deltas)
+        for k, v in info_dict.items():
+            k = torch.stack(v)
         samp_idxs = self._curr_sample[0].repeat(len(net_in))
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
-        infos['deltas'] = sampled_delta
-        return sampled_delta, infos
+        info_dict['deltas'] = deltas
+        return sampled_delta, info_dict
 
     def multi_sample_output_from_torch(
             self,
@@ -175,17 +180,20 @@ class SimultaneousEnsemble(AbstractPlModel):
                 self._curr_sample,
                 self._draw_from_categorical(len(net_in) - len(self._curr_sample)),
             ], dim=0)
-        infos = {}
+        info_dict = defaultdict(list)
         deltas = []
-        for member_idx, member in enumerate(self.members):
+        for member in self.members:
             delta, info = member.multi_sample_output_from_torch(net_in)
             deltas.append(delta)
-            infos.update({f'_member_{member_idx}_{k}': v for k, v in info.items()})
+            for k, v in info.items():
+                info_dict[k].append(v)
         deltas = torch.stack(deltas)
+        for k, v in info_dict.items():
+            k = torch.stack(v)
         samp_idxs = self._curr_sample[:len(net_in)]
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
-        infos['deltas'] = sampled_delta
-        return sampled_delta, infos
+        info_dict['deltas'] = deltas
+        return sampled_delta, info_dict
 
     def _draw_from_categorical(self, num_samples) -> torch.Tensor:
         """Draw from categorical distribution.
@@ -216,7 +224,7 @@ class SimultaneousEnsemble(AbstractPlModel):
     @property
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
-        return self._members_0.output_dim
+        return self._member_0.output_dim
 
     @property
     def members(self) -> Sequence[AbstractPlModel]:
@@ -238,6 +246,11 @@ class SimultaneousEnsemble(AbstractPlModel):
     def weight_decay(self) -> float:
         """Get the weight decay."""
         return self._member_0.weight_decay
+
+    @property
+    def normalizer(self) -> Normalizer:
+        """Get the weight decay."""
+        return self._member_0.normalizer
 
     def _get_member_pair_cosine_similarity(
             self,
@@ -277,4 +290,3 @@ class SimultaneousEnsemble(AbstractPlModel):
             A dictionary of additional metrics.
         """
         return {}
-

@@ -80,7 +80,8 @@ class PNN(AbstractPlModel):
         )
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
-        self._var_pinning = logvar_lower_bound is not None and logvar_upper_bound is not None
+        self._var_pinning = (logvar_lower_bound is not None
+                             and logvar_upper_bound is not None)
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])

@@ -25,6 +25,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            qset=None,
             **kwargs,
     ):
         """Constructor.
@@ -39,9 +40,11 @@ class ForwardDynamicsDataModule(LightningDataModule):
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.
+            qset: The loaded in data.
         """
         super().__init__()
-        qset = get_data_from_source(data_source)
+        if qset is None:
+            qset = get_data_from_source(data_source)
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
             self._ydata = np.hstack([qset['rewards'].reshape(-1, 1),

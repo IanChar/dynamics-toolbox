@@ -13,6 +13,9 @@ from typing import Dict, Union
 
 import numpy as np
 
+from dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module import (
+    ForwardDynamicsDataModule,
+)
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
 from dynamics_toolbox.utils.sarsa_data_util import parse_into_trajectories
 
@@ -180,6 +183,13 @@ class SequentialReplayBuffer(ReplayBuffer):
         self._top = (self._top + 1) % self._max_size
         if self._size < self._max_size:
             self._size += 1
+
+    def to_forward_dynamics_module(
+        self,
+        **kwargs
+    ) -> ForwardDynamicsDataModule:
+        """Conver the current buffer to a forward dynamics module.."""
+        raise NotImplementedError('TODO')
 
 
 class SequentialOfflineReplayBuffer(SequentialReplayBuffer):

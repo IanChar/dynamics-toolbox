@@ -6,6 +6,10 @@ from typing import Dict
 
 import numpy as np
 
+from dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module import (
+    ForwardDynamicsDataModule,
+)
+
 
 class ReplayBuffer(metaclass=abc.ABCMeta):
 
@@ -42,6 +46,13 @@ class ReplayBuffer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def sample_starts(self, num_samples: int) -> np.ndarray:
         """Sample a batch from the buffer."""
+
+    @abc.abstractmethod
+    def to_forward_dynamics_module(
+        self,
+        **kwargs
+    ) -> ForwardDynamicsDataModule:
+        """Conver the current buffer to a forward dynamics module.."""
 
     def end_epoch(self):
         pass

@@ -6,7 +6,7 @@ env:
   _target_: gym.make
   id: ${env_name}
 train_loop:
-  _target_: dynamics_toolbox.rl.train_loops.mb_offline_rl_training
+  _target_: dynamics_toolbox.rl.train_loops.offline_mbrl_training
   epochs: 1000
   num_expl_paths_per_epoch: 50e3
   num_eval_eps: 10

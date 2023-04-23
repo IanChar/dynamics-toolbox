@@ -12,7 +12,7 @@ from omegaconf import DictConfig, open_dict
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
-import d4rl
+# import d4rl
 
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
@@ -41,11 +41,16 @@ def update_cfgs_with_dims(cfg: DictConfig, obs_dim: int, act_dim: int) -> DictCo
     """Go through and every field that needs obs_dim and act_dim update."""
     required_keys = {'qnet', 'policy', 'replay_buffer', 'history_encoder',
                      'model_buffer', 'env_buffer'}
+    input_output_keys = {'member_cfg'}
     for k, v in cfg.items():
         if k in required_keys:
             with open_dict(v):
                 v['obs_dim'] = obs_dim
                 v['act_dim'] = act_dim
+        if k in input_output_keys:
+            with open_dict(v):
+                v['input_dim'] = obs_dim + act_dim
+                v['output_dim'] = obs_dim + 1
         if isinstance(v, DictConfig):
             update_cfgs_with_dims(v, obs_dim, act_dim)
 

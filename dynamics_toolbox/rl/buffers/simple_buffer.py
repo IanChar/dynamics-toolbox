@@ -8,6 +8,9 @@ from typing import Dict, Union
 
 import numpy as np
 
+from dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module import (
+    ForwardDynamicsDataModule,
+)
 from dynamics_toolbox.rl.buffers.abstract_buffer import ReplayBuffer
 
 
@@ -18,6 +21,7 @@ class SimpleReplayBuffer(ReplayBuffer):
         obs_dim: int,
         act_dim: int,
         max_buffer_size: int,
+        clear_every_epoch: bool = False,
     ):
         """Constructor.
 
@@ -25,11 +29,13 @@ class SimpleReplayBuffer(ReplayBuffer):
             obs_dim: Dimension of the observation space.
             act_dim: Dimension of the action space.
             max_buffer_size: The maximum buffer size.
+            clear_every_epoch: Whether to clear the buffer after every epoch.
         """
         self._obs_dim = obs_dim
         self._act_dim = act_dim
         max_buffer_size = int(max_buffer_size)
         self._max_size = max_buffer_size
+        self._clear_every_epoch = clear_every_epoch
         self.clear_buffer()
 
     def clear_buffer(self):
@@ -160,6 +166,27 @@ class SimpleReplayBuffer(ReplayBuffer):
         """
         idxs = np.random.randint(0, self._size, size=num_samples)
         return self._obs[idxs]
+
+    def to_forward_dynamics_module(
+        self,
+        **kwargs
+    ) -> ForwardDynamicsDataModule:
+        """Conver the current buffer to a forward dynamics module.."""
+        return ForwardDynamicsDataModule(
+            data_source='N/A',
+            qset={
+                'observations': self._obs[:self._size],
+                'actions': self._acts[:self._size],
+                'rewards': self._rews[:self._size],
+                'next_observations': self._next_obs[:self._size],
+                'terminals': self._terms[:self._size]
+            },
+            **kwargs
+        )
+
+    def end_epoch(self):
+        if self._clear_every_epoch:
+            self.clear_buffer()
 
 
 class SimpleOfflineReplayBuffer(SimpleReplayBuffer):

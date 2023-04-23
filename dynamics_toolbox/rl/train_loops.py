@@ -75,6 +75,7 @@ def batch_online_rl_training(
     logger.start(epochs)
     for ep in range(epochs):
         # Collect.
+        logger.set_phase('Environment Rollouts')
         paths = explore_gym_until_threshold_met(
             env,
             algorithm.policy,
@@ -85,12 +86,14 @@ def batch_online_rl_training(
             replay_buffer.add_paths(path)
         num_steps_taken += num_expl_steps_per_epoch
         # Train.
+        logger.set_phase('Policy Updates')
         all_stats = []
         for _ in range(num_gradient_steps_per_epoch):
             batch = replay_buffer.sample_batch(batch_size)
             all_stats.append(algorithm.grad_step(batch))
         # Log.
         if ep % eval_frequency == 0:
+            logger.set_phase('Policy Evaluation')
             ret_mean, ret_std = evaluate_policy_in_gym(
                 env,
                 algorithm.policy,
@@ -165,6 +168,7 @@ def offline_mbrl_training(
     logger.start(epochs)
     for ep in range(epochs):
         # Collect.
+        logger.set_phase('Model Rollouts')
         algorithm.policy.deterministic = False
         algorithm.policy.eval()
         paths = model_env.model_rollout_from_policy(
@@ -175,6 +179,7 @@ def offline_mbrl_training(
         num_steps_taken += num_expl_paths_per_epoch * model_horizon
         model_buffer.add_paths(paths)
         # Train.
+        logger.set_phase('Policy Updates')
         all_stats = []
         for _ in range(num_gradient_steps_per_epoch):
             batch = model_buffer.sample_batch(model_batch_size)
@@ -185,6 +190,7 @@ def offline_mbrl_training(
             all_stats.append(algorithm.grad_step(batch))
         # Log.
         if ep % eval_frequency == 0:
+            logger.set_phase('Policy Evaluation')
             ret_mean, ret_std = evaluate_policy_in_gym(
                 env,
                 algorithm.policy,
@@ -283,6 +289,7 @@ def online_mbrl_training(
     algorithm.policy.reset()
     for ep in range(epochs):
         # Train the dynamics models.
+        logger.set_phase('Model Updates')
         curr_data_module = env_buffer.to_forward_dynamics_module(
             batch_size=batch_size,
             learn_rewards=True,  # TODO: Maybe change this later?
@@ -313,6 +320,7 @@ def online_mbrl_training(
             else:
                 curr_obs = nxt
             # Do several rollouts in the environment.
+            logger.set_phase('Model Rollouts')
             for _ in range(num_model_paths_per_step):
                 paths = model_env.model_rollout_from_policy(
                     num_rollouts=num_model_paths_per_step,
@@ -321,6 +329,7 @@ def online_mbrl_training(
                 )
                 model_buffer.add_paths(paths)
             # Do updates to the policy.
+            logger.set_phase('Policy Updates')
             for _ in range(num_gradient_steps_per_step):
                 batch = model_buffer.sample_batch(model_batch_size)
                 if env_batch_size > 0:
@@ -330,6 +339,7 @@ def online_mbrl_training(
                 all_stats.append(algorithm.grad_step(batch))
         # Log.
         if ep % eval_frequency == 0:
+            logger.set_phase('Policy Evaluation')
             ret_mean, ret_std = evaluate_policy_in_gym(
                 env,
                 algorithm.policy,

@@ -44,6 +44,7 @@ class RLLogger:
             self._summary_writer = None
         self.headers = None
         self.pbar = None
+        self._last_returns = (0.0, 0.0)
         if checkpoint_policy_every is not None:
             os.mkdir(os.path.join(run_dir, 'checkpoints'))
 
@@ -75,6 +76,8 @@ class RLLogger:
             returns_std: The policy std.
             policy: The policy.
         """
+        if returns_mean is not None:
+            self._last_returns = (returns_mean, returns_std)
         # If first run then set up.
         if self.headers is None:
             self.headers = ['Epoch', 'Samples', 'ReturnMean', 'ReturnStd']
@@ -108,9 +111,22 @@ class RLLogger:
         # Update pbar.
         if self.pbar is not None:
             self.pbar.update(1)
-            if returns_mean is not None and returns_std is not None:
-                self.pbar.set_postfix_str(f'Returns: {returns_mean:0.2f} '
-                                          f'+- {returns_std:0.2f}')
+            self.pbar.set_postfix_str(f'Returns: {self._last_returns[0]:0.2f} '
+                                      f'+- {self._last_returns[1]:0.2f}')
+
+    def set_phase(
+        self,
+        phase: str,
+    ):
+        """Set the phase. Right now just reflected in pbar.
+
+        Args:
+            status: What is currently happening.
+        """
+        if self.pbar is not None:
+            self.pbar.set_postfix_str(f'{phase}...\t'
+                                      f'Returns: {self._last_returns[0]:0.2f} '
+                                      f'+- {self._last_returns[1]:0.2f}')
 
     def end(self, policy: Policy):
         """Called at the end of the run.

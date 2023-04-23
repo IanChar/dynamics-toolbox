@@ -31,6 +31,7 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
+            action_bounds: Optional[Tuple[np.ndarray]] = None,
     ):
         """
         Constructor.
@@ -63,6 +64,7 @@ class ModelEnv(gym.Env):
         self._real_env = real_env
         self._model_output_are_deltas = model_output_are_deltas
         self._t = 0
+        self._action_bounds = self._action_bounds
         self._state = None
         if self._real_env is not None:
             self._observation_space = self._real_env.observation_space
@@ -117,6 +119,10 @@ class ModelEnv(gym.Env):
             action = np.array([action])
         if len(action.shape) == 1:
             action = action.reshape(1, -1)
+        if self._action_bounds is not None:
+            action = ((action + 1) / 2
+                      * (self._action_bounds[1] - self._action_bounds[0])
+                      + self._actions_bounds[0])
         model_out, model_info = self._dynamics.predict(np.hstack(
             [self._state.reshape(1, -1), action]))
         nxt = (model_out + self._state.reshape(1, -1) if self._model_output_are_deltas
@@ -186,6 +192,10 @@ class ModelEnv(gym.Env):
             if acts is None:
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
+            if self._action_bounds is not None:
+                act = ((act + 1) / 2
+                       * (self._action_bounds[1] - self._action_bounds[0])
+                       + self._actions_bounds[0])
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
             rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
             if self._reward_is_first_dim:
@@ -277,6 +287,14 @@ class ModelEnv(gym.Env):
     @property
     def dynamics_model(self) -> AbstractModel:
         return self._dynamics
+
+    @property
+    def action_bounds(self) -> Optional[Tuple[np.ndarray]]:
+        return self._action_bounds
+
+    @action_bounds.setter
+    def action_bounds(self, action_bounds: [Tuple[np.ndarray]]):
+        self._action_bounds = action_bounds
 
     @start_dist.setter
     def start_dist(self, dist: Callable[[int], np.ndarray]):

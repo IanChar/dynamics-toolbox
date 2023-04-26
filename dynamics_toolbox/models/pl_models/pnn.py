@@ -6,6 +6,7 @@ Author: Ian Char
 from typing import Optional, Tuple, Dict, Any, Sequence, Callable
 
 import hydra.utils
+import numpy as np
 import torch
 import torch.nn.functional as F
 from omegaconf import DictConfig
@@ -80,6 +81,7 @@ class PNN(AbstractPlModel):
         )
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
+        self._recal_constants = None
         self._var_pinning = (logvar_lower_bound is not None
                              and logvar_upper_bound is not None)
         if self._var_pinning:
@@ -131,6 +133,8 @@ class PNN(AbstractPlModel):
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
+        if self.recal_constants is not None:
+            std_predictions *= self.recal_constants
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
             predictions = (torch.randn_like(mean_predictions) * std_predictions
                            + mean_predictions)
@@ -248,6 +252,19 @@ class PNN(AbstractPlModel):
     def weight_decay(self) -> float:
         """Get the weight decay."""
         return self._weight_decay
+
+    @property
+    def recal_constants(self) -> float:
+        """Get the weight decay."""
+        return self._recal_constants
+
+    @recal_constants.setter
+    def recal_constants(self, constants: np.ndarray):
+        if isinstance(constants, np.ndarray):
+            self._recal_constants = torch.as_tensor(constants).to(self.device)
+        else:
+            self._recal_constants = constants.to(self.device)
+        self._recal_constants = self._recal_constants.reshape(1, -1)
 
     def _get_test_and_validation_metrics(
             self,

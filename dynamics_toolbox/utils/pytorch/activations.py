@@ -23,10 +23,16 @@ def swish(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
+def identity(x: torch.Tensor) -> torch.Tensor:
+    """Just returns the same thing."""
+    return x
+
+
 ALL_ACTIVATIONS = {
     activations.RELU: F.relu,
     activations.SWISH: swish,
     activations.TANH: torch.tanh,
+    activations.IDENTITY: identity,
 }
 
 

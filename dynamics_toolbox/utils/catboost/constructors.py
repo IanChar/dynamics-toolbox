@@ -4,7 +4,6 @@ Construction functions for catboost.
 Author: Youngseog Chung
 """
 from typing import Tuple
-import os
 
 import hydra.utils
 import numpy as np
@@ -62,8 +61,10 @@ def construct_all_cb_components_for_training(
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
+    # TODO: Change all this to make it default. Rely more on Hydra's functionality.
+    to_recurse = cfg['model'].get('_recursive_', False)
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
-                                    _recursive_=False)
+                                    _recursive_=to_recurse)
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))

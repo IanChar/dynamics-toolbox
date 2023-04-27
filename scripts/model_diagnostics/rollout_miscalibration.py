@@ -35,7 +35,7 @@ parser.add_argument('--num_starts', type=int, default=100)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
-                    default='sample_member_every_trajectory')
+                    default='sample_member_every_step')
 parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--recal_constants', type=str, default=None)
 parser.add_argument('--seed', type=int, default=0)

@@ -1,22 +1,19 @@
 """
-Recursive model that predicts a gaussian distribtion.
-
-Author: Ian Char
-Date: 10/27/2022
+PNN that is temporally corelated.
 """
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
-import hydra.utils
 import torch
-from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
+from dynamics_toolbox.utils.pytorch.activations import identity
 from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
+from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
 
 
-class RPNN(AbstractSequentialModel):
+class CorrPNN(AbstractSequentialModel):
     """RPNN network."""
 
     def __init__(
@@ -24,12 +21,13 @@ class RPNN(AbstractSequentialModel):
             input_dim: int,
             output_dim: int,
             encode_dim: int,
-            rnn_num_layers: int,
             rnn_hidden_size: int,
-            encoder_cfg: DictConfig,
-            pnn_decoder_cfg: DictConfig,
+            decoder_num_hidden_layers: int,
+            decoder_hidden_size: int,
+            encoder_num_hidden_layers: int = 0,
+            encoder_hidden_size: int = 0,
+            rnn_num_layers: int = 1,
             rnn_type: str = 'gru',
-            warm_up_period: int = 0,
             learning_rate: float = 1e-3,
             logvar_lower_bound: Optional[float] = None,
             logvar_upper_bound: Optional[float] = None,
@@ -45,14 +43,13 @@ class RPNN(AbstractSequentialModel):
             input_dim: The input dimension.
             output_dim: The output dimension.
             encode_dim: The dimension of the encoder output.
-            rnn_num_layers: Number of layers in the memory unit.
             rnn_hidden_size: The number hidden units in the memory unit.
-            encoder_cfg: The configuration for the encoder network.
-            pnn_decoder_cfg: The configuration for the decoder network. Should
-                be a PNN.
+            decoder_num_hidden_layers: The number of hidden layers for the decoder.
+            decoder_hidden_size: Number of hidden units per layer in the decoder.
+            encoder_num_hidden_layers: The number of hidden layers for the encoder.
+            encoder_hidden_size: Number of hidden units per layer in the encoder.
+            rnn_num_layers: Number of layers in the memory unit.
             rnn_type: Name of the rnn type. Can accept GRU or LSTM.
-            warm_up_period: The amount of data to take in before predictions begin to
-                be made.
             learning_rate: The learning rate for the network.
             logvar_lower_bound: Lower bound on the log variance.
                 If none there is no bound.
@@ -64,17 +61,24 @@ class RPNN(AbstractSequentialModel):
             use_layer_norm: Whether to use layer norm.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self._encoder = hydra.utils.instantiate(
-            encoder_cfg,
+        if encoder_num_hidden_layers > 0:
+            encoder_hidden_sizes = [encoder_hidden_size
+                                    for _ in range(encoder_num_hidden_layers)]
+        else:
+            encoder_hidden_sizes = None
+        decoder_hidden_sizes = [decoder_hidden_size
+                                for _ in range(decoder_num_hidden_layers)]
+        self._encoder = FCNetwork(
             input_dim=input_dim,
             output_dim=encode_dim,
-            _recursive_=False,
+            hidden_sizes=encoder_hidden_sizes,
         )
-        self._decoder = hydra.utils.instantiate(
-            pnn_decoder_cfg,
+        self._decoder = FCNetwork(
             input_dim=encode_dim + rnn_hidden_size,
             output_dim=output_dim,
-            _recursive_=False,
+            hidden_sizes=decoder_hidden_sizes,
+            num_heads=3,
+            out_activation=[identity, identity, torch.tanh],
         )
         self.rnn_type = rnn_type.lower()
         if rnn_type.lower() == 'gru':
@@ -94,12 +98,12 @@ class RPNN(AbstractSequentialModel):
         self._encode_dim = encode_dim
         self._hidden_size = rnn_hidden_size
         self._num_layers = rnn_num_layers
-        self._warm_up_period = warm_up_period
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay
         self._sample_mode = sample_mode
         self._record_history = True
         self._hidden_state = None
+        self._last_pred_info = None
         self._use_layer_norm = use_layer_norm
         # Set up variance pinning.
         self._var_pinning = (logvar_lower_bound is not None
@@ -132,13 +136,16 @@ class RPNN(AbstractSequentialModel):
 
         Returns:
             Dictionary of name to tensor.
+                * mean (batch_size, Sequence Length, dim)
+                * logvar (batch_size, Sequence Length, dim)
+                * corr (batch_size, Sequence Length, dim)
         """
         encoded = self._encoder(batch[0])
         if self._use_layer_norm:
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
-        mean, logvar = self._decoder(torch.cat([encoded, mem_out], dim=-1))
-        return {'mean': mean, 'logvar': logvar}
+        mean, logvar, corr = self._decoder(torch.cat([encoded, mem_out], dim=-1))
+        return {'mean': mean, 'logvar': logvar, 'corr': corr}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -156,16 +163,30 @@ class RPNN(AbstractSequentialModel):
         """
         mean = net_out['mean']
         logvar = net_out['logvar']
+        corr = net_out['corr']
         y, mask = batch[1:]
-        mask[:, :self._warm_up_period, :] = 0
-        sq_diffs = (mean * mask - y * mask).pow(2)
-        mse = torch.mean(sq_diffs)
-        loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
-        stats = dict(
-            nll=loss.item(),
-            mse=mse.item(),
+        num_valid = mask[:, 1:].sum()
+        num_valid_full = mask.sum()
+        diffs = y - mean
+        sq_diffs = diffs.pow(2)
+        norm_sq_diffs = sq_diffs * torch.exp(-logvar)
+        mixing_term = (diffs[:, 1:] * diffs[:, :-1] * corr[:, 1:]
+                       * torch.exp(-0.5 * logvar[:, 1:] + logvar[:, :-1]))
+        # This is technically not exactly the NLL because I am double counting the
+        # first and the last parts of the sequence. But I think it is ok and it is
+        # easier to code/maybe more stable?
+        loss = (
+            (norm_sq_diffs * mask).sum() / num_valid_full
+            - (mixing_term * mask[:, 1:]).sum() / num_valid
+            + (logvar * mask).sum() / num_valid_full
+            + 0.25 * ((1 - corr[:, 1:].pow(2)).log() * mask[:, 1:]).sum() / num_valid
         )
-        stats['logvar/mean'] = (logvar * mask).mean().item()
+        stats = {}
+        stats['nll'] = loss.item()
+        stats['mse'] = (sq_diffs.sum() / num_valid_full).item()
+        stats['logvar/mean'] = ((logvar * mask).sum() / num_valid_full).item()
+        stats['correlation/mean'] = ((corr[:, 1:] * mask[:, 1:]).sum()
+                                     / num_valid).item()
         if self._var_pinning:
             bound_loss = self._logvar_bound_loss_coef * \
                          torch.abs(self._max_logvar - self._min_logvar).mean()
@@ -211,13 +232,25 @@ class RPNN(AbstractSequentialModel):
             mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
             if self._record_history:
                 self._hidden_state = hidden_out
-            mean_predictions, logvar_predictions =\
+            mean_predictions, logvar_predictions, corr_predictions =\
                 (output.squeeze(1) for output in
                  self._decoder(torch.cat([encoded, mem_out], dim=-1)))
         std_predictions = (0.5 * logvar_predictions).exp()
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
+            if self._last_pred_info is not None:
+                mean_predictions += (
+                    corr_predictions * std_predictions
+                    / self._last_pred_info['std']
+                    * (self._last_pred_info['samples'] - self._last_pred_info['mean']))
+                std_predictions *= (1 - corr_predictions.pow(2)).sqrt()
             predictions = (torch.randn_like(mean_predictions) * std_predictions
                            + mean_predictions)
+            if self._record_history:
+                self._last_pred_info = {
+                    'mean': mean_predictions,
+                    'std': std_predictions,
+                    'samples': predictions,
+                }
         else:
             predictions = mean_predictions
         info = {'predictions': predictions,
@@ -290,6 +323,7 @@ class RPNN(AbstractSequentialModel):
     def clear_history(self) -> None:
         """Clear the history."""
         self._hidden_state = None
+        self._last_pred_info = None
 
     def reset(self) -> None:
         """Reset the dynamics model."""

@@ -6,6 +6,8 @@ decoder_num_hidden_layers: 4
 decoder_hidden_size: 512
 logvar_lower_bound: -10
 logvar_upper_bound: 0.5
+corr_lower_bound: -0.05
+corr_upper_bound: 0.05
 dim_name_map:
   - "Rewards"
   - "X Position"

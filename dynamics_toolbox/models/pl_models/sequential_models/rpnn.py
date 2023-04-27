@@ -8,6 +8,7 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import hydra.utils
 import torch
+import torch.nn.functional as F
 from omegaconf import DictConfig
 
 from dynamics_toolbox.constants import sampling_modes
@@ -138,6 +139,9 @@ class RPNN(AbstractSequentialModel):
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
         mean, logvar = self._decoder(torch.cat([encoded, mem_out], dim=-1))
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return {'mean': mean, 'logvar': logvar}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \

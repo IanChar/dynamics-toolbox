@@ -4,6 +4,7 @@ PNN that is temporally corelated.
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import torch
+import torch.nn.functional as F
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
@@ -32,6 +33,9 @@ class CorrPNN(AbstractSequentialModel):
             logvar_lower_bound: Optional[float] = None,
             logvar_upper_bound: Optional[float] = None,
             logvar_bound_loss_coef: float = 1e-3,
+            corr_lower_bound: Optional[float] = -0.05,
+            corr_upper_bound: Optional[float] = 0.05,
+            corr_bound_loss_coef: float = 1e-3,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
@@ -56,6 +60,11 @@ class CorrPNN(AbstractSequentialModel):
             logvar_upper_bound: Lower bound on the log variance.
                 If none there is no bound.
             logvar_bound_loss_coef: Coefficient on bound loss to add to loss.
+            corr_lower_bound: Lower bound on the correlation.
+                If none there is no bound.
+            corr_upper_bound: Lower bound on the correlation.
+                If none there is no bound.
+            corr_bound_loss_coef: Coefficient on bound loss to add to loss.
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
             use_layer_norm: Whether to use layer norm.
@@ -119,6 +128,20 @@ class CorrPNN(AbstractSequentialModel):
             self._min_logvar = None
             self._max_logvar = None
         self._logvar_bound_loss_coef = logvar_bound_loss_coef
+        # Set up correlation pinning.
+        self._corr_pinning = (corr_lower_bound is not None
+                              and corr_upper_bound is not None)
+        if self._corr_pinning:
+            self._min_corr = torch.nn.Parameter(
+                torch.Tensor([corr_lower_bound])
+                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
+            self._max_corr = torch.nn.Parameter(
+                torch.Tensor([corr_upper_bound])
+                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
+        else:
+            self._min_corr = None
+            self._max_corr = None
+        self._corr_bound_loss_coef = corr_bound_loss_coef
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': SequentialExplainedVariance(),
@@ -145,6 +168,12 @@ class CorrPNN(AbstractSequentialModel):
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
         mean, logvar, corr = self._decoder(torch.cat([encoded, mem_out], dim=-1))
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
+        if self._corr_pinning:
+            corr = self._max_corr - F.softplus(self._max_corr - corr, beta=100)
+            corr = self._min_corr + F.softplus(corr - self._min_corr, beta=100)
         return {'mean': mean, 'logvar': logvar, 'corr': corr}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
@@ -165,8 +194,8 @@ class CorrPNN(AbstractSequentialModel):
         logvar = net_out['logvar']
         corr = net_out['corr']
         y, mask = batch[1:]
-        num_valid = mask[:, 1:].sum()
-        num_valid_full = mask.sum()
+        num_valid = mask[:, 1:].sum().item()
+        num_valid_full = mask.sum().item()
         diffs = y - mean
         sq_diffs = diffs.pow(2)
         norm_sq_diffs = sq_diffs * torch.exp(-logvar)
@@ -184,19 +213,30 @@ class CorrPNN(AbstractSequentialModel):
         ) * mask[:, 1:]).mean(dim=-1).sum() / num_valid
         stats = {}
         stats['nll'] = loss.item()
-        stats['mse'] = (sq_diffs * mask).mean(dim=-1).sum() / num_valid_full
+        stats['mse'] = (sq_diffs * mask).mean(dim=-1).sum().item() / num_valid_full
         stats['logvar/mean'] = ((logvar * mask).mean(dim=-1).sum()
                                 / num_valid_full).item()
         stats['correlation/mean'] = ((corr[:, 1:] * mask[:, 1:]).mean(dim=-1).sum()
                                      / num_valid).item()
+        stats['correlation/min'] = (corr[:, 1:] * mask[:, 1:]).min().item()
+        stats['correlation/max'] = (corr[:, 1:] * mask[:, 1:]).max().item()
         if self._var_pinning:
             bound_loss = self._logvar_bound_loss_coef * \
                          torch.abs(self._max_logvar - self._min_logvar).mean()
-            stats['bound_loss'] = bound_loss.item()
+            stats['logvar_bound_loss'] = bound_loss.item()
             stats['logvar_lower_bound/mean'] = self._min_logvar.mean().item()
             stats['logvar_upper_bound/mean'] = self._max_logvar.mean().item()
             stats['logvar_bound_difference'] = (
                         self._max_logvar - self._min_logvar).mean().item()
+            loss += bound_loss
+        if self._corr_pinning:
+            bound_loss = self._corr_bound_loss_coef * \
+                         torch.abs(self._max_corr - self._min_corr).mean()
+            stats['corr_bound_loss'] = bound_loss.item()
+            stats['corr_lower_bound/mean'] = self._min_corr.mean().item()
+            stats['corr_upper_bound/mean'] = self._max_corr.mean().item()
+            stats['corr_bound_difference'] = (
+                        self._max_corr - self._min_corr).mean().item()
             loss += bound_loss
         stats['loss'] = loss.item()
         return loss, stats

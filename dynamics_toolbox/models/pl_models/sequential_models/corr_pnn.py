@@ -176,16 +176,18 @@ class CorrPNN(AbstractSequentialModel):
         # first and the last parts of the sequence. But I think it is ok and it is
         # easier to code/maybe more stable?
         loss = (
-            (norm_sq_diffs * mask).sum() / num_valid_full
-            - (mixing_term * mask[:, 1:]).sum() / num_valid
-            + (logvar * mask).sum() / num_valid_full
-            + 0.25 * ((1 - corr[:, 1:].pow(2)).log() * mask[:, 1:]).sum() / num_valid
+            (norm_sq_diffs * mask).mean(dim=-1).sum() / num_valid_full
+            - (mixing_term * mask[:, 1:]).mean(dim=-1).sum() / num_valid
+            + (logvar * mask).mean(dim=-1).sum() / num_valid_full
+            + 0.25 * ((1 - corr[:, 1:].pow(2)).log() * mask[:, 1:]).mean(dim=-1).sum()
+            / num_valid
         )
         stats = {}
         stats['nll'] = loss.item()
-        stats['mse'] = (sq_diffs.sum() / num_valid_full).item()
-        stats['logvar/mean'] = ((logvar * mask).sum() / num_valid_full).item()
-        stats['correlation/mean'] = ((corr[:, 1:] * mask[:, 1:]).sum()
+        stats['mse'] = (sq_diffs * mask).mean(dim=-1).sum() / num_valid_full
+        stats['logvar/mean'] = ((logvar * mask).mean(dim=-1).sum()
+                                / num_valid_full).item()
+        stats['correlation/mean'] = ((corr[:, 1:] * mask[:, 1:]).mean(dim=-1).sum()
                                      / num_valid).item()
         if self._var_pinning:
             bound_loss = self._logvar_bound_loss_coef * \

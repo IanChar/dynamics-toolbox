@@ -10,11 +10,9 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.pylab as pylab
 import numpy as np
-from tqdm import tqdm
 
 from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 from dynamics_toolbox.env_wrappers.wrapper_utils import get_terminal_from_env_name
-from dynamics_toolbox.metrics.uq_metrics import coverage_and_sharpness_from_samples
 from dynamics_toolbox.utils.sarsa_data_util import parse_into_trajectories
 from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
 from dynamics_toolbox.utils.storage.model_storage import (
@@ -30,7 +28,7 @@ parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str, default='rollout_vizs')
 parser.add_argument('--horizon', type=int, default=10)
-parser.add_argument('--samples_per_start', type=int, default=1000)
+parser.add_argument('--samples_per_start', type=int, default=15)
 parser.add_argument('--num_starts', type=int, default=10)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
@@ -40,6 +38,8 @@ parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--plots_per_row', type=int, default=4)
 parser.add_argument('--num_quantiles', type=int, default=10)
 parser.add_argument('--show_samples', action='store_true')
+parser.add_argument('--sample_alpha', type=float, default=0.2)
+parser.add_argument('--show_dataset_max', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 args = parser.parse_args()
 np.random.seed(args.seed)
@@ -127,12 +127,15 @@ num_rows = int(np.ceil(num_dims / num_cols))
 tsteps = np.arange(1, 1 + args.horizon)
 quantiles = np.linspace(0.05, 0.95, args.num_quantiles)
 cmap = pylab.cm.Blues(quantiles)
+mins, maxs = (np.amin(obs.reshape(-1, obs.shape[-1]), axis=0),
+              np.amax(obs.reshape(-1, obs.shape[-1]), axis=0))
 for pnum in range(len(preds)):
     fig, axs = plt.subplots(num_rows, num_cols)
     for didx in range(num_dims):
         ax = axs[didx // num_cols, didx % num_cols]
         if args.show_samples:
-            ax.plot(tsteps, preds[pnum, :, :, didx].T, color='royalblue', alpha=0.05)
+            ax.plot(tsteps, preds[pnum, :, :, didx].T, color='royalblue',
+                    alpha=args.sample_alpha)
         else:
             for quant, color in zip(quantiles, cmap):
                 ax.fill_between(
@@ -142,6 +145,9 @@ for pnum in range(len(preds)):
                     color=color,
                     alpha=0.2,
                 )
+        if args.show_dataset_max:
+            ax.axhline(mins[didx], ls=':', color='black')
+            ax.axhline(maxs[didx], ls=':', color='black')
         ax.plot(tsteps, np.mean(preds[pnum, :, :, didx], axis=0), color='cyan',
                 alpha=0.8)
         ax.plot(tsteps, obs[pnum, :, didx], ls='--', color='red')

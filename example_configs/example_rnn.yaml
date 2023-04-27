@@ -1,6 +1,6 @@
 name: "example_rnn"
 save_path: "trained_models"
-data_source: "data/pendulum_100k.hdf5"
+data_source: "data/pendulum_1k.hdf5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"

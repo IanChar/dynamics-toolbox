@@ -170,18 +170,18 @@ class CorrPNN(AbstractSequentialModel):
         diffs = y - mean
         sq_diffs = diffs.pow(2)
         norm_sq_diffs = sq_diffs * torch.exp(-logvar)
-        mixing_term = (diffs[:, 1:] * diffs[:, :-1] * corr[:, 1:]
-                       * torch.exp(-0.5 * logvar[:, 1:] + logvar[:, :-1]))
-        # This is technically not exactly the NLL because I am double counting the
-        # first and the last parts of the sequence. But I think it is ok and it is
-        # easier to code/maybe more stable?
-        loss = (
-            (norm_sq_diffs * mask).mean(dim=-1).sum() / num_valid_full
-            - (mixing_term * mask[:, 1:]).mean(dim=-1).sum() / num_valid
-            + (logvar * mask).mean(dim=-1).sum() / num_valid_full
-            + 0.25 * ((1 - corr[:, 1:].pow(2)).log() * mask[:, 1:]).mean(dim=-1).sum()
-            / num_valid
-        )
+        corr_term = 1 - corr[:, 1:].pow(2)
+        loss = ((
+            (2 * corr_term).pow(-1) * (
+                norm_sq_diffs[:, :-1]
+                + norm_sq_diffs[:, 1:]
+                - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:]
+                   * torch.exp(-0.5 * logvar[:, 1:] * logvar[:, :-1]))
+            )
+            + logvar[:, :-1]
+            + logvar[:, 1:]
+            + 0.5 * corr_term.log()
+        ) * mask[:, 1:]).mean(dim=-1).sum() / num_valid
         stats = {}
         stats['nll'] = loss.item()
         stats['mse'] = (sq_diffs * mask).mean(dim=-1).sum() / num_valid_full

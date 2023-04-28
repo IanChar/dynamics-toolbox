@@ -27,9 +27,8 @@ parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str, default='err_corr')
 parser.add_argument('--horizon', type=int, default=2)
-parser.add_argument('--samples_per_start', type=int, default=10)
-parser.add_argument('--miscal_fidelity', type=int, default=50)
-parser.add_argument('--num_starts', type=int, default=100)
+parser.add_argument('--samples_per_start', type=int, default=50)
+parser.add_argument('--num_starts', type=int, default=1000)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
@@ -108,7 +107,7 @@ if args.no_rewards:
 else:
     preds = np.concatenate([
         rollouts['rewards'].reshape(args.num_starts, args.samples_per_start,
-                                    args.horizon, 1),
+                                    args.horizon+1, 1),
         rollouts['observations'][:, 1:].reshape(
             args.num_starts,
             args.samples_per_start,

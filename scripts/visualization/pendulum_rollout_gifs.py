@@ -22,11 +22,12 @@ from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 ###########################################################################
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, required=True)
-parser.add_argument('--save_path', type=str, default='gifs/pendulum/gpt')
+parser.add_argument('--save_path', type=str, required=True)
 parser.add_argument('--data_path', type=str, default='data/pendulum_holdout.hdf5')
 parser.add_argument('--path_len', type=int, default=200)
 parser.add_argument('--max_paths', type=int, default=3)
 parser.add_argument('--num_samples', type=int, default=30)
+parser.add_argument('--recal_constants', type=str, default=None)
 args = parser.parse_args()
 plt.style.use('seaborn')
 
@@ -34,6 +35,9 @@ plt.style.use('seaborn')
 # %% Make the GIFs
 ###########################################################################
 model = load_model_from_log_dir(args.model_path)
+if args.recal_constants is not None:
+    model.recal_constants = np.array([float(c)
+                                      for c in args.recal_constants.split(',')])
 model_env = ModelEnv(model)
 os.makedirs(args.save_path, exist_ok=True)
 os.makedirs('gif_scratch', exist_ok=True)
@@ -47,8 +51,8 @@ actions = np.array([
     data['actions'][int(pn * args.path_len):int((pn + 1) * args.path_len)]
     for pn in range(num_paths)
 ]).repeat(args.num_samples, axis=0)
-pred_obs = model_env.unroll_from_actions(
-    num_paths * args.num_samples, actions, starts)[0]
+pred_obs = model_env.model_rollout_from_actions(
+    num_paths * args.num_samples, actions, starts)['observations']
 for pn in range(num_paths):
     strt = int(pn * args.path_len)
     for t in tqdm(range(args.path_len), desc=f'Path {pn + 1}'):

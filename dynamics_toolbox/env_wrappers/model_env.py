@@ -194,7 +194,7 @@ class ModelEnv(gym.Env):
             obs[:, h + 1, :] = nxts
             policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
-                terms[:, h] = np.full(starts.shape[0], False)
+                terms[:, h] = np.full(terms[:, h].shape, False)
             else:
                 terms[:, h] = np.array([self._terminal_function(nxt)
                                         for nxt in nxts])

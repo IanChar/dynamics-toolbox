@@ -168,9 +168,9 @@ class PNN(AbstractPlModel):
         Returns:
             Dictionary of name to tensor.
         """
-        xi, _ = batch
+        xi, _ = batch[:2]
         mean, logvar = self.forward(xi)
-        return {'mean': mean, 'logvar': logvar}
+        return {'mean': mean, 'logvar': logvar, 'std': (0.5 * logvar).exp()}
 
     def loss(
             self,
@@ -186,7 +186,7 @@ class PNN(AbstractPlModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        _, labels = batch
+        _, labels = batch[:2]
         mean = net_out['mean']
         logvar = net_out['logvar']
         sq_diffs = (mean - labels).pow(2)

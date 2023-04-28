@@ -91,6 +91,7 @@ acts = np.repeat(acts, args.samples_per_start, axis=0)
 # %% Generate the data.
 ###########################################################################
 print('Generating data...')
+breakpoint()
 rollouts = model_env.model_rollout_from_actions(
     num_rollouts=len(starts),
     actions=acts,
@@ -132,7 +133,10 @@ mins, maxs = (np.amin(obs.reshape(-1, obs.shape[-1]), axis=0),
 for pnum in range(len(preds)):
     fig, axs = plt.subplots(num_rows, num_cols)
     for didx in range(num_dims):
-        ax = axs[didx // num_cols, didx % num_cols]
+        if num_rows == 1:
+            ax = axs[didx]
+        else:
+            ax = axs[didx // num_cols, didx % num_cols]
         if args.show_samples:
             ax.plot(tsteps, preds[pnum, :, :, didx].T, color='royalblue',
                     alpha=args.sample_alpha)

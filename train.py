@@ -18,6 +18,8 @@ from dynamics_toolbox.utils.lightning.constructors import\
 @hydra.main(config_path='./example_configs', config_name='example_rnn')
 def train(cfg: DictConfig) -> None:
     """Train the model."""
+    import torch
+    torch.autograd.set_detect_anomaly(True)
     if cfg.get('debug', False):
         breakpoint()
     if 'model' not in cfg:

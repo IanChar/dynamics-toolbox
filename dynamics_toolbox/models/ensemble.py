@@ -167,6 +167,10 @@ class Ensemble(AbstractModel):
         """The sample mode is the method that in which we get next state."""
         return self.members[0].output_dim
 
+    @property
+    def normalizer(self):
+        return self.members[0].normalizer
+
     def draw_from_categorical(self, num_samples) -> np.ndarray:
         """Draw from categorical distribution.
 

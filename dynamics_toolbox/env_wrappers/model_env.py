@@ -175,6 +175,7 @@ class ModelEnv(gym.Env):
         terms = np.full((starts.shape[0], horizon, 1), True)
         logprobs = np.zeros((starts.shape[0], horizon, 1))
         masks = np.ones((starts.shape[0], horizon, 1))
+        all_infos = []
         obs[:, 0, :] = starts
         acts = None
         if show_progress:
@@ -188,6 +189,7 @@ class ModelEnv(gym.Env):
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
             rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
+            all_infos.append(infos)
             if self._reward_is_first_dim:
                 model_out = model_out[:, 1:]
             nxts = state + model_out if self._model_output_are_deltas else model_out
@@ -212,6 +214,7 @@ class ModelEnv(gym.Env):
             'terminals': terms,
             'logprobs': logprobs,
             'masks': masks,
+            'info': all_infos,
         }
 
     def model_rollout_from_actions(

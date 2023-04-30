@@ -45,7 +45,7 @@ class UQDynamicsDataModule(LightningDataModule):
         super().__init__()
         data = load_from_hdf5(data_path)
         self._obs, self._acts, self._means, self._stds, self._true = [
-            data[k] for k in ('rollout_observations', 'actions', 'oracle_delta_means',
+            data[k] for k in ('observations', 'actions', 'oracle_delta_means',
                               'oracle_delta_stds', 'true_deltas')
         ]
         self._obsacts = np.concatenate([self._obs, self._acts], axis=-1)
@@ -55,7 +55,7 @@ class UQDynamicsDataModule(LightningDataModule):
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._seed = seed
-        data_size = len(self._xdata)
+        data_size = len(self._obsacts)
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
@@ -118,7 +118,7 @@ class UQDynamicsDataModule(LightningDataModule):
     @property
     def data(self) -> Sequence[np.array]:
         """Get all of the data."""
-        return self._obs, self._acts, self._means, self._stds, self._true
+        return self._obsacts, self._means, self._stds, self._true
 
     @property
     def input_data(self) -> np.array:

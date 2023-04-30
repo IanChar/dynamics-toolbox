@@ -10,6 +10,7 @@ Date: April 27, 2023
 from typing import Any, Dict, Callable, Tuple, Sequence, Optional
 
 import torch
+from torch.distributions.normal import Normal
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
@@ -33,7 +34,7 @@ class UQWrapper(AbstractSequentialModel):
         corr_encoder_hidden_size: int = 0,
         corr_rnn_num_layers: int = 1,
         corr_rnn_type: str = 'gru',
-        cal_learning_rate: float = 1e-3,
+        cal_learning_rate: float = 5e-4,
         corr_learning_rate: float = 5e-4,
         corr_max_magnitude: float = 0.9,
         sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
@@ -42,6 +43,7 @@ class UQWrapper(AbstractSequentialModel):
         min_cal_coefficient: float = 1e-3,
         base_model=None,
         base_model_is_sequential: bool = False,
+        quantile_fidelity: int = 50,
         **kwargs
     ):
         """Constructor."""
@@ -50,7 +52,7 @@ class UQWrapper(AbstractSequentialModel):
             input_dim=input_dim,
             output_dim=output_dim,
             hidden_sizes=[cal_hidden_layer_size for _ in range(cal_num_hidden_layers)],
-            out_activation=torch.nn.functional.softmax,
+            out_activation=torch.nn.functional.tanh,
         )
         if corr_encoder_num_hidden_layers > 0:
             encoder_hidden_sizes = [corr_encoder_hidden_size
@@ -97,6 +99,15 @@ class UQWrapper(AbstractSequentialModel):
         self._record_history = True
         self._hidden_state = None
         self._last_pred_info = None
+        self._coverages = torch.linspace(0.05, 0.95, quantile_fidelity).to(self.device)
+        self._upper_quantiles = Normal(0, 1).icdf(
+                0.5 * (1 + self._coverages)).to(self.device)
+        self._lower_quantiles = Normal(0, 1).icdf(
+                0.5 * (1 - self._coverages)).to(self.device)
+        self._coverages, self._upper_quantiles, self._lower_quantiles = [
+            vect.reshape(1, 1, 1, -1) for vect in (
+                self._coverages, self._upper_quantiles, self._lower_quantiles)
+        ]
 
     def training_step(
             self,
@@ -115,7 +126,6 @@ class UQWrapper(AbstractSequentialModel):
             loss, loss_dict = self.corr_loss(net_out, batch)
         else:
             loss, loss_dict = self.cal_loss(net_out, batch)
-        loss, loss_dict = self.loss(net_out, batch)
         self._log_stats(loss_dict, prefix='train')
         return loss
 
@@ -128,8 +138,9 @@ class UQWrapper(AbstractSequentialModel):
         batch = self.normalizer.normalize_batch(batch)
         net_out = self.get_eval_net_out(batch)
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
-        self._log_stats(cal_dict, prefix='val')
-        corr_loss, corr_dict = self.cal_loss(net_out, batch)
+        corr_loss, corr_dict = self.corr_loss(net_out, batch)
+        corr_dict.update(cal_dict)
+        corr_dict['loss'] = cal_loss.item() + corr_loss.item()
         self._log_stats(corr_dict, prefix='val')
 
     def test_step(
@@ -141,8 +152,9 @@ class UQWrapper(AbstractSequentialModel):
         batch = self.normalizer.normalize_batch(batch)
         net_out = self.get_eval_net_out(batch)
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
-        self._log_stats(cal_dict, prefix='test')
-        corr_loss, corr_dict = self.cal_loss(net_out, batch)
+        corr_loss, corr_dict = self.corr_loss(net_out, batch)
+        corr_dict.update(cal_dict)
+        corr_dict['loss'] = cal_loss.item() + corr_loss.item()
         self._log_stats(corr_dict, prefix='test')
 
     def get_net_out(
@@ -175,7 +187,7 @@ class UQWrapper(AbstractSequentialModel):
             with torch.no_grad():
                 cals = self._cal_network(x) + self._min_cal_coefficient
         else:
-            cals = self._cal_network(x) + self._min_cal_coefficient
+            cals = self._cal_network(x) + self._min_cal_coefficient + 1
         outs['cals'] = cals
         if get_corrs:
             encoding = self._encoder(x)
@@ -184,6 +196,27 @@ class UQWrapper(AbstractSequentialModel):
                     * self._corr_max_magnitude)
             outs['corrs'] = corr
         return outs
+
+    def loss(self, net_out: Dict[str, torch.Tensor],
+             batch: Sequence[torch.Tensor]) -> \
+            Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Combined correlation and calibration loss.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network. This is expected to be a tuple
+                * x: (Batch_size, Sequence Length, dim) (Observations and actions)
+                * means: (Batch_size, Sequence Length, dim)
+                * stds: (Batch_size, Sequence Length, dim)
+                * residuals: (Batch_size, Sequence Length, dim)
+
+        Returns:
+            The loss and a dictionary of other statistics.
+        """
+        cal_loss, cal_dict = self.cal_loss(net_out, batch)
+        corr_loss, corr_dict = self.corr_loss(net_out, batch)
+        corr_dict.update(cal_dict)
+        return corr_loss + cal_loss, corr_dict
 
     def corr_loss(self, net_out: Dict[str, torch.Tensor],
                   batch: Sequence[torch.Tensor]) -> \
@@ -204,22 +237,24 @@ class UQWrapper(AbstractSequentialModel):
         cals, corr = net_out['cals'], net_out['corrs']
         std, diffs = batch[2:]
         sq_diffs = diffs.pow(2)
-        norm_sq_diffs = sq_diffs / (std * cals).pow(2)
+        # norm_sq_diffs = sq_diffs / (std * cals).pow(2)
+        norm_sq_diffs = sq_diffs / std.pow(2)
         corr_term = 1 - corr[:, 1:].pow(2)
         loss = ((
             (2 * corr_term).pow(-1) * (
                 norm_sq_diffs[:, :-1]
                 + norm_sq_diffs[:, 1:]
                 - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:]
-                   / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1]))
+                   # / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1]))
+                   / (std[:, 1:] * std[:, :-1]))
             )
             + 0.5 * corr_term.log()
-        )).mean()
+        )).sum(dim=-1).mean()
         stats = {}
         stats['corr_loss'] = loss.item()
         stats['correlation/mean'] = corr[:, 1:].mean().item()
         stats['correlation/min'] = corr[:, 1:].min().item()
-        stats['correlation/max'] = corr[:, 1:].min().item()
+        stats['correlation/max'] = corr[:, 1:].max().item()
         stats['loss'] = loss.item()
         return loss, stats
 

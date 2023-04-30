@@ -9,6 +9,7 @@ import hydra.utils
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.distributions.normal import Normal
 from omegaconf import DictConfig
 from torchmetrics import ExplainedVariance
 
@@ -33,6 +34,7 @@ class PNN(AbstractPlModel):
             logvar_bound_loss_coef: float = 1e-3,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
+            quantile_fidelity: int = 50,
             **kwargs,
     ):
         """
@@ -96,6 +98,15 @@ class PNN(AbstractPlModel):
             self._max_logvar = None
         self._logvar_bound_loss_coef = logvar_bound_loss_coef
         self._sample_mode = sample_mode
+        self._coverages = torch.linspace(0.05, 0.95, quantile_fidelity).to(self.device)
+        self._upper_quantiles = Normal(0, 1).icdf(
+                0.5 * (1 + self._coverages)).to(self.device)
+        self._lower_quantiles = Normal(0, 1).icdf(
+                0.5 * (1 - self._coverages)).to(self.device)
+        self._coverages, self._upper_quantiles, self._lower_quantiles = [
+            vect.reshape(1, 1, 1, -1) for vect in (
+                self._coverages, self._upper_quantiles, self._lower_quantiles)
+        ]
         self._metrics = {
                 'EV': ExplainedVariance(),
                 'IndvEV': ExplainedVariance('raw_values'),

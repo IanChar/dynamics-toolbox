@@ -8,6 +8,7 @@ import argparse
 
 import h5py
 import numpy as np
+from tqdm import tqdm
 
 from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 from dynamics_toolbox.env_wrappers.wrapper_utils import get_terminal_from_env_name
@@ -26,7 +27,6 @@ parser.add_argument('--model_path', type=str, required=True)
 parser.add_argument('--data_path', type=str, required=True)
 parser.add_argument('--save_path', type=str, required=True)
 parser.add_argument('--horizon', type=int, default=10)
-parser.add_argument('--num_rollouts', type=int, default=int(1e5))
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
@@ -44,6 +44,7 @@ paths = parse_into_snippet_datasets(
     qset=load_from_hdf5(args.data_path),
     snippet_size=args.horizon,
     seed=args.seed,
+    no_snippet_overlap=True,
 )[0]
 if args.is_ensemble:
     model = load_ensemble_from_parent_dir(
@@ -69,17 +70,48 @@ model_env = ModelEnv(
 ###########################################################################
 print('Rolling out with models...')
 # Create the start states and trajectories.
-idxs = np.random.randint(len(paths), size=args.num_rollouts)
-starts = paths['observations'][idxs, 0]
-nxts = paths['next_observations'][idxs]
-acts = paths['actions'][idxs]
-rews = paths['rewards'][idxs]
+obs = paths['observations']
+starts = obs[:, 0]
+nxts = paths['next_observations']
+acts = paths['actions']
+rews = paths['rewards'][..., np.newaxis]
 rollouts = model_env.model_rollout_from_actions(
-    num_rollouts=args.num_rollouts,
+    num_rollouts=len(starts),
     actions=acts,
     starts=starts,
     show_progress=True,
 )
+
+###########################################################################
+# %% Make an oracle rollout.
+###########################################################################
+oracle_means = []
+oracle_stds = []
+norm_mean = getattr(model.normalizer, '1_offset').cpu().numpy()
+norm_std = getattr(model.normalizer, '1_scaling').cpu().numpy()
+for h in tqdm(range(args.horizon), desc='Oracle Rollout...'):
+    curr_ob, curr_act = obs[:, h], acts[:, h]
+    _, info = model.predict(np.hstack([curr_ob, curr_act]))
+    if len(info['mean_predictions'].shape) == 3:
+        means, stds = info['mean_predictions'], info['std_predictions']
+        means = means * norm_std + norm_mean
+        stds *= norm_std
+        members = len(means)
+        mean_out = np.mean(means, axis=0)
+        mean_var = np.mean(stds ** 2, axis=0)
+        mean_sq = np.mean(means ** 2, axis=0) * (1 - 1 / members)
+        mixing_term = 2 / (members ** 2) * np.sum(np.concatenate([np.array([
+                means[i] * means[j]
+                for j in range(i)])
+            for i in range(1, members)]), axis=0)
+        std_out = np.sqrt(mean_var + mean_sq - mixing_term)
+    else:
+        mean_out = info['mean_predictions'] * norm_std + norm_mean
+        std_out = info['std_predictions'] * norm_std
+    oracle_means.append(mean_out)
+    oracle_stds.append(std_out)
+oracle_means = np.array(oracle_means).transpose(1, 0, 2)
+oracle_stds = np.array(oracle_stds).transpose(1, 0, 2)
 
 ###########################################################################
 # %% Form the dataset.
@@ -116,12 +148,18 @@ else:
     std_preds = np.array([inf['std_predictions']
                           for inf in rollouts['info']]).transpose(1, 0, 2)
     std_preds *= norm_std
+true_deltas = nxts - obs
+if samples.shape[-1] > true_deltas.shape[-1]:
+    true_deltas = np.concatenate([rews, true_deltas], axis=-1)
 with h5py.File(args.save_path, 'w') as hdata:
-    hdata.create_dataset('starts', data=starts)
+    hdata.create_dataset('observations', data=obs)
+    hdata.create_dataset('actions', data=acts)
     hdata.create_dataset('next_observations', data=nxts)
     hdata.create_dataset('rewards', data=rews)
-    hdata.create_dataset('true_deltas', data=nxts - paths['observations'][idxs])
+    hdata.create_dataset('true_deltas', data=true_deltas)
     hdata.create_dataset('rollout_observations', data=rollouts['observations'])
     hdata.create_dataset('delta_samples', data=samples)
     hdata.create_dataset('delta_means', data=mean_preds)
     hdata.create_dataset('delta_stds', data=std_preds)
+    hdata.create_dataset('oracle_delta_means', data=oracle_means)
+    hdata.create_dataset('oracle_delta_stds', data=oracle_stds)

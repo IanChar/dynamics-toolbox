@@ -9,8 +9,9 @@ Date: April 27, 2023
 """
 from typing import Any, Dict, Callable, Tuple, Sequence, Optional
 
+from scipy.stats import chi2
 import torch
-from torch.distributions.normal import Normal
+# from torch.distributions.normal import Normal
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
@@ -99,14 +100,14 @@ class UQWrapper(AbstractSequentialModel):
         self._record_history = True
         self._hidden_state = None
         self._last_pred_info = None
-        self._coverages = torch.linspace(0.05, 0.95, quantile_fidelity).to(self.device)
-        self._upper_quantiles = Normal(0, 1).icdf(
-                0.5 * (1 + self._coverages)).to(self.device)
-        self._lower_quantiles = Normal(0, 1).icdf(
-                0.5 * (1 - self._coverages)).to(self.device)
-        self._coverages, self._upper_quantiles, self._lower_quantiles = [
-            vect.reshape(1, 1, 1, -1) for vect in (
-                self._coverages, self._upper_quantiles, self._lower_quantiles)
+        self._exp_proportions = torch.linspace(0.05, 0.95, quantile_fidelity)
+        self._residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
+                self._exp_proportions.numpy())).to(self.device)
+        self._exp_proportions.to(self.device)
+        self._exp_proportions, self._residual_thresholds = [
+            vect.reshape(1, -1) for vect in (
+                self._exp_proportions, self._residual_thresholds
+            )
         ]
 
     def training_step(
@@ -188,7 +189,7 @@ class UQWrapper(AbstractSequentialModel):
         outs = {}
         if suppress_cal_grads:
             with torch.no_grad():
-                cals = self._cal_network(x) + self._min_cal_coefficient
+                cals = self._cal_network(x) + self._min_cal_coefficient + 1
         else:
             cals = self._cal_network(x) + self._min_cal_coefficient + 1
         outs['cals'] = cals
@@ -240,19 +241,15 @@ class UQWrapper(AbstractSequentialModel):
         cals, corr = net_out['cals'], net_out['corrs']
         diffs, std = batch[1:]
         sq_diffs = diffs.pow(2)
-        # norm_sq_diffs = sq_diffs / (std * cals).pow(2)
-        norm_sq_diffs = sq_diffs / std.pow(2)
+        norm_sq_diffs = sq_diffs / (std * cals).pow(2)
         corr_term = 1 - corr[:, 1:].pow(2)
-        loss = ((
-            (2 * corr_term).pow(-1) * (
-                norm_sq_diffs[:, :-1]
-                + norm_sq_diffs[:, 1:]
-                - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:]
-                   # / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1]))
-                   / (std[:, 1:] * std[:, :-1]))
-            )
-            + 0.5 * corr_term.log()
-        )).sum(dim=-1).mean()
+        loss = (((norm_sq_diffs[:, :-1]
+                  + norm_sq_diffs[:, 1:]
+                  - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:]
+                     / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1]))
+                  ) / (2 * corr_term)
+                 + 0.5 * corr_term.log()
+                 )).sum(dim=-1).mean()
         stats = {}
         stats['corr_loss'] = loss.item()
         stats['correlation/mean'] = corr[:, 1:].mean().item()
@@ -277,25 +274,33 @@ class UQWrapper(AbstractSequentialModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        cals = net_out['cals'].unsqueeze(-1)
-        residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
-        uppers = cals * stds * self._upper_quantiles
-        lowers = cals * stds * self._upper_quantiles
-        upper_masks = uppers < residuals
-        lower_masks = lowers > residuals
-        interval_loss = (
-            uppers - lowers
-            + 2 / self._coverages * (lowers - residuals) * lower_masks
-            + 2 / self._coverages * (residuals - uppers) * upper_masks
-        ).mean()
+        cals = net_out['cals']
+        residuals, stds = batch[1:]
+        # cals = net_out['cals'].unsqueeze(-1)
+        # residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
+        stds = stds * cals
+        normd_resids = (residuals / stds).pow(2).sum(dim=-1, keepdim=True)
+        obs_props = torch.sigmoid(
+            10 * (self._residual_thresholds - normd_resids)).mean(dim=1)
+        calibration_loss = (obs_props - self._exp_proportions).abs().mean()
+        # uppers = cals * stds * self._upper_quantiles
+        # lowers = cals * stds * self._upper_quantiles
+        # upper_masks = uppers < residuals
+        # lower_masks = lowers > residuals
+        # interval_loss = (
+        #     uppers - lowers
+        #     + 2 / self._coverages * (lowers - residuals) * lower_masks
+        #     + 2 / self._coverages * (residuals - uppers) * upper_masks
+        # ).mean()
         stats = {}
         stats['cal/mean'] = cals.mean().item()
         stats['cal/std'] = cals.std().item()
         stats['cal/max'] = cals.max().item()
         stats['cal/min'] = cals.min().item()
-        stats['inteval_loss'] = interval_loss.item()
-        stats['loss'] = interval_loss.item()
-        return interval_loss, stats
+        # stats['inteval_loss'] = interval_loss.item()
+        stats['calibration_loss'] = calibration_loss.item()
+        stats['loss'] = calibration_loss.item()
+        return calibration_loss, stats
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
             torch.Tensor, Dict[str, Any]]:

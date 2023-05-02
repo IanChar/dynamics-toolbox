@@ -34,6 +34,7 @@ parser.add_argument('--ensemble_sampling_mode', type=str,
 parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--recal_constants', type=str)
 parser.add_argument('--seed', type=int, default=0)
+parser.add_argument('--unnormalize', action='store_true')
 args = parser.parse_args()
 
 ###########################################################################
@@ -87,8 +88,12 @@ rollouts = model_env.model_rollout_from_actions(
 ###########################################################################
 oracle_means = []
 oracle_stds = []
-norm_mean = getattr(model.normalizer, '1_offset').cpu().numpy()
-norm_std = getattr(model.normalizer, '1_scaling').cpu().numpy()
+if args.unnormalize:
+    norm_mean = getattr(model.normalizer, '1_offset').cpu().numpy()
+    norm_std = getattr(model.normalizer, '1_scaling').cpu().numpy()
+else:
+    norm_mean = 0
+    norm_std = 1
 for h in tqdm(range(args.horizon), desc='Oracle Rollout...'):
     curr_ob, curr_act = obs[:, h], acts[:, h]
     _, info = model.predict(np.hstack([curr_ob, curr_act]))
@@ -119,8 +124,12 @@ oracle_stds = np.array(oracle_stds).transpose(1, 0, 2)
 samples = rollouts['observations'][:, 1:] - rollouts['observations'][:, :-1]
 if not args.no_rewards:
     samples = np.concatenate([rollouts['rewards'], samples], axis=-1)
-norm_mean = getattr(model.normalizer, '1_offset').cpu().numpy()
-norm_std = getattr(model.normalizer, '1_scaling').cpu().numpy()
+if args.unnormalize:
+    norm_mean = getattr(model.normalizer, '1_offset').cpu().numpy()
+    norm_std = getattr(model.normalizer, '1_scaling').cpu().numpy()
+else:
+    norm_mean = 0
+    norm_std = 1
 if len(rollouts['info'][0]['mean_predictions'].shape) == 3:
     all_means = [inf['mean_predictions'] * norm_std + norm_mean
                  for inf in rollouts['info']]
@@ -151,6 +160,8 @@ else:
 true_deltas = nxts - obs
 if samples.shape[-1] > true_deltas.shape[-1]:
     true_deltas = np.concatenate([rews, true_deltas], axis=-1)
+if not args.unnormalize:
+    true_deltas /= getattr(model.normalizer, '1_scaling').cpu().numpy()
 with h5py.File(args.save_path, 'w') as hdata:
     hdata.create_dataset('observations', data=obs)
     hdata.create_dataset('actions', data=acts)

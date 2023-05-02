@@ -36,7 +36,7 @@ class UQWrapper(AbstractSequentialModel):
         corr_rnn_type: str = 'gru',
         cal_learning_rate: float = 5e-4,
         corr_learning_rate: float = 5e-4,
-        corr_max_magnitude: float = 0.9,
+        corr_max_magnitude: float = 0.95,
         sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
         cal_weight_decay: Optional[float] = 0.0,
         corr_weight_decay: Optional[float] = 0.0,
@@ -116,7 +116,8 @@ class UQWrapper(AbstractSequentialModel):
             optimizer_idx: int,
     ) -> torch.Tensor:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.normalize_batch(batch)
+        batch = [self.normalizer.normalize(b, 0) if bidx == 0 else b
+                 for bidx, b in enumerate(batch)]
         net_out = self.get_net_out(
             batch,
             get_corrs=bool(optimizer_idx),
@@ -135,7 +136,8 @@ class UQWrapper(AbstractSequentialModel):
         batch_idx: int,
     ) -> None:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.normalize_batch(batch)
+        batch = [self.normalizer.normalize(b, 0) if bidx == 0 else b
+                 for bidx, b in enumerate(batch)]
         net_out = self.get_eval_net_out(batch)
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
@@ -149,7 +151,8 @@ class UQWrapper(AbstractSequentialModel):
         batch_idx: int,
     ) -> None:
         """Training step for pytorch lightning. Returns the loss."""
-        batch = self.normalizer.normalize_batch(batch)
+        batch = [self.normalizer.normalize(b, 0) if bidx == 0 else b
+                 for bidx, b in enumerate(batch)]
         net_out = self.get_eval_net_out(batch)
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
@@ -232,10 +235,10 @@ class UQWrapper(AbstractSequentialModel):
                 * residuals: (Batch_size, Sequence Length, dim)
 
         Returns:
-            The loss and a dictionary of other statistics.
+           The loss and a dictionary of other statistics.
         """
         cals, corr = net_out['cals'], net_out['corrs']
-        std, diffs = batch[2:]
+        diffs, std = batch[1:]
         sq_diffs = diffs.pow(2)
         # norm_sq_diffs = sq_diffs / (std * cals).pow(2)
         norm_sq_diffs = sq_diffs / std.pow(2)
@@ -275,7 +278,7 @@ class UQWrapper(AbstractSequentialModel):
             The loss and a dictionary of other statistics.
         """
         cals = net_out['cals'].unsqueeze(-1)
-        stds, residuals = [b.unsqueeze(-1) for b in batch[2:]]
+        residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
         uppers = cals * stds * self._upper_quantiles
         lowers = cals * stds * self._upper_quantiles
         upper_masks = uppers < residuals
@@ -288,6 +291,8 @@ class UQWrapper(AbstractSequentialModel):
         stats = {}
         stats['cal/mean'] = cals.mean().item()
         stats['cal/std'] = cals.std().item()
+        stats['cal/max'] = cals.max().item()
+        stats['cal/min'] = cals.min().item()
         stats['inteval_loss'] = interval_loss.item()
         stats['loss'] = interval_loss.item()
         return interval_loss, stats

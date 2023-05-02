@@ -3,7 +3,7 @@ save_path: "trained_models"
 data_source: ???
 seed: 1
 logger: tensorboard
-normalization: "standardize"
+  # normalization: "standardize"
 cuda_device: null
 model:
     _target_: dynamics_toolbox.models.pl_models.sequential_models.uq_wrapper.UQWrapper

@@ -62,9 +62,8 @@ class UQDynamicsDataModule(LightningDataModule):
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
             TensorDataset(
                 torch.Tensor(self._obsacts),
-                torch.Tensor(self._means),
+                torch.Tensor(self._true - self._means),
                 torch.Tensor(self._stds),
-                torch.Tensor(self._true),
             ),
             [self._num_tr, self._num_val, self._num_te],
             generator=torch.Generator().manual_seed(seed),
@@ -118,7 +117,7 @@ class UQDynamicsDataModule(LightningDataModule):
     @property
     def data(self) -> Sequence[np.array]:
         """Get all of the data."""
-        return self._obsacts, self._means, self._stds, self._true
+        return self._obsacts, self._true - self._means, self._stds
 
     @property
     def input_data(self) -> np.array:

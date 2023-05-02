@@ -1,0 +1,31 @@
+name: ???
+save_path: "trained_models"
+data_source: ???
+seed: 1
+logger: tensorboard
+normalization: "standardize"
+cuda_device: null
+model:
+    _target_: dynamics_toolbox.models.pl_models.sequential_models.uq_wrapper.UQWrapper
+    cal_num_hidden_layers: 3
+    cal_hidden_layer_size: 200
+    corr_encode_dim: 64
+    corr_rnn_hidden_size: 128
+    corr_decoder_num_hidden_layers: 3
+    corr_decoder_hidden_size: 200
+    corr_encoder_num_hidden_layers: 0
+data_module:
+    _target_: dynamics_toolbox.data.pl_data_modules.uq_data_module.UQDynamicsDataModule
+    data_path: ${data_source}
+    batch_size: 128
+    val_proportion: 0.1
+trainer:
+    max_epochs: 100
+early_stopping:
+    patience: 25
+    min_delta: 0.0
+hydra:
+    job:
+        name: ${name}
+    run:
+        dir: ${save_path}/${name}/${seed}

@@ -161,7 +161,9 @@ true_deltas = nxts - obs
 if samples.shape[-1] > true_deltas.shape[-1]:
     true_deltas = np.concatenate([rews, true_deltas], axis=-1)
 if not args.unnormalize:
-    true_deltas /= getattr(model.normalizer, '1_scaling').cpu().numpy()
+    offset = getattr(model.normalizer, '1_offset').cpu().numpy()
+    scaling = getattr(model.normalizer, '1_scaling').cpu().numpy()
+    true_deltas = (true_deltas - offset) / scaling
 with h5py.File(args.save_path, 'w') as hdata:
     hdata.create_dataset('observations', data=obs)
     hdata.create_dataset('actions', data=acts)

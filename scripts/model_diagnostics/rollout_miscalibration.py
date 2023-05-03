@@ -29,21 +29,25 @@ parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str, default='miscal_figures')
 parser.add_argument('--horizon', type=int, default=10)
-parser.add_argument('--samples_per_start', type=int, default=1000)
+parser.add_argument('--samples_per_start', type=int, default=100)
 parser.add_argument('--miscal_fidelity', type=int, default=50)
-parser.add_argument('--num_starts', type=int, default=100)
+parser.add_argument('--num_starts', type=int, default=1000)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
                     default='sample_member_every_step')
 parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--recal_constants', type=str, default=None)
+parser.add_argument('--wrapper_path', type=str, default=None)
+parser.add_argument('--no_recal', action='store_true')
+parser.add_argument('--no_corr', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 args = parser.parse_args()
 
 ###########################################################################
 # %% Load in model and data.
 ###########################################################################
+np.random.seed(args.seed)
 print('Loading in model and data...')
 paths = parse_into_trajectories(load_from_hdf5(args.data_path))
 if args.is_ensemble:
@@ -58,6 +62,12 @@ else:
 if args.recal_constants is not None:
     model.recal_constants = np.array([float(c)
                                       for c in args.recal_constants.split(',')])
+if args.wrapper_path is not None:
+    wrapper = load_model_from_log_dir(path=args.wrapper_path)
+    wrapper.set_wrapped_model(model)
+    wrapper.apply_corr = not args.no_corr
+    wrapper.apply_recal = not args.no_recal
+    model = wrapper
 model_env = ModelEnv(
     dynamics_model=model,
     penalty_coefficient=0.0,

@@ -26,6 +26,7 @@ class UQDynamicsDataModule(LightningDataModule):
             pin_memory: bool = True,
             seed: int = 1,
             qset=None,
+            use_oracle=True,
             **kwargs,
     ):
         """Constructor.
@@ -44,9 +45,14 @@ class UQDynamicsDataModule(LightningDataModule):
         """
         super().__init__()
         data = load_from_hdf5(data_path)
+        mean_key = 'delta_means'
+        std_key = 'delta_stds'
+        if use_oracle:
+            mean_key = 'oracle_' + mean_key
+            std_key = 'oracle_' + std_key
         self._obs, self._acts, self._means, self._stds, self._true = [
-            data[k] for k in ('observations', 'actions', 'oracle_delta_means',
-                              'oracle_delta_stds', 'true_deltas')
+            data[k] for k in ('observations', 'actions', mean_key, std_key,
+                              'true_deltas')
         ]
         self._obsacts = np.concatenate([self._obs, self._acts], axis=-1)
         self._val_proportion = val_proportion

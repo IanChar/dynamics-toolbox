@@ -9,14 +9,17 @@ Date: April 27, 2023
 """
 from typing import Any, Dict, Callable, Tuple, Sequence, Optional
 
+import numpy as np
 from scipy.stats import chi2
 import torch
 # from torch.distributions.normal import Normal
+import uncertainty_toolbox as uct
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.modules.fc_network import FCNetwork
+from dynamics_toolbox.metrics.uq_metrics import multivariate_elipsoid_miscalibration
 
 
 class UQWrapper(AbstractSequentialModel):
@@ -37,14 +40,17 @@ class UQWrapper(AbstractSequentialModel):
         corr_rnn_type: str = 'gru',
         cal_learning_rate: float = 5e-4,
         corr_learning_rate: float = 5e-4,
-        corr_max_magnitude: float = 0.95,
+        corr_max_magnitude: float = 0.99,
         sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
         cal_weight_decay: Optional[float] = 0.0,
         corr_weight_decay: Optional[float] = 0.0,
         min_cal_coefficient: float = 1e-3,
-        base_model=None,
-        base_model_is_sequential: bool = False,
+        wrapped_model=None,
+        wrapped_model_is_sequential: bool = False,
         quantile_fidelity: int = 50,
+        apply_recal: bool = True,
+        apply_corr: bool = True,
+        learn_first_step_cal_only: bool = False,
         **kwargs
     ):
         """Constructor."""
@@ -53,7 +59,7 @@ class UQWrapper(AbstractSequentialModel):
             input_dim=input_dim,
             output_dim=output_dim,
             hidden_sizes=[cal_hidden_layer_size for _ in range(cal_num_hidden_layers)],
-            out_activation=torch.nn.functional.tanh,
+            out_activation=torch.tanh,
         )
         if corr_encoder_num_hidden_layers > 0:
             encoder_hidden_sizes = [corr_encoder_hidden_size
@@ -67,27 +73,31 @@ class UQWrapper(AbstractSequentialModel):
             output_dim=corr_encode_dim,
             hidden_sizes=encoder_hidden_sizes,
         )
-        self._decoder = FCNetwork(
-            input_dim=corr_encode_dim + corr_rnn_hidden_size,
-            output_dim=output_dim,
-            hidden_sizes=decoder_hidden_sizes,
-            out_activation=torch.tanh,
-        )
         self.corr_rnn_type = corr_rnn_type.lower()
         if corr_rnn_type.lower() == 'gru':
             rnn_class = torch.nn.GRU
         elif corr_rnn_type.lower() == 'lstm':
             rnn_class = torch.nn.LSTM
         else:
-            raise ValueError(f'Cannot recognize RNN type {corr_rnn_type}')
-        self._memory_unit = rnn_class(corr_encode_dim, corr_rnn_hidden_size,
-                                      num_layers=corr_rnn_num_layers,
-                                      batch_first=True)
+            rnn_class = None
+        if rnn_class is not None:
+            self._memory_unit = rnn_class(corr_encode_dim, corr_rnn_hidden_size,
+                                          num_layers=corr_rnn_num_layers,
+                                          batch_first=True)
+        else:
+            self._memory_unit = None
+            corr_rnn_hidden_size = 0
+        self._decoder = FCNetwork(
+            input_dim=corr_encode_dim + corr_rnn_hidden_size,
+            output_dim=output_dim,
+            hidden_sizes=decoder_hidden_sizes,
+            out_activation=torch.tanh,
+        )
         self._min_cal_coefficient = min_cal_coefficient
-        self._base_model = base_model
+        self._wrapped_model = wrapped_model
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._base_is_seq = base_model_is_sequential
+        self._wrapped_is_seq = wrapped_model_is_sequential
         self._encode_dim = corr_encode_dim
         self._hidden_size = corr_rnn_hidden_size
         self._num_layers = corr_rnn_num_layers
@@ -97,6 +107,9 @@ class UQWrapper(AbstractSequentialModel):
         self._corr_weight_decay = corr_weight_decay
         self._sample_mode = sample_mode
         self._corr_max_magnitude = corr_max_magnitude
+        self._apply_recal = apply_recal
+        self._apply_corr = apply_corr
+        self._learn_first_step_cal_only = learn_first_step_cal_only
         self._record_history = True
         self._hidden_state = None
         self._last_pred_info = None
@@ -104,11 +117,8 @@ class UQWrapper(AbstractSequentialModel):
         self._residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
                 self._exp_proportions.numpy())).to(self.device)
         self._exp_proportions.to(self.device)
-        self._exp_proportions, self._residual_thresholds = [
-            vect.reshape(1, -1) for vect in (
-                self._exp_proportions, self._residual_thresholds
-            )
-        ]
+        self._residual_thresholds = self._residual_thresholds.reshape(1, 1, -1)
+        self._exp_proportions = self._exp_proportions.reshape(1, -1)
 
     def training_step(
             self,
@@ -144,6 +154,7 @@ class UQWrapper(AbstractSequentialModel):
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
         corr_dict['loss'] = cal_loss.item() + corr_loss.item()
+        corr_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(corr_dict, prefix='val')
 
     def test_step(
@@ -159,7 +170,41 @@ class UQWrapper(AbstractSequentialModel):
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
         corr_dict['loss'] = cal_loss.item() + corr_loss.item()
+        corr_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(corr_dict, prefix='test')
+
+    def predict(
+            self,
+            model_input: np.ndarray,
+            each_input_is_different_sample: Optional[bool] = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Make predictions using the currently set sampling method.
+
+        Args:
+            model_input: The input to be given to the model.
+            each_input_is_different_sample: Whether each input should be treated
+                as being drawn from a different sample of the model. Note that this
+                may not have an effect on all models (e.g. PNN)
+
+        Returns:
+            The output of the model and give a dictionary of related quantities.
+        """
+        if self._wrapped_model is None:
+            raise RuntimeError('Need to set wrapped_model before running.')
+        model_input = torch.Tensor(model_input).to(self.device)
+        uq_normd = self._normalize_prediction_input(model_input)
+        wrapped_normd = self._wrapped_model._normalize_prediction_input(model_input)
+        if each_input_is_different_sample:
+            output, infos = self.multi_sample_output_from_torch(uq_normd,
+                                                                wrapped_normd)
+        else:
+            output, infos = self.single_sample_output_from_torch(uq_normd,
+                                                                 wrapped_normd)
+        output = self._wrapped_model._unnormalize_prediction_output(output)
+        for k, v in infos.items():
+            if isinstance(v, torch.Tensor):
+                infos[k] = v.detach().cpu().numpy()
+        return output.cpu().numpy(), infos
 
     def get_net_out(
         self,
@@ -195,8 +240,10 @@ class UQWrapper(AbstractSequentialModel):
         outs['cals'] = cals
         if get_corrs:
             encoding = self._encoder(x)
-            hidden = self._memory_unit(encoding)[0]
-            corr = (self._decoder(torch.cat([encoding, hidden], dim=-1))
+            if self._memory_unit is not None:
+                hidden = self._memory_unit(encoding)[0]
+                encoding = torch.cat([encoding, hidden], dim=-1)
+            corr = (self._decoder(encoding)
                     * self._corr_max_magnitude)
             outs['corrs'] = corr
         return outs
@@ -243,16 +290,17 @@ class UQWrapper(AbstractSequentialModel):
         sq_diffs = diffs.pow(2)
         norm_sq_diffs = sq_diffs / (std * cals).pow(2)
         corr_term = 1 - corr[:, 1:].pow(2)
-        loss = (((norm_sq_diffs[:, :-1]
-                  + norm_sq_diffs[:, 1:]
-                  - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:]
-                     / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1]))
-                  ) / (2 * corr_term)
-                 + 0.5 * corr_term.log()
-                 )).sum(dim=-1).mean()
+        loss = ((norm_sq_diffs[:, :-1]
+                 + norm_sq_diffs[:, 1:]
+                 - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:])
+                 / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1])
+                 ) / (2 * corr_term)
+                + 0.5 * corr_term.log()
+                ).mean()
         stats = {}
         stats['corr_loss'] = loss.item()
         stats['correlation/mean'] = corr[:, 1:].mean().item()
+        stats['correlation/std'] = corr[:, 1:].std().item()
         stats['correlation/min'] = corr[:, 1:].min().item()
         stats['correlation/max'] = corr[:, 1:].max().item()
         stats['loss'] = loss.item()
@@ -280,8 +328,12 @@ class UQWrapper(AbstractSequentialModel):
         # residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
         stds = stds * cals
         normd_resids = (residuals / stds).pow(2).sum(dim=-1, keepdim=True)
-        obs_props = torch.sigmoid(
-            10 * (self._residual_thresholds - normd_resids)).mean(dim=1)
+        soft_threshold = torch.sigmoid(
+            10 * (self._residual_thresholds - normd_resids))
+        if self._learn_first_step_cal_only:
+            obs_props = soft_threshold[:, 0]
+        else:
+            obs_props = soft_threshold.mean(dim=1)
         calibration_loss = (obs_props - self._exp_proportions).abs().mean()
         # uppers = cals * stds * self._upper_quantiles
         # lowers = cals * stds * self._upper_quantiles
@@ -302,54 +354,61 @@ class UQWrapper(AbstractSequentialModel):
         stats['loss'] = calibration_loss.item()
         return calibration_loss, stats
 
-    def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
-            torch.Tensor, Dict[str, Any]]:
+    def single_sample_output_from_torch(
+        self,
+        uq_in: torch.Tensor,
+        wrapped_in: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the output for a single sample in the model.
 
         Args:
-            net_in: The input for the network with expected shape (batch size, dim)
+            uq_in: The input for the UQ wrapper.
+            wrapped_in: The input for the wrapped model.
 
         Returns:
             The predictions for a single function sample.
         """
-        if self._base_model is None:
-            raise RuntimeError('Need to set base_model before running.')
+        if self._wrapped_model is None:
+            raise RuntimeError('Need to set wrapped_model before running.')
         if self._hidden_state is None:
             if self.corr_rnn_type == 'gru':
-                self._hidden_state = torch.zeros(self._num_layers, net_in.shape[0],
+                self._hidden_state = torch.zeros(self._num_layers, uq_in.shape[0],
                                                  self._hidden_size, device=self.device)
             else:
                 self._hidden_state = tuple(
-                    torch.zeros(self._num_layers, net_in.shape[0],
+                    torch.zeros(self._num_layers, uq_in.shape[0],
                                 self._hidden_size, device=self.device)
                     for _ in range(2))
         else:
             tocompare = (self._hidden_state if self.corr_rnn_type == 'gru'
                          else self._hidden_state[0])
-            if tocompare.shape[1] != net_in.shape[0]:
+            if tocompare.shape[1] != uq_in.shape[0]:
                 raise ValueError('Number of inputs does not match previously given '
                                  f'number. Expected {tocompare.shape[1]} but received'
-                                 f' {net_in.shape[0]}.')
+                                 f' {uq_in.shape[0]}.')
         # Estimate a Gaussian from the base model.
-        _, info = self._base_model.multi_sample_output_from_torch(net_in)
+        _, info = self._wrapped_model.multi_sample_output_from_torch(wrapped_in)
         mean_predictions, std_predictions = self._handle_mixture_model(info)
         # Get the calibration correction.
         with torch.no_grad():
-            cals = self._cal_network(net_in)
-        std_predictions = std_predictions * cals
+            cals = self._cal_network(uq_in) + self._min_cal_coefficient + 1
+        if self._apply_recal:
+            std_predictions = std_predictions * cals
         # Get the correlation.
         with torch.no_grad():
-            encoded = self._encoder(net_in).unsqueeze(1)
-            mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
-            if self._record_history:
-                self._hidden_state = hidden_out
+            encoded = self._encoder(uq_in).unsqueeze(1)
+            if self._memory_unit is not None:
+                mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
+                if self._record_history:
+                    self._hidden_state = hidden_out
+                encoded = torch.cat([encoded, mem_out], dim=-1)
             corr_predictions = (
-                self._decoder(torch.cat([encoded, mem_out], dim=-1)).squeeze(1)
+                self._decoder(encoded).squeeze(1)
                 * self._corr_max_magnitude
             )
         # If this is not the first prediction adjust the sample based on the corr.
         if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
-            if self._last_pred_info is not None:
+            if self._last_pred_info is not None and self._apply_corr:
                 mean_predictions += (
                     corr_predictions * std_predictions
                     / self._last_pred_info['std']
@@ -370,20 +429,30 @@ class UQWrapper(AbstractSequentialModel):
                 'std_predictions': std_predictions}
         return predictions, info
 
-    def multi_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
-            torch.Tensor, Dict[str, Any]]:
+    def multi_sample_output_from_torch(
+        self,
+        uq_in: torch.Tensor,
+        wrapped_in: torch.Tensor,
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """Get the output where each input is assumed to be from a different sample.
 
         Args:
-            net_in: The input for the network.
+            uq_in: The input for the UQ wrapper.
+            wrapped_in: The input for the wrapped model.
 
         Returns:
             The deltas for next states and dictionary of info.
         """
-        return self.single_sample_output_from_torch(net_in)
+        return self.single_sample_output_from_torch(uq_in, wrapped_in)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         """Configure the optimizer"""
+        corr_parameters = (
+            list(self._encoder.parameters())
+            + list(self._decoder.parameters())
+        )
+        if self._memory_unit is not None:
+            corr_parameters = corr_parameters + list(self._memory_unit.parameters())
         return (
             torch.optim.AdamW(
                 self._cal_network.parameters(),
@@ -391,9 +460,7 @@ class UQWrapper(AbstractSequentialModel):
                 weight_decay=self._cal_weight_decay,
             ),
             torch.optim.AdamW(
-                list(self._encoder.parameters())
-                + list(self._decoder.parameters())
-                + list(self._memory_unit.parameters()),
+                corr_parameters,
                 lr=self._corr_learning_rate,
                 weight_decay=self._corr_weight_decay,
             ),
@@ -417,21 +484,79 @@ class UQWrapper(AbstractSequentialModel):
         std_out = torch.sqrt(mean_var + mean_sq - mixing_term)
         return mean_out, std_out
 
+    def _get_test_and_validation_metrics(
+            self,
+            net_out: Dict[str, torch.Tensor],
+            batch: Sequence[torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
+        """Compute additional metrics to be used for validation/test only.
+        The main one to compute here is the hard ellipsoid calibration and average
+        single dimensional interval calibration.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network.
+
+        Returns:
+            A dictionary of additional metrics.
+        """
+        to_return = {}
+        cals = net_out['cals']
+        residuals, stds = batch[1:]
+        cals, residuals, stds = [vect.reshape(-1, vect.shape[-1]).cpu().numpy()
+                                 for vect in (cals, residuals, stds)]
+        recalled = cals * stds
+        # Elipsoid calibration.
+        el_cal, el_over = multivariate_elipsoid_miscalibration(
+            means=np.zeros(stds.shape),
+            stds=recalled,
+            truths=residuals,
+            include_overconfidence_scores=True
+        )
+        to_return['ellipsoid_miscalibration'] = el_cal
+        to_return['ellipsoid_overconfidence'] = el_over
+        # Single dimension interval calibration.
+        interval_miscals = [uct.mean_absolute_calibration_error(
+            y_pred=np.zeros(len(recalled)),
+            y_std=recalled[:, d],
+            y_true=residuals[:, d],
+        ) for d in range(recalled.shape[-1])]
+        to_return['interval_miscallibration/avg'] = np.mean(interval_miscals)
+        to_return['interval_miscallibration/std'] = np.std(interval_miscals)
+        to_return['interval_miscallibration/min'] = np.min(interval_miscals)
+        to_return['interval_miscallibration/max'] = np.max(interval_miscals)
+        return to_return
+
     @property
-    def base_model(self):
-        return self._base_model
+    def apply_recal(self):
+        return self._apply_recal
 
-    @base_model.setter
-    def base_model(self, model):
-        self._base_model = model
+    @apply_recal.setter
+    def apply_recal(self, mode):
+        self._apply_recal = mode
 
     @property
-    def base_is_seq(self):
-        return self._base_is_seq
+    def apply_corr(self):
+        return self._apply_corr
 
-    @base_is_seq.setter
-    def base_is_seq(self, is_seq):
-        self._base_is_seq = is_seq
+    @apply_corr.setter
+    def apply_corr(self, mode):
+        self._apply_corr = mode
+
+    @property
+    def wrapped_model(self):
+        return self._wrapped_model
+
+    def set_wrapped_model(self, model):
+        self._wrapped_model = model
+
+    @property
+    def wrapped_is_seq(self):
+        return self._wrapped_is_seq
+
+    @wrapped_is_seq.setter
+    def wrapped_is_seq(self, is_seq):
+        self._wrapped_is_seq = is_seq
 
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
@@ -491,4 +616,4 @@ class UQWrapper(AbstractSequentialModel):
     def reset(self) -> None:
         """Reset the dynamics model."""
         self.clear_history()
-        self._base_model.reset()
+        self._wrapped_model.reset()

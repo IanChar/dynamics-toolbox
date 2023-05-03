@@ -23,6 +23,7 @@ def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
     relative_path: bool = False,
+    **kwargs
 ) -> AbstractPlModel:
     """Load a model from a log directory.
 
@@ -56,7 +57,7 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     model_path = os.path.join(checkpoint_path, checkpoints[epidx])
-    model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
+    model = hydra.utils.instantiate(cfg['model'], _recursive_=False, **kwargs)
     return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
 
 

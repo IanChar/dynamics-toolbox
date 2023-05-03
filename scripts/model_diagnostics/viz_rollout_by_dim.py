@@ -26,7 +26,7 @@ from dynamics_toolbox.utils.storage.model_storage import (
 parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
-parser.add_argument('--save_dir', type=str, default='rollout_vizs')
+parser.add_argument('--save_dir', type=str)
 parser.add_argument('--horizon', type=int, default=10)
 parser.add_argument('--samples_per_start', type=int, default=15)
 parser.add_argument('--num_starts', type=int, default=10)
@@ -40,6 +40,10 @@ parser.add_argument('--num_quantiles', type=int, default=10)
 parser.add_argument('--show_samples', action='store_true')
 parser.add_argument('--sample_alpha', type=float, default=0.2)
 parser.add_argument('--show_dataset_max', action='store_true')
+parser.add_argument('--wrapper_path', type=str, default=None)
+parser.add_argument('--no_recal', action='store_true')
+parser.add_argument('--no_corr', action='store_true')
+parser.add_argument('--show', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 args = parser.parse_args()
 np.random.seed(args.seed)
@@ -47,6 +51,7 @@ np.random.seed(args.seed)
 ###########################################################################
 # %% Load in model and data.
 ###########################################################################
+np.random.seed(args.seed)
 print('Loading in model and data...')
 paths = parse_into_trajectories(load_from_hdf5(args.data_path))
 if args.is_ensemble:
@@ -58,6 +63,12 @@ if args.is_ensemble:
 else:
     model = load_model_from_log_dir(path=args.model_path)
     model.sample_mode = args.sampling_mode
+if args.wrapper_path is not None:
+    wrapper = load_model_from_log_dir(path=args.wrapper_path)
+    wrapper.set_wrapped_model(model)
+    wrapper.apply_corr = not args.no_corr
+    wrapper.apply_recal = not args.no_recal
+    model = wrapper
 model_env = ModelEnv(
     dynamics_model=model,
     penalty_coefficient=0.0,
@@ -91,7 +102,6 @@ acts = np.repeat(acts, args.samples_per_start, axis=0)
 # %% Generate the data.
 ###########################################################################
 print('Generating data...')
-breakpoint()
 rollouts = model_env.model_rollout_from_actions(
     num_rollouts=len(starts),
     actions=acts,
@@ -121,7 +131,8 @@ else:
 # %% Plot each of the rollouts.
 ###########################################################################
 plt.style.use('seaborn')
-os.makedirs(args.save_dir, exist_ok=True)
+if args.save_dir is not None:
+    os.makedirs(args.save_dir, exist_ok=True)
 num_dims = preds.shape[-1]
 num_cols = args.plots_per_row
 num_rows = int(np.ceil(num_dims / num_cols))
@@ -163,5 +174,9 @@ for pnum in range(len(preds)):
         else:
             ax.set_title(f'Dimension {didx + 1}')
     plt.tight_layout()
-    plt.savefig(os.path.join(args.save_dir, f'path_{pnum + 1}.png'))
-    plt.clf()
+    if args.save_dir is not None:
+        plt.savefig(os.path.join(args.save_dir, f'path_{pnum + 1}.png'))
+    if args.show:
+        plt.show()
+    else:
+        plt.clf()

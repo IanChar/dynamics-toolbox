@@ -39,12 +39,16 @@ parser.add_argument('--ensemble_sampling_mode', type=str,
 parser.add_argument('--no_rewards', action='store_true')
 parser.add_argument('--recal_constants', type=str, default=None)
 parser.add_argument('--show', action='store_true')
+parser.add_argument('--wrapper_path', type=str, default=None)
+parser.add_argument('--no_recal', action='store_true')
+parser.add_argument('--no_corr', action='store_true')
 parser.add_argument('--seed', type=int, default=0)
 args = parser.parse_args()
 
 ###########################################################################
 # %% Load in model and data.
 ###########################################################################
+np.random.seed(args.seed)
 print('Loading in model and data...')
 paths = parse_into_trajectories(load_from_hdf5(args.data_path))
 if args.is_ensemble:
@@ -59,6 +63,12 @@ else:
 if args.recal_constants is not None:
     model.recal_constants = np.array([float(c)
                                       for c in args.recal_constants.split(',')])
+if args.wrapper_path is not None:
+    wrapper = load_model_from_log_dir(path=args.wrapper_path)
+    wrapper.set_wrapped_model(model)
+    wrapper.apply_corr = not args.no_corr
+    wrapper.apply_recal = not args.no_recal
+    model = wrapper
 model_env = ModelEnv(
     dynamics_model=model,
     penalty_coefficient=0.0,
@@ -70,7 +80,7 @@ model_env = ModelEnv(
 # %% Prepare validation dataset.
 ###########################################################################
 print('Preparing validation set...')
-starts, obs, acts = [], [], []
+starts, obs, acts, true_deltas = [], [], [], []
 paths = [path for path in paths if len(path['actions']) >= args.horizon]
 for _ in range(args.num_starts):
     rand_path = paths[np.random.randint(len(paths))]
@@ -84,7 +94,12 @@ for _ in range(args.num_starts):
             rand_path['next_observations'][strt_idx:strt_idx+args.horizon],
         ], axis=-1))
     acts.append(rand_path['actions'][strt_idx:strt_idx+args.horizon])
-starts, obs, acts = [np.array(ar) for ar in (starts, obs, acts)]
+    true_deltas.append(
+        rand_path['next_observations'][strt_idx:strt_idx+args.horizon]
+        - rand_path['observations'][strt_idx:strt_idx+args.horizon]
+    )
+starts, obs, acts, true_deltas = [np.array(ar)
+                                  for ar in (starts, obs, acts, true_deltas)]
 starts = np.repeat(starts, args.samples_per_start, axis=0)
 acts = np.repeat(acts, args.samples_per_start, axis=0)
 
@@ -118,6 +133,27 @@ else:
     ], axis=-1)
 mean_preds = np.mean(preds, axis=1)
 std_preds = np.std(preds, axis=1)
+rollout_obs = rollouts['observations'].reshape(
+    args.num_starts,
+    args.samples_per_start,
+    args.horizon + 1,
+    -1,
+)
+# normalization_scale =\
+#     getattr(model._wrapped_model.normalizer, '1_scaling').cpu().numpy()
+# normalization_offset =\
+#     getattr(model._wrapped_model.normalizer, '1_offset').cpu().numpy()
+# mean_rollout_obs = np.mean(rollout_obs, axis=1)
+# delta_samples = rollout_obs[:, :, 1:] - mean_rollout_obs[:, np.newaxis, :-1]
+# mean_deltas = np.mean(delta_samples, axis=1)
+# std_deltas = np.std(delta_samples, axis=1)
+# mean_deltas =\
+#     np.array([inf['mean_predictions'][::args.samples_per_start]
+#               for inf in rollouts['info']]).transpose(1, 0, 2)
+# # mean_deltas = mean_deltas * normalization_scale + normalization_offset
+# std_deltas =\
+#     np.array([inf['std_predictions'][::args.samples_per_start]
+#               for inf in rollouts['info']]).transpose(1, 0, 2)
 
 ###########################################################################
 # %% Calculate miscalibration.
@@ -129,6 +165,11 @@ for h in tqdm(range(args.horizon)):
         mean_preds[:, h],
         std_preds[:, h],
         obs[:, h],
+        # mean_deltas[:, h] / normalization_scale,
+        # std_deltas[:, h] / normalization_scale,
+        # mean_deltas[:, h],
+        # std_deltas[:, h],
+        # (true_deltas[:, h] - normalization_offset) / normalization_scale,
         include_overconfidence_scores=True,
     )
     miscals.append(miscal)
@@ -153,7 +194,7 @@ def plot_miscal(mcal, oconf, aev, mev, bev, title, save_path=None, show=False):
     axs[0].fill_between(tstep, oconf, mcal, color='blue', alpha=0.4)
     axs[0].set_xlabel('Time Step')
     axs[0].set_ylabel('Miscalibration')
-    axs[0].set_title(title)
+    axs[0].set_title(f'{title} Area={np.sum(mcal):0.2f}')
     axs[1].plot(tstep, aev, label='Average')
     axs[1].plot(tstep, mev, label='Median')
     axs[1].plot(tstep, bev, label='Best')

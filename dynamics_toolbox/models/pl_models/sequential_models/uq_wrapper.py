@@ -69,10 +69,11 @@ class UQWrapper(AbstractSequentialModel):
         decoder_hidden_sizes = [corr_decoder_hidden_size
                                 for _ in range(corr_decoder_num_hidden_layers)]
         self._encoder = FCNetwork(
-            input_dim=input_dim,
+            input_dim=input_dim * 2,
             output_dim=corr_encode_dim,
             hidden_sizes=encoder_hidden_sizes,
         )
+        self._difference_bn = torch.nn.BatchNorm1d(input_dim)
         self.corr_rnn_type = corr_rnn_type.lower()
         if corr_rnn_type.lower() == 'gru':
             rnn_class = torch.nn.GRU
@@ -113,6 +114,7 @@ class UQWrapper(AbstractSequentialModel):
         self._record_history = True
         self._hidden_state = None
         self._last_pred_info = None
+        self._last_in = None
         self._exp_proportions = torch.linspace(0.05, 0.95, quantile_fidelity)
         self._residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
                 self._exp_proportions.numpy())).to(self.device)
@@ -239,7 +241,11 @@ class UQWrapper(AbstractSequentialModel):
             cals = self._cal_network(x) + self._min_cal_coefficient + 1
         outs['cals'] = cals
         if get_corrs:
-            encoding = self._encoder(x)
+            encoding = self._encoder(torch.cat([
+                x[:, 1:],
+                self._difference_bn(
+                    (x[:, 1:] - x[:, :-1]).transpose(2, 1)).transpose(2, 1),
+            ], dim=-1))
             if self._memory_unit is not None:
                 hidden = self._memory_unit(encoding)[0]
                 encoding = torch.cat([encoding, hidden], dim=-1)
@@ -289,20 +295,20 @@ class UQWrapper(AbstractSequentialModel):
         diffs, std = batch[1:]
         sq_diffs = diffs.pow(2)
         norm_sq_diffs = sq_diffs / (std * cals).pow(2)
-        corr_term = 1 - corr[:, 1:].pow(2)
+        corr_term = 1 - corr.pow(2)
         loss = ((norm_sq_diffs[:, :-1]
                  + norm_sq_diffs[:, 1:]
-                 - (2 * corr[:, 1:] * diffs[:, :-1] * diffs[:, 1:])
+                 - (2 * corr * diffs[:, :-1] * diffs[:, 1:])
                  / (std[:, 1:] * std[:, :-1] * cals[:, 1:] * cals[:, :-1])
                  ) / (2 * corr_term)
                 + 0.5 * corr_term.log()
                 ).mean()
         stats = {}
         stats['corr_loss'] = loss.item()
-        stats['correlation/mean'] = corr[:, 1:].mean().item()
-        stats['correlation/std'] = corr[:, 1:].std().item()
-        stats['correlation/min'] = corr[:, 1:].min().item()
-        stats['correlation/max'] = corr[:, 1:].max().item()
+        stats['correlation/mean'] = corr.mean().item()
+        stats['correlation/std'] = corr.std().item()
+        stats['correlation/min'] = corr.min().item()
+        stats['correlation/max'] = corr.max().item()
         stats['loss'] = loss.item()
         return loss, stats
 
@@ -395,8 +401,17 @@ class UQWrapper(AbstractSequentialModel):
         if self._apply_recal:
             std_predictions = std_predictions * cals
         # Get the correlation.
+        if self._last_in is None:
+            diff = torch.zeros(uq_in.shape)
+            diff.to(self.device)
+        else:
+            diff = self._difference_bn(
+                    (uq_in - self._last_in).unsqueeze(-1)).squeeze(-1)
         with torch.no_grad():
-            encoded = self._encoder(uq_in).unsqueeze(1)
+            encoded = self._encoder(torch.cat([
+                uq_in,
+                diff
+            ], dim=-1)).unsqueeze(1)
             if self._memory_unit is not None:
                 mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
                 if self._record_history:
@@ -424,6 +439,7 @@ class UQWrapper(AbstractSequentialModel):
                 }
         else:
             predictions = mean_predictions
+        self._last_in = uq_in
         info = {'predictions': predictions,
                 'mean_predictions': mean_predictions,
                 'std_predictions': std_predictions}
@@ -450,6 +466,7 @@ class UQWrapper(AbstractSequentialModel):
         corr_parameters = (
             list(self._encoder.parameters())
             + list(self._decoder.parameters())
+            + list(self._difference_bn.parameters())
         )
         if self._memory_unit is not None:
             corr_parameters = corr_parameters + list(self._memory_unit.parameters())
@@ -617,3 +634,4 @@ class UQWrapper(AbstractSequentialModel):
         """Reset the dynamics model."""
         self.clear_history()
         self._wrapped_model.reset()
+        self._last_in = None

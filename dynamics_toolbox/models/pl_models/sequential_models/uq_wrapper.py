@@ -494,10 +494,10 @@ class UQWrapper(AbstractSequentialModel):
         mean_out = torch.mean(means, dim=0)
         mean_var = torch.mean(stds.pow(2), dim=0)
         mean_sq = torch.mean(means.pow(2), dim=0) * (1 - 1 / members)
-        mixing_term = 2 / (members ** 2) * torch.sum(torch.cat([torch.Tensor([
+        mixing_term = 2 / (members ** 2) * torch.sum(torch.cat([torch.stack([
                 means[i] * means[j]
                 for j in range(i)])
-            for i in range(1, members)]), dim=0)
+            for i in range(1, members)], dim=0), dim=0)
         std_out = torch.sqrt(mean_var + mean_sq - mixing_term)
         return mean_out, std_out
 

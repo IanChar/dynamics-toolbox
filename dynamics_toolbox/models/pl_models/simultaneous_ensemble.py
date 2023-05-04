@@ -162,7 +162,7 @@ class SimultaneousEnsemble(AbstractPlModel):
                 info_dict[k].append(v)
         deltas = torch.stack(deltas)
         for k, v in info_dict.items():
-            k = torch.stack(v)
+            info_dict[k] = torch.stack(v)
         samp_idxs = self._curr_sample[0].repeat(len(net_in))
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
         info_dict['deltas'] = deltas
@@ -200,7 +200,7 @@ class SimultaneousEnsemble(AbstractPlModel):
                 info_dict[k].append(v)
         deltas = torch.stack(deltas)
         for k, v in info_dict.items():
-            k = torch.stack(v)
+            info_dict[k] = torch.stack(v)
         samp_idxs = self._curr_sample[:len(net_in)]
         sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
         info_dict['deltas'] = deltas

@@ -1,5 +1,5 @@
 name: "example_mlp"
-data_source: "data/pendulum_100k.hdf5"
+data_source: "/home/scratch/rohans2/d4rl/data/halfcheetah_medium-v2.hdf5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"

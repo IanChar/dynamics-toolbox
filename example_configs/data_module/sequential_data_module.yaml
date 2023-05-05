@@ -4,5 +4,5 @@ learn_rewards: True
 val_proportion: 0.1
 test_proportion: 0.1
 pin_memory: False
-num_workers: 1
+num_workers: 40
 snippet_size: 32

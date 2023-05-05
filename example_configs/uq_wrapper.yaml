@@ -3,7 +3,7 @@ save_path: "trained_models"
 data_source: ???
 seed: 1
 logger: tensorboard
-  # normalization: "standardize"
+normalization: "standardize"
 cuda_device: null
 model:
     _target_: dynamics_toolbox.models.pl_models.sequential_models.uq_wrapper.UQWrapper
@@ -21,9 +21,9 @@ data_module:
     val_proportion: 0.1
     use_oracle: True
 trainer:
-    max_epochs: 100
+    max_epochs: 1000
 early_stopping:
-    patience: 25
+    patience: 100
     min_delta: 0.0
 hydra:
     job:

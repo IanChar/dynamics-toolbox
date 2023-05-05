@@ -12,7 +12,7 @@ from typing import Any, Dict, Callable, Tuple, Sequence, Optional
 import numpy as np
 from scipy.stats import chi2
 import torch
-# from torch.distributions.normal import Normal
+from torch.distributions.normal import Normal
 import uncertainty_toolbox as uct
 
 from dynamics_toolbox.constants import sampling_modes
@@ -51,6 +51,7 @@ class UQWrapper(AbstractSequentialModel):
         apply_recal: bool = True,
         apply_corr: bool = True,
         learn_first_step_cal_only: bool = False,
+        elipsoid_calibration: bool = True,
         **kwargs
     ):
         """Constructor."""
@@ -111,6 +112,7 @@ class UQWrapper(AbstractSequentialModel):
         self._apply_recal = apply_recal
         self._apply_corr = apply_corr
         self._learn_first_step_cal_only = learn_first_step_cal_only
+        self._elipsoid_calibration = elipsoid_calibration
         self._record_history = True
         self._hidden_state = None
         self._last_pred_info = None
@@ -118,6 +120,10 @@ class UQWrapper(AbstractSequentialModel):
         self._exp_proportions = torch.linspace(0.05, 0.95, quantile_fidelity)
         self._residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
                 self._exp_proportions.numpy())).to(self.device)
+        self._upper_thresholds = Normal(0, 1).icdf(
+                0.5 * (1 + self._exp_proportions)).to(self.device)
+        self._lower_thresholds = Normal(0, 1).icdf(
+                0.5 * (1 - self._exp_proportions)).to(self.device)
         self._exp_proportions.to(self.device)
         self._residual_thresholds = self._residual_thresholds.reshape(1, 1, -1)
         self._exp_proportions = self._exp_proportions.reshape(1, -1)
@@ -155,7 +161,6 @@ class UQWrapper(AbstractSequentialModel):
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
-        corr_dict['loss'] = cal_loss.item() + corr_loss.item()
         corr_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(corr_dict, prefix='val')
 
@@ -171,7 +176,6 @@ class UQWrapper(AbstractSequentialModel):
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
-        corr_dict['loss'] = cal_loss.item() + corr_loss.item()
         corr_dict.update(self._get_test_and_validation_metrics(net_out, batch))
         self._log_stats(corr_dict, prefix='test')
 
@@ -273,7 +277,9 @@ class UQWrapper(AbstractSequentialModel):
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
-        return corr_loss + cal_loss, corr_dict
+        loss = corr_loss / 1000 + cal_loss
+        corr_dict['loss'] = loss
+        return loss, corr_dict
 
     def corr_loss(self, net_out: Dict[str, torch.Tensor],
                   batch: Sequence[torch.Tensor]) -> \
@@ -284,9 +290,8 @@ class UQWrapper(AbstractSequentialModel):
             net_out: The output of the network.
             batch: The batch passed into the network. This is expected to be a tuple
                 * x: (Batch_size, Sequence Length, dim) (Observations and actions)
-                * means: (Batch_size, Sequence Length, dim)
-                * stds: (Batch_size, Sequence Length, dim)
                 * residuals: (Batch_size, Sequence Length, dim)
+                * stds: (Batch_size, Sequence Length, dim)
 
         Returns:
            The loss and a dictionary of other statistics.
@@ -315,23 +320,62 @@ class UQWrapper(AbstractSequentialModel):
     def cal_loss(self, net_out: Dict[str, torch.Tensor],
                  batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        if self._elipsoid_calibration:
+            return self.elipsoid_loss(net_out, batch)
+        else:
+            return self.interval_loss(net_out, batch)
+
+    def interval_loss(self, net_out: Dict[str, torch.Tensor],
+                      batch: Sequence[torch.Tensor]) -> \
+            Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Compute the loss function.
 
         Args:
             net_out: The output of the network.
             batch: The batch passed into the network. This is expected to be a tuple
                 * x: (Batch_size, Sequence Length, dim) (Observations and actions)
-                * means: (Batch_size, Sequence Length, dim)
-                * stds: (Batch_size, Sequence Length, dim)
                 * residuals: (Batch_size, Sequence Length, dim)
+                * stds: (Batch_size, Sequence Length, dim)
+
+        Returns:
+            The loss and a dictionary of other statistics.
+        """
+        cals = net_out['cals'].unsqueeze(-1)
+        residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
+        uppers = cals * stds * self._upper_thresholds
+        lowers = cals * stds * self._lower_thresholds
+        upper_masks = uppers < residuals
+        lower_masks = lowers > residuals
+        interval_loss = (
+            uppers - lowers
+            + 2 / self._exp_proportions * (lowers - residuals) * lower_masks
+            + 2 / self._exp_proportions * (residuals - uppers) * upper_masks
+        ).mean()
+        stats = {}
+        stats['cal/std'] = cals.std().item()
+        stats['cal/max'] = cals.max().item()
+        stats['cal/min'] = cals.min().item()
+        stats['interval_loss'] = interval_loss.item()
+        stats['loss'] = interval_loss.item()
+        return interval_loss, stats
+
+    def elipsoid_loss(self, net_out: Dict[str, torch.Tensor],
+                      batch: Sequence[torch.Tensor]) -> \
+            Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Compute the loss function.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network. This is expected to be a tuple
+                * x: (Batch_size, Sequence Length, dim) (Observations and actions)
+                * residuals: (Batch_size, Sequence Length, dim)
+                * stds: (Batch_size, Sequence Length, dim)
 
         Returns:
             The loss and a dictionary of other statistics.
         """
         cals = net_out['cals']
         residuals, stds = batch[1:]
-        # cals = net_out['cals'].unsqueeze(-1)
-        # residuals, stds = [b.unsqueeze(-1) for b in batch[1:]]
         stds = stds * cals
         normd_resids = (residuals / stds).pow(2).sum(dim=-1, keepdim=True)
         soft_threshold = torch.sigmoid(
@@ -341,21 +385,11 @@ class UQWrapper(AbstractSequentialModel):
         else:
             obs_props = soft_threshold.mean(dim=1)
         calibration_loss = (obs_props - self._exp_proportions).abs().mean()
-        # uppers = cals * stds * self._upper_quantiles
-        # lowers = cals * stds * self._upper_quantiles
-        # upper_masks = uppers < residuals
-        # lower_masks = lowers > residuals
-        # interval_loss = (
-        #     uppers - lowers
-        #     + 2 / self._coverages * (lowers - residuals) * lower_masks
-        #     + 2 / self._coverages * (residuals - uppers) * upper_masks
-        # ).mean()
         stats = {}
         stats['cal/mean'] = cals.mean().item()
         stats['cal/std'] = cals.std().item()
         stats['cal/max'] = cals.max().item()
         stats['cal/min'] = cals.min().item()
-        # stats['inteval_loss'] = interval_loss.item()
         stats['calibration_loss'] = calibration_loss.item()
         stats['loss'] = calibration_loss.item()
         return calibration_loss, stats

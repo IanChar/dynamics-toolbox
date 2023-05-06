@@ -45,6 +45,7 @@ class UQWrapper(AbstractSequentialModel):
         cal_weight_decay: Optional[float] = 0.0,
         corr_weight_decay: Optional[float] = 0.0,
         min_cal_coefficient: float = 1e-3,
+        max_cal_coefficient: float = 2,
         wrapped_model=None,
         wrapped_model_is_sequential: bool = False,
         quantile_fidelity: int = 50,
@@ -96,6 +97,7 @@ class UQWrapper(AbstractSequentialModel):
             out_activation=torch.tanh,
         )
         self._min_cal_coefficient = min_cal_coefficient
+        self._max_cal_coefficient = max_cal_coefficient
         self._wrapped_model = wrapped_model
         self._input_dim = input_dim
         self._output_dim = output_dim
@@ -240,9 +242,11 @@ class UQWrapper(AbstractSequentialModel):
         outs = {}
         if suppress_cal_grads:
             with torch.no_grad():
-                cals = self._cal_network(x) + self._min_cal_coefficient + 1
+                cals = ((self._cal_network(x) + 1) * self._max_cal_coefficient / 2
+                        + self._min_cal_coefficient)
         else:
-            cals = self._cal_network(x) + self._min_cal_coefficient + 1
+            cals = ((self._cal_network(x) + 1) * self._max_cal_coefficient / 2
+                    + self._min_cal_coefficient)
         outs['cals'] = cals
         if get_corrs:
             encoding = self._encoder(torch.cat([
@@ -431,7 +435,8 @@ class UQWrapper(AbstractSequentialModel):
         mean_predictions, std_predictions = self._handle_mixture_model(info)
         # Get the calibration correction.
         with torch.no_grad():
-            cals = self._cal_network(uq_in) + self._min_cal_coefficient + 1
+            cals = (self._cal_max_magnitude * (self._cal_network(uq_in) + 1) / 2
+                    + self._max_cal_coefficient)
         if self._apply_recal:
             std_predictions = std_predictions * cals
         # Get the correlation.

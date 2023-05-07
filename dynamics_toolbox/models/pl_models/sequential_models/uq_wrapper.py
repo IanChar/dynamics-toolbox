@@ -119,16 +119,17 @@ class UQWrapper(AbstractSequentialModel):
         self._hidden_state = None
         self._last_pred_info = None
         self._last_in = None
-        self._exp_proportions = torch.linspace(0.05, 0.95, quantile_fidelity)
-        self._residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
-                self._exp_proportions.numpy())).to(self.device)
-        self._upper_thresholds = Normal(0, 1).icdf(
-                0.5 * (1 + self._exp_proportions)).to(self.device)
-        self._lower_thresholds = Normal(0, 1).icdf(
-                0.5 * (1 - self._exp_proportions)).to(self.device)
-        self._exp_proportions.to(self.device)
-        self._residual_thresholds = self._residual_thresholds.reshape(1, 1, -1)
-        self._exp_proportions = self._exp_proportions.reshape(1, -1)
+        exp_proportions = torch.linspace(0.05, 0.95, quantile_fidelity)
+        residual_thresholds = torch.Tensor(chi2(self._output_dim).ppf(
+                exp_proportions.numpy()))
+        residual_thresholds = residual_thresholds.reshape(1, 1, -1)
+        exp_proportions = exp_proportions.reshape(1, -1)
+        upper_thresholds = Normal(0, 1).icdf(0.5 * (1 + exp_proportions))
+        lower_thresholds = Normal(0, 1).icdf(0.5 * (1 - exp_proportions))
+        self.register_buffer('_exp_proportions', exp_proportions)
+        self.register_buffer('_residual_thresholds', residual_thresholds)
+        self.register_buffer('_upper_thresholds', upper_thresholds)
+        self.register_buffer('_lower_thresholds', lower_thresholds)
 
     def training_step(
             self,
@@ -281,7 +282,7 @@ class UQWrapper(AbstractSequentialModel):
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
-        loss = corr_loss / 1000 + cal_loss
+        loss = corr_loss / 100 + cal_loss
         corr_dict['loss'] = loss
         return loss, corr_dict
 

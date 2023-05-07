@@ -10,6 +10,7 @@ model:
     cal_num_hidden_layers: 3
     cal_hidden_layer_size: 200
     max_cal_coefficient: 10
+    min_cal_coefficient: 0.1
     corr_encode_dim: 64
     corr_rnn_hidden_size: 128
     corr_decoder_num_hidden_layers: 3
@@ -23,9 +24,10 @@ data_module:
     val_proportion: 0.1
     use_oracle: True
 trainer:
+    gpus: 1
     max_epochs: 1000
 early_stopping:
-    patience: 100
+    patience: 1000
     min_delta: 0.0
 hydra:
     job:

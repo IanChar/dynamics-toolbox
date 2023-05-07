@@ -435,8 +435,8 @@ class UQWrapper(AbstractSequentialModel):
         mean_predictions, std_predictions = self._handle_mixture_model(info)
         # Get the calibration correction.
         with torch.no_grad():
-            cals = (self._cal_max_magnitude * (self._cal_network(uq_in) + 1) / 2
-                    + self._max_cal_coefficient)
+            cals = (self._max_cal_coefficient * (self._cal_network(uq_in) + 1) / 2
+                    + self._min_cal_coefficient)
         if self._apply_recal:
             std_predictions = std_predictions * cals
         # Get the correlation.

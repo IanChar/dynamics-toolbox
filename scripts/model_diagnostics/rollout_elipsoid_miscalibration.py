@@ -195,6 +195,7 @@ def plot_miscal(mcal, oconf, aev, mev, bev, title, save_path=None, show=False):
     axs[0].set_xlabel('Time Step')
     axs[0].set_ylabel('Miscalibration')
     axs[0].set_title(f'{title} Area={np.sum(mcal):0.2f}')
+    axs[0].set_ylim([0, 0.5])
     axs[1].plot(tstep, aev, label='Average')
     axs[1].plot(tstep, mev, label='Median')
     axs[1].plot(tstep, bev, label='Best')
@@ -213,5 +214,5 @@ plot_miscal(miscals, overconfs, avg_resid, median_resid, best_resid,
             title='Elipsoid Miscalibration',
             show=args.show,
             save_path=(None if args.save_dir is None
-                       else os.path.join(args.save_dir, 'average.png')),
+                       else os.path.join(args.save_dir, 'ellipsoid.png')),
             )

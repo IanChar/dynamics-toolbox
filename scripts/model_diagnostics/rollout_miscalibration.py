@@ -186,7 +186,9 @@ def plot_miscal(mcal, oconf, aev, mev, bev, title, save_path=None, show=False):
     axs[0].fill_between(tstep, oconf, mcal, color='blue', alpha=0.4)
     axs[0].set_xlabel('Time Step')
     axs[0].set_ylabel('Miscalibration')
-    axs[0].set_title(title)
+    axs[0].set_title(f'{title} Total Area={np.sum(mcal):0.2f}'
+                     f' Overconfidence={np.sum(oconf):0.2f}')
+    axs[0].set_ylim([0, 0.5])
     axs[1].plot(tstep, aev, label='Average')
     axs[1].plot(tstep, mev, label='Median')
     axs[1].plot(tstep, bev, label='Best')

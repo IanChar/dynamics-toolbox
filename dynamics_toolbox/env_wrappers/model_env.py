@@ -56,10 +56,14 @@ class ModelEnv(gym.Env):
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
-        self._penalty_coefficient = (
-            penalty_coefficient
-            * getattr(self._dynamics.normalizer, '1_scaling')
-        )
+        if (hasattr(self._dynamics, 'wrapped_model')
+                and hasattr(self._dynamics.wrapped_model.normalizer, '1_scaling')):
+            scaling = getattr(self._dynamics.wrapped_model.normalizer, '1_scaling')
+        elif hasattr(self._dynamics.normalizer, '1_scaling'):
+            scaling = getattr(self._dynamics.normalizer, '1_scaling')
+        else:
+            scaling = 1
+        self._penalty_coefficient = penalty_coefficient * scaling
         self._terminal_function = terminal_function
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim
@@ -167,6 +171,7 @@ class ModelEnv(gym.Env):
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
         policy.reset()
+        self._dynamics.reset()
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
@@ -265,6 +270,13 @@ class ModelEnv(gym.Env):
                     member.to(device)
         elif isinstance(self._dynamics, nn.Module):
             self._dynamics.to(device)
+        if hasattr(self._dynamics, 'wrapped_model'):
+            if isinstance(self._dynamics.wrapped_model, Ensemble):
+                for member in self._dynamics.wrapped_model.members:
+                    if isinstance(member, nn.Module):
+                        member.to(device)
+            elif isinstance(self._dynamics.wrapped_model, nn.Module):
+                self._dynamics.wrapped_model.to(device)
 
     @property
     def t(self) -> int:

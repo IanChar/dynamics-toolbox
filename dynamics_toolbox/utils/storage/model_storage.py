@@ -57,8 +57,16 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     model_path = os.path.join(checkpoint_path, checkpoints[epidx])
-    model = hydra.utils.instantiate(cfg['model'], _recursive_=False, **kwargs)
-    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    should_recurse = cfg['model'].get('_recursive_', False)
+    model = hydra.utils.instantiate(cfg['model'], _recursive_=should_recurse, **kwargs)
+    if hasattr(model, 'wrapped_model'):
+        wrapped_model = model.wrapped_model
+    else:
+        wrapped_model = None
+    model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    if wrapped_model is not None:
+        model.set_wrapped_model(wrapped_model)
+    return model
 
 
 def load_ensemble_from_list_of_log_dirs(

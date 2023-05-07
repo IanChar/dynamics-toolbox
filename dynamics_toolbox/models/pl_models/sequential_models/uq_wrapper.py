@@ -443,7 +443,7 @@ class UQWrapper(AbstractSequentialModel):
         # Get the correlation.
         if self._last_in is None:
             diff = torch.zeros(uq_in.shape)
-            diff.to(self.device)
+            diff = diff.to(self.device)
         else:
             diff = self._difference_bn(
                     (uq_in - self._last_in).unsqueeze(-1)).squeeze(-1)

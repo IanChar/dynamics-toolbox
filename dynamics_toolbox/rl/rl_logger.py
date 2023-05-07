@@ -19,7 +19,7 @@ class RLLogger:
     def __init__(
         self,
         run_dir: str,
-        stats_file: Optional[str] = 'stats.tx',
+        stats_file: Optional[str] = 'stats.txt',
         checkpoint_policy_every: Optional[int] = None,
         record_tensorboard: bool = True,
         show_pbar: bool = True,
@@ -82,7 +82,7 @@ class RLLogger:
             self._last_returns = (returns_mean, returns_std)
         # If first run then set up.
         if self.headers is None:
-            self.headers = ['Epoch', 'Samples', 'ReturnMean', 'ReturnStd']
+            self.headers = ['Epoch', 'Samples', 'Returns/Mean', 'Returns/Std']
             self.headers += list(stats.keys())
             if self.stats_file is not None:
                 with open(os.path.join(self.run_dir, self.stats_file), 'w') as sfile:

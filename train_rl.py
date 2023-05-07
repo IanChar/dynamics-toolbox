@@ -7,12 +7,10 @@ Date: April 10, 2023
 import os
 
 import hydra
-from omegaconf import DictConfig, open_dict
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
-
-# import d4rl
 
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
@@ -27,6 +25,8 @@ def train_rl(cfg: DictConfig):
     dm.set_cuda_device(cfg.get('cuda_device', None))
     # Instantiate the RL algorithm.
     algorithm = hydra.utils.instantiate(cfg['algorithm'])
+    # Save off the configuration.
+    OmegaConf.save(cfg, 'config.yaml')
     # Run the train loop!
     hydra.utils.instantiate(
         cfg['train_loop'],

@@ -160,7 +160,7 @@ class RLLogger:
         Args:
             policy: The final policy.
         """
-        torch.save(policy.state_dict, 'policy.pt')
+        torch.save(policy.state_dict(), 'policy.pt')
         if self.pbar is not None:
             self.pbar.close()
             self.pbar = None

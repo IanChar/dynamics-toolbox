@@ -31,6 +31,7 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
+            unscale_penalizer: bool = False,
     ):
         """
         Constructor.
@@ -50,13 +51,16 @@ class ModelEnv(gym.Env):
             real_env: The real environment being modelled.
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
+            unscale_penalizer: Whether to use unscaled uncertainty for penalty.
         """
         super().__init__()
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
-        if (hasattr(self._dynamics, 'wrapped_model')
+        if not unscale_penalizer:
+            scaling = 1
+        elif (hasattr(self._dynamics, 'wrapped_model')
                 and hasattr(self._dynamics.wrapped_model.normalizer, '1_scaling')):
             scaling = getattr(self._dynamics.wrapped_model.normalizer, '1_scaling')
         elif hasattr(self._dynamics.normalizer, '1_scaling'):

@@ -15,7 +15,7 @@ from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 # import d4rl
 
 
-@hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
+@hydra.main(config_path='./example_configs/rl', config_name='online_rnn_sac_locomotion')
 def train_rl(cfg: DictConfig):
     # Instantiate the gym environment and get the obs and act dims.
     extra_imports_for_env(cfg['env']['id'])

@@ -56,7 +56,10 @@ class ModelEnv(gym.Env):
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
-        self._penalty_coefficient = penalty_coefficient
+        self._penalty_coefficient = (
+            penalty_coefficient
+            * getattr(self._dynamics.normalizer, '1_scaling')
+        )
         self._terminal_function = terminal_function
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim

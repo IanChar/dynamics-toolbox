@@ -59,6 +59,7 @@ class SequentialDataModule(LightningDataModule):
             val_proportion=val_proportion,
             test_proportion=test_proportion,
             allow_padding=allow_padding,
+            seed=seed,
         )
         if te_data_source is not None:
             te_qset = get_data_from_source(te_data_source)

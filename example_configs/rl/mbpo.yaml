@@ -1,0 +1,85 @@
+name: ???
+env_name: ???
+seed: 0
+cuda_device: null
+env:
+  _target_: gym.make
+  id: ${env_name}
+train_loop:
+  _target_: dynamics_toolbox.rl.train_loops.online_mbrl_training
+  epochs: 15
+  num_expl_steps_per_epoch: 1000
+  num_model_paths_per_step: 400
+  num_eval_eps: 10
+  horizon_scheduler:
+    _target_: dynamics_toolbox.env_wrappers.horizon_scheduler.ConstantHorizon
+    horizon: 1
+  env_horizon: 1000
+  num_gradient_steps_per_step: 20
+  batch_size: 256
+  model_env:
+    _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
+    dynamics_model:
+      _target_: dynamics_toolbox.models.pl_models.simultaneous_ensemble.SimultaneousEnsemble
+      _recursive_: False
+      num_members: 7
+      sample_mode: 'sample_member_every_step'
+      efficient_sampling: True
+      member_cfg:
+        _target_: dynamics_toolbox.models.pl_models.pnn.PNN
+        encoder_output_dim: 200
+        encoder_cfg:
+           _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+           num_layers: 3
+           layer_size: 200
+           hidden_activation: "swish"
+        mean_net_cfg:
+           _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+           num_layers: 0
+           layer_size: 200
+           hidden_activation: "swish"
+        logvar_net_cfg:
+           _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+           num_layers: 0
+           layer_size: 200
+           hidden_activation: "swish"
+        logvar_lower_bound: -10
+        logvar_upper_bound: 0.5
+    penalty_coefficient: 0.0
+    terminal_function:
+      _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
+      env_name: ${env_name}
+  model_buffer:
+    _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
+    max_buffer_size: 1e6
+    clear_every_epoch: True
+  env_buffer:
+    _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
+    max_buffer_size: 1e6
+  logger:
+    _target_: dynamics_toolbox.rl.rl_logger.RLLogger
+  dynamics_trainer:
+    _target_: dynamics_toolbox.rl.dynamics_trainer.DynamicsTrainer
+    patience: 10
+    max_epochs: 100
+algorithm:
+  _target_: dynamics_toolbox.rl.algorithms.sac.SAC
+  discount: 0.99
+  learning_rate: 3e-4
+  soft_target_update_weight: 5e-3
+  soft_target_update_frequency: 1
+  entropy_tune: True
+  num_qnets: 2
+  policy:
+    _target_: dynamics_toolbox.rl.modules.policies.TanhGaussianPolicy
+    hidden_sizes:
+      - 256
+      - 256
+  qnet:
+    _target_: dynamics_toolbox.rl.modules.valnets.QNet
+    hidden_sizes:
+      - 256
+      - 256
+hydra:
+  run:
+    dir: logs/${name}/${seed}

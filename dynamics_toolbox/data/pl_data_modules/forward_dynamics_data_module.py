@@ -25,6 +25,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             num_workers: int = 1,
             pin_memory: bool = True,
             seed: int = 1,
+            qset=None,
             **kwargs,
     ):
         """Constructor.
@@ -39,9 +40,11 @@ class ForwardDynamicsDataModule(LightningDataModule):
             num_workers: Number of workers.
             pin_memory: Whether to pin memory.
             seed: The seed.
+            qset: The loaded in data.
         """
         super().__init__()
-        qset = get_data_from_source(data_source)
+        if qset is None:
+            qset = get_data_from_source(data_source)
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
             self._ydata = np.hstack([qset['rewards'].reshape(-1, 1),
@@ -62,9 +65,12 @@ class ForwardDynamicsDataModule(LightningDataModule):
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
             TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),
             [self._num_tr, self._num_val, self._num_te],
+            generator=torch.Generator().manual_seed(seed),
         )
 
-    def train_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def train_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         return DataLoader(
             self._tr_dataset,
@@ -75,7 +81,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
             pin_memory=self._pin_memory,
         )
 
-    def val_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def val_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._val_dataset):
             return DataLoader(
@@ -89,7 +97,9 @@ class ForwardDynamicsDataModule(LightningDataModule):
         else:
             None
 
-    def test_dataloader(self) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
+    def test_dataloader(
+        self,
+    ) -> Union[DataLoader, List[DataLoader], Dict[str, DataLoader]]:
         """Get the training dataloader."""
         if len(self._te_dataset):
             return DataLoader(

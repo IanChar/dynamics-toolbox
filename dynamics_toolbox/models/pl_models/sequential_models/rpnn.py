@@ -8,12 +8,12 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import hydra.utils
 import torch
+import torch.nn.functional as F
 from omegaconf import DictConfig
 
-from dynamics_toolbox.constants import losses, sampling_modes
+from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
-from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
 
 
@@ -139,6 +139,9 @@ class RPNN(AbstractSequentialModel):
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
         mean, logvar = self._decoder(torch.cat([encoded, mem_out], dim=-1))
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return {'mean': mean, 'logvar': logvar}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
@@ -203,7 +206,7 @@ class RPNN(AbstractSequentialModel):
                          else self._hidden_state[0])
             if tocompare.shape[1] != net_in.shape[0]:
                 raise ValueError('Number of inputs does not match previously given '
-                                 f'number. Expected {topcompare.shape[1]} but received'
+                                 f'number. Expected {tocompare.shape[1]} but received'
                                  f' {net_in.shape[0]}.')
         with torch.no_grad():
             encoded = self._encoder(net_in).unsqueeze(1)

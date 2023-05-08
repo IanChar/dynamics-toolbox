@@ -1,0 +1,28 @@
+name: "test_classifier"
+data_source: "/Users/youngsec/research/uq/timeseries_calibration/dynamics-toolbox/sandbox/classifier_config/classification_2d.h5"
+save_dir: "/Users/youngsec/research/uq/timeseries_calibration/dynamics-toolbox/sandbox/classifier_config"
+seed: 1
+logger: tensorboard
+normalization: "standardize_input"
+defaults:
+    - trainer: pl_trainer
+    - data_module: classification_data_module
+    - early_stopping: default
+    - model: classifier
+
+# overriding defaults
+model:
+    hard_labels: False
+trainer:
+    max_epochs: 3000
+#    devices: 1
+#    accelerator: 'gpu'
+#    auto_select_gpus: 1
+#data_module:
+#    batch_size: 512
+#    val_proportion: 0.0
+#    test_proportion: 0.0
+#    num_workers: 16
+#    smote: 1
+
+

@@ -3,12 +3,17 @@ Gym environment that uses models.
 
 Author: Ian Char
 """
-from typing import Optional, Callable, Any, Dict, Tuple, Union, List
+from typing import Optional, Callable, Any, Dict, Tuple, Union
 
 import gym
 import numpy as np
+import torch.nn as nn
+from tqdm import tqdm
 
+from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
+from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
+from dynamics_toolbox.models.ensemble import Ensemble
 
 
 class ModelEnv(gym.Env):
@@ -16,12 +21,13 @@ class ModelEnv(gym.Env):
     def __init__(
             self,
             dynamics_model: AbstractModel,
-            start_distribution: Callable[[], np.ndarray],
+            start_distribution: Optional[Callable[[int], np.ndarray]] = None,
             horizon: Optional[int] = None,
             penalizer: Optional[Callable[[Dict[str, Any]], np.ndarray]] = None,
-            penalty_coefficient: float = 1,
+            penalty_coefficient: float = 1.0,
             terminal_function: Optional[Callable[[np.ndarray], np.ndarray]] = None,
-            reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]] = None,
+            reward_function: Optional[Callable[[np.ndarray, np.ndarray, np.ndarray],
+                                               np.ndarray]] = None,
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
@@ -31,19 +37,21 @@ class ModelEnv(gym.Env):
         Args:
             dynamics_model: The model of the dynamics.
             start_distribution: Function that samples a start state.
-            horizon: The horizon of the mdp. If not provided, the mdp has infinite horizon.
-            penalizer: Function taking dictionary made by model and action and returning a penalty.
+            horizon: The horizon of the mdp. If not provided, the mdp has infinite
+                horizon.
+            penalizer: Function taking dictionary made by model and action and
+                returning a penalty.
             penalty_coefficient: The coefficient to multiply the penalty by.
-            terminal_function: Function taking next_state and returning whether termination has occurred.
+            terminal_function: Function taking next_state and returning whether
+                termination has occurred.
             reward_function: A function taking state, action, next_state and returning
-            reward_is_first_dim: Whether the first dimension of predictions from the model is rewards.
+            reward_is_first_dim: Whether the first dimension of predictions from the
+                model is rewards.
             real_env: The real environment being modelled.
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
         """
         super().__init__()
-        if not reward_is_first_dim and reward_function is None:
-            raise ValueError('Need a way to compute the reward.')
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
@@ -55,7 +63,7 @@ class ModelEnv(gym.Env):
         self._real_env = real_env
         self._model_output_are_deltas = model_output_are_deltas
         self._t = 0
-        self._state = self._start_dist()
+        self._state = None
         if self._real_env is not None:
             self._observation_space = self._real_env.observation_space
             self._action_space = self._real_env.action_space
@@ -71,14 +79,22 @@ class ModelEnv(gym.Env):
                 high=np.ones(act_dim),
             )
 
-    def reset(self) -> np.ndarray:
+    def reset(self, start: Optional[np.ndarray] = None) -> np.ndarray:
         """Reset the dynamics.
+
+        Args:
+            start: Start for the system.
 
         Returns:
             The current observations.
         """
         self._t = 0
-        self._state = self._start_dist()
+        if start is not None:
+            self._state = start
+        elif self._start_dist is not None:
+            self._state = self._start_dist(1).flatten()
+        else:
+            raise ValueError('Starts must be provided if start state dist is not.')
         self._dynamics.reset()
         return self._state
 
@@ -95,6 +111,8 @@ class ModelEnv(gym.Env):
             - Whether a terminal state was reached.
             - Extra information.
         """
+        if self._state is None:
+            raise RuntimeError('Must call reset before step.')
         if type(action) is float:
             action = np.array([action])
         if len(action.shape) == 1:
@@ -102,7 +120,7 @@ class ModelEnv(gym.Env):
         model_out, model_info = self._dynamics.predict(np.hstack(
             [self._state.reshape(1, -1), action]))
         nxt = (model_out + self._state.reshape(1, -1) if self._model_output_are_deltas
-                else model_out)
+               else model_out)
         self._t += 1
         info = {}
         rew, rew_info = self._compute_reward(self._state, action, nxt, model_info)
@@ -119,78 +137,128 @@ class ModelEnv(gym.Env):
         self._state = nxt
         return nxt.flatten(), float(rew), done, info
 
-    def unroll_from_policy(
+    def model_rollout_from_policy(
             self,
-            starts: np.ndarray,
-            policy: Callable[[np.ndarray], np.ndarray],
+            num_rollouts: int,
+            policy: Policy,
             horizon: int,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+            starts: Optional[np.ndarray] = None,
+            show_progress: bool = False,
+    ) -> Dict[str, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
         Args:
-            starts: All of the states to unroll from should have shape (num_states, obs_dim).
+            num_rollouts: The number of rollouts to be made.
             policy: The policy taking state and mapping to action.
             horizon: The amount of time to unroll for.
+            starts: All of the states to unroll from should have shape
+                (num_rollouts, obs_dim).
+            show_progress: Whether to show the progress of the rollout.
         Returns:
-            - All observations (num_starts, horizon + 1, obs_dim)
-            - The actions taken (num_starts, horizon, act_dim)
-            - The rewards received (num_starts, horizon)
-            - The terminals (num_starts, horizon)
+            - obs: All observations (num_rollouts, horizon + 1, obs_dim)
+            - acts: The actions taken (num_rollouts, horizon, act_dim)
+            - rews: The rewards received (num_rollouts, horizon, 1)
+            - terms: The terminals (num_rollouts, horizon, 1)
+            - logprobs: The logprobabilities of actions (num_rollouts, horizon, 1)
+            - masks: Mask for whether the data is real or not. 0 if the transition
+                happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
+        policy.reset()
+        if starts is None:
+            if self._start_dist is None:
+                raise ValueError('Starts must be provided if start state dist is not.')
+            starts = self._start_dist(num_rollouts)
+        else:
+            assert len(starts) == num_rollouts, 'Number of starts must match.'
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
-        rewards = np.zeros((starts.shape[0], horizon))
-        terminals = np.full((starts.shape[0], horizon), True)
+        rews = np.zeros((starts.shape[0], horizon, 1))
+        terms = np.full((starts.shape[0], horizon, 1), True)
+        logprobs = np.zeros((starts.shape[0], horizon, 1))
+        masks = np.ones((starts.shape[0], horizon, 1))
         obs[:, 0, :] = starts
         acts = None
+        if show_progress:
+            pbar = tqdm(total=horizon)
         for h in range(horizon):
             state = obs[:, h, :]
-            act = policy(state)
+            act, logprob = policy.get_actions(state)
+            logprobs[:, h] = logprob.reshape(-1, 1)
             if acts is None:
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
+            rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
+            if self._reward_is_first_dim:
+                model_out = model_out[:, 1:]
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
-            rewards[:, h] = self._compute_reward(state, act, nxts, infos)[0]
+            policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
-                terminals[:, h] = np.full(starts.shape[0], False)
+                terms[:, h] = np.full(terms[:, h].shape, False)
             else:
-                terminals[:, h] = np.array([self._terminal_function(nxt)
-                                            for nxt in nxts])
-        return obs, acts, rewards, terminals
+                terms[:, h] = np.array([self._terminal_function(nxt)
+                                        for nxt in nxts])
+                if np.sum(terms[:, h]) > 0:
+                    term_idxs = np.argwhere(terms[:, h].flatten())
+                    masks[term_idxs, h + 1:] = 0
+            if show_progress:
+                pbar.update(1)
+        if show_progress:
+            pbar.close()
+        return {
+            'observations': obs,
+            'actions': acts,
+            'rewards': rews,
+            'terminals': terms,
+            'logprobs': logprobs,
+            'masks': masks,
+        }
 
-    def unroll_from_actions(
+    def model_rollout_from_actions(
             self,
-            starts: np.ndarray,
+            num_rollouts: int,
             actions: np.ndarray,
+            starts: Optional[np.ndarray] = None,
+            show_progress: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
         Args:
-            starts: All of the states to unroll from should have shape
-                (num_states, obs_dim).
             actions: The actions to use for unrolling should have shape
                 (num_states, horizon, act_dim)>
+            starts: All of the states to unroll from should have shape
+                (num_states, obs_dim).
+                If not specified will be drawn from start state dist.
         Returns:
             - All observations (num_starts, horizon + 1, obs_dim)
             - The actions taken (num_starts, horizon, act_dim)
             - The rewards received (num_starts, horizon)
             - The terminals (num_starts, horizon)
+            - The logprobabilities of the actions.
+            - masks: Mask for whether the data is real or not. 0 if the transition
+                happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
-        act_idx = 0
         horizon = actions.shape[1]
-
-        def policy_wrap(state: np.ndarray):
-            nonlocal act_idx
-            to_return = actions[:, act_idx, :]
-            act_idx += 1
-            return to_return
-
-        return self.unroll_from_policy(starts, policy_wrap, horizon)
+        policy_wrap = ActionPlanPolicy(actions)
+        return self.model_rollout_from_policy(num_rollouts, policy_wrap, horizon,
+                                              starts, show_progress)
 
     def render(self, mode='human'):
         """TODO: Figure out how to render given the real environment."""
         pass
+
+    def to(self, device: str):
+        """For any pytorch modules put on the device.
+
+        Args:
+            device: The device to put onto.
+        """
+        if isinstance(self._dynamics, Ensemble):
+            for member in self._dynamics.members:
+                if isinstance(member, nn.Module):
+                    member.to(device)
+        elif isinstance(self._dynamics, nn.Module):
+            self._dynamics.to(device)
 
     @property
     def t(self) -> int:
@@ -202,12 +270,24 @@ class ModelEnv(gym.Env):
         """Get the current state."""
         return self._state
 
+    @property
+    def start_dist(self) -> Callable[[int], np.ndarray]:
+        return self._start_dist
+
+    @property
+    def dynamics_model(self) -> AbstractModel:
+        return self._dynamics
+
+    @start_dist.setter
+    def start_dist(self, dist: Callable[[int], np.ndarray]):
+        self._start_dist = dist
+
     def _compute_reward(
             self,
             state: np.ndarray,
             action: Union[float, np.ndarray],
             nxt: np.ndarray,
-            model_info: Union[Dict[str, Any], List[Dict[str, Any]]],
+            model_info: Dict[str, Any],
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Compute the rewards.
@@ -220,11 +300,11 @@ class ModelEnv(gym.Env):
         Returns:
             The corresponding rewards.
         """
-        rew = ...
+        rew = np.zeros((len(state), 1))
         info = {}
         if self._reward_is_first_dim:
-            rew = nxt[:, 0]
-        if self._reward_function is not None:
+            rew = nxt[:, [0]]
+        elif self._reward_function is not None:
             if len(state.shape) == 1:
                 state = state.reshape(1, -1)
             if isinstance(action, float):
@@ -235,10 +315,7 @@ class ModelEnv(gym.Env):
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
         if self._penalizer is not None:
-            if isinstance(model_info, dict):
-                model_info = [model_info]
-            raw_penalty = np.array([self._penalizer(mi) for mi in model_info])
+            raw_penalty = self._penalizer(model_info)
             rew -= self._penalty_coefficient * raw_penalty
             info['raw_penalty'] = raw_penalty
         return rew, info
-

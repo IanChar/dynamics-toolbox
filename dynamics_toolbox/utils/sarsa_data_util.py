@@ -3,7 +3,7 @@ Utility for gym environments and gym data.
 
 Author: Ian Char
 """
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -40,6 +40,7 @@ def parse_into_snippet_datasets(
         test_proportion: float = 0.0,
         allow_padding: bool = False,
         shuffle: bool = True,
+        seed: Optional[int] = None,
 ) -> List[Dict[str, np.ndarray]]:
     """Parse into a sarsa dataset into snippets of rollouts.
 
@@ -53,6 +54,7 @@ def parse_into_snippet_datasets(
         allow_padding: Whether to allow padding of 0s if trajectory length is smaller
             than snippet_size.
         shuffle: Whether to shuffle the trajectories.
+        seed: Seed before shuffling in order to make sure we get the same splits.
 
     Returns:
         Three dictionaries, one for each train, validation, and testing. Each contains
@@ -69,6 +71,8 @@ def parse_into_snippet_datasets(
                          f'{val_proportion} and {test_proportion}.')
     trajectories = parse_into_trajectories(qset)
     if shuffle:
+        if seed is not None:
+            np.random.seed(seed)
         np.random.shuffle(trajectories)
     min_trajectory_length = np.min([len(traj['observations']) for traj in trajectories])
     if snippet_size is None:

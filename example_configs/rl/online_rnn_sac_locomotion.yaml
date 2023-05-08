@@ -1,0 +1,59 @@
+name: ???
+env_name: ???
+seed: 0
+history_size: 64
+env:
+  _target_: gym.make
+  id: ${env_name}
+train_loop:
+  _target_: dynamics_toolbox.rl.train_loops.batch_online_rl_training
+  epochs: 1000
+  num_expl_steps_per_epoch: 1000
+  num_eval_eps: 10
+  horizon: 1000
+  num_gradient_steps_per_epoch: 1000
+  num_expl_steps_before_training: 10000
+  batch_size: 64
+  replay_buffer:
+    _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
+    max_buffer_size: 1e6
+    lookback: ${history_size}
+  logger:
+    _target_: dynamics_toolbox.rl.rl_logger.RLLogger
+algorithm:
+  _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
+  discount: 0.99
+  learning_rate: 3e-4
+  soft_target_update_weight: 5e-3
+  soft_target_update_frequency: 1
+  entropy_tune: True
+  num_qnets: 2
+  policy:
+    _target_: dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy.SequentialTanhGaussianPolicy
+    history_encoder:
+      _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
+      rnn_type: 'GRU'
+      rnn_hidden_size: 128
+      obs_encode_dim: 64
+      act_encode_dim: 16
+      rew_encode_dim: 16
+    obs_encode_dim: 64
+    hidden_sizes:
+      - 256
+      - 256
+  qnet:
+    _target_: dynamics_toolbox.rl.modules.valnets.qnet.SequentialQNet
+    history_encoder:
+      _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
+      rnn_type: 'GRU'
+      rnn_hidden_size: 128
+      obs_encode_dim: 64
+      act_encode_dim: 16
+      rew_encode_dim: 16
+    obs_act_encode_dim: 64
+    hidden_sizes:
+      - 256
+      - 256
+hydra:
+  run:
+    dir: logs/${name}/${seed}

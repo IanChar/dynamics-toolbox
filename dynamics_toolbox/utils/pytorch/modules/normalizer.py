@@ -136,8 +136,10 @@ class InputNormalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
-        if hasattr(self, f'{batch_idx}_offset') and hasattr(self, f'{batch_idx}_scaling'):
-            return ((x - getattr(self, f'{batch_idx}_offset')) / getattr(self, f'{batch_idx}_scaling'))
+        if (hasattr(self, f'{batch_idx}_offset')
+                and hasattr(self, f'{batch_idx}_scaling')):
+            return ((x - getattr(self, f'{batch_idx}_offset'))
+                    / getattr(self, f'{batch_idx}_scaling'))
         else:
             return x
 
@@ -155,10 +157,13 @@ class InputNormalizer(torch.nn.Module):
         Returns:
             The transformed input.
         """
-        if hasattr(self, f'{batch_idx}_offset') and hasattr(self, f'{batch_idx}_scaling'):
-            return x * getattr(self, f'{batch_idx}_scaling') + getattr(self, f'{batch_idx}_offset')
+        if (hasattr(self, f'{batch_idx}_offset')
+                and hasattr(self, f'{batch_idx}_scaling')):
+            return (x * getattr(self, f'{batch_idx}_scaling')
+                    + getattr(self, f'{batch_idx}_offset'))
         else:
             return x
+
 
 class NoNormalizer(Normalizer):
 
@@ -197,3 +202,15 @@ class NoNormalizer(Normalizer):
             The transformed input.
         """
         return x
+
+    def normalize_batch(self, batch: Sequence[torch.Tensor]) -> \
+            Sequence[torch.Tensor]:
+        """Transform a batch into normalized space.
+
+        Args:
+            The batch as input and output data.
+
+        Returns:
+            The transformed batch.
+        """
+        return batch

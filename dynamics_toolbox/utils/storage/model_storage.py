@@ -63,7 +63,7 @@ def load_model_from_log_dir(
         wrapped_model = model.wrapped_model
     else:
         wrapped_model = None
-    model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    model = model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
     if wrapped_model is not None:
         model.set_wrapped_model(wrapped_model)
     return model

@@ -31,7 +31,7 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
-            unscale_penalizer: bool = False,
+            unscale_penalizer: bool = True,
     ):
         """
         Constructor.

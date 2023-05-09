@@ -31,6 +31,7 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
+            unscale_penalizer: bool = True,
     ):
         """
         Constructor.
@@ -50,16 +51,26 @@ class ModelEnv(gym.Env):
             real_env: The real environment being modelled.
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
+            unscale_penalizer: Whether to use unscaled uncertainty for penalty.
         """
         super().__init__()
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
-        self._penalty_coefficient = (
-            penalty_coefficient
-            * getattr(self._dynamics.normalizer, '1_scaling')
-        )
+        if not unscale_penalizer:
+            self._std_scaling = 1
+        elif (hasattr(self._dynamics, 'wrapped_model')
+                and hasattr(self._dynamics.wrapped_model.normalizer, '1_scaling')):
+            self._std_scaling =\
+                getattr(self._dynamics.wrapped_model.normalizer,
+                        '1_scaling').cpu().numpy()
+        elif hasattr(self._dynamics.normalizer, '1_scaling'):
+            self._std_scaling = getattr(self._dynamics.normalizer,
+                                       '1_scaling').cpu().numpy()
+        else:
+            self._std_scaling = 1
+        self._penalty_coefficient = penalty_coefficient
         self._terminal_function = terminal_function
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim
@@ -167,6 +178,7 @@ class ModelEnv(gym.Env):
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
         policy.reset()
+        self._dynamics.reset()
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
@@ -265,6 +277,13 @@ class ModelEnv(gym.Env):
                     member.to(device)
         elif isinstance(self._dynamics, nn.Module):
             self._dynamics.to(device)
+        if hasattr(self._dynamics, 'wrapped_model'):
+            if isinstance(self._dynamics.wrapped_model, Ensemble):
+                for member in self._dynamics.wrapped_model.members:
+                    if isinstance(member, nn.Module):
+                        member.to(device)
+            elif isinstance(self._dynamics.wrapped_model, nn.Module):
+                self._dynamics.wrapped_model.to(device)
 
     @property
     def t(self) -> int:
@@ -321,6 +340,7 @@ class ModelEnv(gym.Env):
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
         if self._penalizer is not None:
+            model_info['std_scaling'] = self._std_scaling
             raw_penalty = self._penalizer(model_info)
             rew -= self._penalty_coefficient * raw_penalty
             info['raw_penalty'] = raw_penalty

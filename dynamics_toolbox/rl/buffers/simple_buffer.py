@@ -210,3 +210,4 @@ class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
         self._ptr = 0
         self._size = max_buffer_size
         self._max_size = max_buffer_size
+        self._clear_every_epoch = False

@@ -12,6 +12,8 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
+import d4rl
+
 
 @hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
 def train_rl(cfg: DictConfig):

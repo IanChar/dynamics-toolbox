@@ -105,7 +105,10 @@ class SequentialReplayBuffer(ReplayBuffer):
         paths['next_observations'] = paths['observations'][:, 1:]
         paths['observations'] = paths['observations'][:, :-1]
         for pidx in range(len(paths['actions'])):
-            path = {k: v[pidx] for k, v in paths.items()}
+            path = {}
+            for k, v in paths.items():
+                if k != 'info':
+                    path[k] = v[pidx]
             length = None
             if 'masks' in path:
                 idxs = np.argwhere(path['masks'] - 1).flatten()

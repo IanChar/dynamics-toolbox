@@ -59,15 +59,18 @@ class ModelEnv(gym.Env):
         self._horizon = horizon
         self._penalizer = penalizer
         if not unscale_penalizer:
-            scaling = 1
+            self._std_scaling = 1
         elif (hasattr(self._dynamics, 'wrapped_model')
                 and hasattr(self._dynamics.wrapped_model.normalizer, '1_scaling')):
-            scaling = getattr(self._dynamics.wrapped_model.normalizer, '1_scaling')
+            self._std_scaling =\
+                getattr(self._dynamics.wrapped_model.normalizer,
+                        '1_scaling').cpu().numpy()
         elif hasattr(self._dynamics.normalizer, '1_scaling'):
-            scaling = getattr(self._dynamics.normalizer, '1_scaling')
+            self._std_scaling = getattr(self._dynamics.normalizer,
+                                       '1_scaling').cpu().numpy()
         else:
-            scaling = 1
-        self._penalty_coefficient = penalty_coefficient * scaling
+            self._std_scaling = 1
+        self._penalty_coefficient = penalty_coefficient
         self._terminal_function = terminal_function
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim
@@ -337,6 +340,7 @@ class ModelEnv(gym.Env):
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
         if self._penalizer is not None:
+            model_info['std_scaling'] = self._std_scaling
             raw_penalty = self._penalizer(model_info)
             rew -= self._penalty_coefficient * raw_penalty
             info['raw_penalty'] = raw_penalty

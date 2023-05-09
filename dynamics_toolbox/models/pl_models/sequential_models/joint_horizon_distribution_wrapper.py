@@ -143,19 +143,25 @@ def batch_conditional_sampling_with_joint_correlation(
 class joint_horizon_distribution_wrapper():
     def __init__(self, wrapped_model, error_corr_mat_path, recal_constants=None):
 
+        # attributes to get from wrapped_model
+        self.wrapped_model = wrapped_model
+        self.input_dim = wrapped_model.input_dim
+        self.output_dim = wrapped_model.output_dim
+
         # check the dimensions of error_corr_mat
         self.error_corr_mat = np.load(error_corr_mat_path)
+        ### temp code for testing
+        if len(self.error_corr_mat.shape) == 2:
+            dim_1, dim_2 = self.error_corr_mat.shape
+            assert dim_1 == dim_2, "error_corr_mat must be (horizon, horizon) or (horizon, horizon, dim)"
+            self.error_corr_mat = np.tile(self.error_corr_mat, (1, 1, self.output_dim))
+        ###
         assert (len(self.error_corr_mat.shape) == 3,
                 "error_corr_mat must be (horizon, horizon, dim)")
         assert self.error_corr_materror_corr_mat.shape[0] == self.error_corr_mat.shape[
             1], "error_corr_mat must be (horizon, horizon, dim)"
         self.max_horizon, _, self.obs_dim = self.error_corr_mat.shape
-
-        # attributes to get from wrapped_model
-        self.wrapped_model = wrapped_model
-        self.input_dim = wrapped_model.input_dim
-        self.output_dim = wrapped_model.output_dim
-        assert self.output_dim == self.obs_dim, "output_dim of model must match obs_dim"
+        assert self.obs_dim == self.output_dim, "output_dim of model must match obs_dim"
 
         # attributes for generation
         self.h_idx = 0

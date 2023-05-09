@@ -282,7 +282,7 @@ class UQWrapper(AbstractSequentialModel):
         cal_loss, cal_dict = self.cal_loss(net_out, batch)
         corr_loss, corr_dict = self.corr_loss(net_out, batch)
         corr_dict.update(cal_dict)
-        loss = corr_loss / 100 + cal_loss
+        loss = corr_loss / 10 + cal_loss
         corr_dict['loss'] = loss
         return loss, corr_dict
 

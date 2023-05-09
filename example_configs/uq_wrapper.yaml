@@ -16,7 +16,7 @@ model:
     corr_decoder_num_hidden_layers: 3
     corr_decoder_hidden_size: 200
     corr_encoder_num_hidden_layers: 0
-    elipsoid_calibration: False
+    elipsoid_calibration: True
 data_module:
     _target_: dynamics_toolbox.data.pl_data_modules.uq_data_module.UQDynamicsDataModule
     data_path: ${data_source}
@@ -24,7 +24,7 @@ data_module:
     val_proportion: 0.1
     use_oracle: True
 trainer:
-    gpus: 1
+  # gpus: 1
     max_epochs: 1000
 early_stopping:
     patience: 1000

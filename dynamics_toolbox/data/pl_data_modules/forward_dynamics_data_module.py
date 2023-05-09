@@ -26,6 +26,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
             pin_memory: bool = True,
             seed: int = 1,
             qset=None,
+            account_for_d4rl_bug: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -41,10 +42,16 @@ class ForwardDynamicsDataModule(LightningDataModule):
             pin_memory: Whether to pin memory.
             seed: The seed.
             qset: The loaded in data.
+            account_for_d4rl_bug: It turns out d4rl does not log next_observations
+                correctly if at a terminal state, so if you are using d4rl datasets
+                (specifically walker or hopper) make sure this is True.
         """
         super().__init__()
         if qset is None:
             qset = get_data_from_source(data_source)
+        if 'terminals' in qset and account_for_d4rl_bug:
+            valid_idxs = np.argwhere(qset['terminals'] - 1)
+            qset = {k: v[valid_idxs] for k, v in qset.items()}
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:
             self._ydata = np.hstack([qset['rewards'].reshape(-1, 1),

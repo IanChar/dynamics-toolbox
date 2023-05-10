@@ -141,7 +141,7 @@ def batch_conditional_sampling_with_joint_correlation(
 
 
 class joint_horizon_distribution_wrapper():
-    def __init__(self, wrapped_model, error_corr_mat_path, recal_constants=None):
+    def __init__(self, wrapped_model, error_corr_mat_path, recal_constants_path=None):
 
         # attributes to get from wrapped_model
         self.wrapped_model = wrapped_model
@@ -173,7 +173,8 @@ class joint_horizon_distribution_wrapper():
         # flags to set later in case recalibration is applied
         self.recal_constants = None
         self.apply_recal = False
-        if recal_constants is not None:
+        if recal_constants_path is not None:
+            recal_constants = np.load(recal_constants_path)
             self.set_recalibration(recal_constants)
         # NOTE: apply self.recal_constants[h_idx] to predictions made for time=(h_idx+1)
         # -> apply recal_constants[h_idx] when predicting AT time=(h_idx)

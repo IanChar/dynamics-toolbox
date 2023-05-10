@@ -13,12 +13,12 @@ import numpy as np
 
 
 def batch_conditional_sampling_with_joint_correlation(
-        corr_mat: np.ndarray,
-        hist_obs: np.ndarray,
-        hist_means: np.ndarray,
-        hist_stds: np.ndarray,
-        pred_means: np.ndarray,
-        pred_stds: np.ndarray,
+        corr_mat: torch.Tensor,
+        hist_obs: torch.Tensor,
+        hist_means: torch.Tensor,
+        hist_stds: torch.Tensor,
+        pred_means: torch.Tensor,
+        pred_stds: torch.Tensor,
         num_draw_per_rv: int = 1,
 ):
     """
@@ -43,27 +43,27 @@ def batch_conditional_sampling_with_joint_correlation(
     assert (hist_obs.shape == hist_means.shape == hist_stds.shape
             == (num_samples, num_hist, obs_dim))
     assert pred_means.shape == pred_stds.shape == (num_samples, num_pred, obs_dim)
-    corr_mat = np.tile(corr_mat, (num_samples, 1, 1, 1))  # (num_samples, H, H, obs_dim)
+    # corr_mat = np.tile(corr_mat, (num_samples, 1, 1, 1))  # (num_samples, H, H, obs_dim)
+    corr_mat = corr_mat.repeat(num_samples, 1, 1, 1)  # (num_samples, H, H, obs_dim)
     assert corr_mat.shape == (num_samples, H, H, obs_dim)
     # print(f"Horizon: {H}, num_hist: {num_hist}, num_pred: {num_pred}, num_samples: {num_samples}")
 
-    hist_block_cov = (hist_stds[:, np.newaxis, :, :]
+    hist_block_cov = (hist_stds.unsqueeze(1)
                       * corr_mat[:, :num_hist, :num_hist, :]
-                      * hist_stds[:, :, np.newaxis, :])
-    pred_hist_cov = (pred_stds[:, :, np.newaxis, :]
+                      * hist_stds.unsqueeze(2))
+    pred_hist_cov = (pred_stds.unsqueeze(2)
                      * corr_mat[:, num_hist:(num_hist + num_pred), :num_hist, :]
-                     * hist_stds[:, np.newaxis, :, :])
-    hist_pred_cov = (hist_stds[:, :, np.newaxis, :]
+                     * hist_stds.unsqueeze(1))
+    hist_pred_cov = (hist_stds.unsqueeze(2)
                      * corr_mat[:, :num_hist, num_hist:(num_hist + num_pred), :]
-                     * pred_stds[:, np.newaxis, :, :])
+                     * pred_stds.unsqueeze(1))
     pred_pred_cov = (
-            pred_stds[:, np.newaxis, :, :]
+            pred_stds.unsqueeze(1)
             * corr_mat[:, num_hist:(num_hist + num_pred),
               num_hist:(num_hist + num_pred), :]
-            * pred_stds[:, :, np.newaxis, :])
+            * pred_stds.unsqueeze(2))
 
-    np.testing.assert_array_almost_equal(hist_pred_cov,
-                                         pred_hist_cov.transpose(0, 2, 1, 3))
+    torch.allclose(hist_pred_cov, pred_hist_cov.transpose(0, 2, 1, 3))
     assert hist_block_cov.shape == (num_samples, num_hist, num_hist, obs_dim)
     assert pred_hist_cov.shape == (num_samples, num_pred, num_hist, obs_dim)
     assert hist_pred_cov.shape == (num_samples, num_hist, num_pred, obs_dim)
@@ -89,42 +89,83 @@ def batch_conditional_sampling_with_joint_correlation(
     assert hist_means.shape == (num_samples, obs_dim, num_hist)
     assert pred_means.shape == (num_samples, obs_dim, num_pred)
 
-    cond_mean = pred_means + np.matmul(
+    # cond_mean = pred_means + np.matmul(
+    #     # (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, num_hist) => (num_samples, obs_dim, num_pred, num_hist)
+    #     np.matmul(pred_hist_cov, np.linalg.inv(hist_block_cov)),
+    #     # (num_samples, obs_dim, num_hist) - (num_samples, obs_dim, num_hist) => (num_samples, obs_dim, num_hist)
+    #     # => (num_samples, obs_dim, num_hist, 1)
+    #     (hist_obs - hist_means)[..., np.newaxis])[..., 0]
+    cond_mean = pred_means + torch.matmul(
         # (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, num_hist) => (num_samples, obs_dim, num_pred, num_hist)
-        np.matmul(pred_hist_cov, np.linalg.inv(hist_block_cov)),
+        torch.matmul(pred_hist_cov, torch.inverse(hist_block_cov)),
         # (num_samples, obs_dim, num_hist) - (num_samples, obs_dim, num_hist) => (num_samples, obs_dim, num_hist)
         # => (num_samples, obs_dim, num_hist, 1)
-        (hist_obs - hist_means)[..., np.newaxis])[..., 0]
+        (hist_obs - hist_means).unsqueeze(-1))[..., 0]
     # outer matmul: (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, 1)
     # => (num_samples, obs_dim, num_pred, 1), then index [..., 0] => (num_samples, obs_dim, num_pred)
     assert cond_mean.shape == (num_samples, obs_dim, num_pred)
 
-    cond_cov = pred_pred_cov - np.matmul(
+    # cond_cov = pred_pred_cov - np.matmul(
+    #     # (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, num_hist) => (num_samples, obs_dim, num_pred, num_hist)
+    #     np.matmul(pred_hist_cov, np.linalg.inv(hist_block_cov)),
+    #     # (num_samples, obs_dim, num_hist, num_pred)
+    #     hist_pred_cov)
+    cond_cov = pred_pred_cov - torch.matmul(
         # (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, num_hist) => (num_samples, obs_dim, num_pred, num_hist)
-        np.matmul(pred_hist_cov, np.linalg.inv(hist_block_cov)),
+        torch.matmul(pred_hist_cov, torch.inverse(hist_block_cov)),
         # (num_samples, obs_dim, num_hist, num_pred)
         hist_pred_cov)
     # outer matmul: (num_samples, obs_dim, num_pred, num_hist) x (num_samples, obs_dim, num_hist, num_pred)
     # => (num_samples, obs_dim, num_pred, num_pred)
     assert cond_cov.shape == (num_samples, obs_dim, num_pred, num_pred)
 
-    cond_samples = np.zeros((num_samples, obs_dim, num_pred, num_draw_per_rv))
+    cond_samples_np = np.zeros((num_samples, obs_dim, num_pred, num_draw_per_rv))
+    cond_samples = torch.zeros((num_samples, obs_dim, num_pred, num_draw_per_rv))
+
+    ###
+    # TODO: I have to iterate over sample_idx and obs_idx because numpy's multivariate_normal only supports 2D inputs
     mean_list = []
     cov_list = []
-
-    # TODO: I have to iterate over sample_idx and obs_idx because numpy's multivariate_normal only supports 2D inputs
     for b in range(num_samples):
         mean_list_per_sample = []
         cov_list_per_sample = []
         for i in range(obs_dim):
             dim_samples = np.random.multivariate_normal(cond_mean[b, i], cond_cov[b, i],
                                                         size=num_draw_per_rv).T  # (num_pred, num_draw_per_rv)
-            cond_samples[b, i] = dim_samples
+            cond_samples_np[b, i] = dim_samples
             mean_list_per_sample.append(cond_mean[b, i])
             cov_list_per_sample.append(cond_cov[b, i])
         mean_list.append(np.stack(mean_list_per_sample, axis=-1))  # (num_pred, obs_dim)
         cov_list.append(
             np.stack(cov_list_per_sample, axis=-1))  # (num_pred, num_pred, obs_dim)
+    mean_list = np.stack(mean_list, axis=0)  # (num_samples, num_pred, obs_dim)
+    cov_list = np.stack(cov_list, axis=0)  # (num_samples, num_pred, num_pred, obs_dim)
+    ###
+    ### BEGIN: new code
+    cond_mean = torch.from_numpy(cond_mean)
+    cond_cov = torch.from_numpy(cond_cov)
+    # for b in range(num_samples):
+    mean_list_per_dim = []
+    cov_list_per_dim = []
+    for i in range(obs_dim):
+        # dim_samples = np.random.multivariate_normal(cond_mean[b, i], cond_cov[b, i],
+        #                                             size=num_draw_per_rv).T  # (num_pred, num_draw_per_rv)
+        dim_distrs = torch.distributions.MultivariateNormal(cond_mean[:, i, :], cond_cov[:, i, :, :])
+        dim_samples = dim_distrs.sample((num_draw_per_rv,)).T  # (num_pred, num_draw_per_rv)
+        assert dim_samples.shape == (num_pred, num_draw_per_rv)
+        cond_samples[:, i] = dim_samples
+        mean_list_per_dim.append(cond_mean[:, i, :])
+        cov_list_per_dim.append(cond_cov[:, i, :, :])
+    torch_mean_list = torch.stack(mean_list_per_dim, dim=-1)  # (num_pred, obs_dim)
+    torch_cov_list = torch.stack(cov_list_per_dim, dim=-1)  # (num_pred, num_pred, obs_dim)
+    ###
+
+    breakpoint()
+    check_mean = torch_mean_list.cpu().numpy()
+    check_cov = torch_cov_list.cpu().numpy()
+
+
+
 
     out_samples = cond_samples.transpose(0, 2, 3,
                                          1)  # (num_samples, num_pred, num_draw_per_rv, obs_dim)
@@ -151,7 +192,7 @@ class joint_horizon_distribution_wrapper():
         self.updated_model_device = False
 
         # check the dimensions of error_corr_mat
-        self.error_corr_mat = np.load(error_corr_mat_path)
+        self.error_corr_mat = torch.from_numpy(np.load(error_corr_mat_path))
         ### temp code for testing
         if len(self.error_corr_mat.shape) == 2:
             dim_1, dim_2 = self.error_corr_mat.shape
@@ -177,7 +218,7 @@ class joint_horizon_distribution_wrapper():
         self.recal_constants = None
         self.apply_recal = False
         if recal_constants_path is not None:
-            recal_constants = np.load(recal_constants_path)
+            recal_constants = torch.from_numpy(np.load(recal_constants_path))
             self.set_recalibration(recal_constants)
         # NOTE: apply self.recal_constants[h_idx] to predictions made for time=(h_idx+1)
         # -> apply recal_constants[h_idx] when predicting AT time=(h_idx)
@@ -203,8 +244,17 @@ class joint_horizon_distribution_wrapper():
            mixture model and handle accordingly.
         """
         if len(info['mean_predictions'].shape) == 2:
-            return info['mean_predictions'], info['std_predictions']
-        means, stds = torch.from_numpy(info['mean_predictions']), torch.from_numpy(info['std_predictions'])
+            if isinstance(info['mean_predictions'], np.ndarray):
+                return (torch.from_numpy(info['mean_predictions']).to(self.model_device),
+                        torch.from_numpy(info['std_predictions']).to(self.model_device))
+            return (info['mean_predictions'].to(self.model_device),
+                    info['std_predictions'].to(self.model_device))
+        if isinstance(info['mean_predictions'], np.ndarray):
+            means, stds = (torch.from_numpy(info['mean_predictions']).to(self.model_device),
+                           torch.from_numpy(info['std_predictions']).to(self.model_device))
+        else:
+            means, stds = (info['mean_predictions'].to(self.model_device),
+                           info['std_predictions'].to(self.model_device))
         members = len(means)
         mean_out = torch.mean(means, dim=0)
         mean_var = torch.mean(stds.pow(2), dim=0)
@@ -219,6 +269,9 @@ class joint_horizon_distribution_wrapper():
     def predict(self, model_input, **kwargs):
         if not self.updated_model_device:
             self.model_device = getattr(self.wrapped_model.normalizer, '1_scaling').device
+            self.error_corr_mat = self.error_corr_mat.to(self.model_device)
+            if self.apply_recal:
+                self.recal_constants = self.recal_constants.to(self.model_device)
             self.updated_model_device = True
 
         assert self.wrapped_model is not None, "self.wrapped_model must be set before calling predict"
@@ -244,23 +297,26 @@ class joint_horizon_distribution_wrapper():
         temp_pred, pred_info = self.wrapped_model.predict(model_input, **kwargs)
         obs_delta_mean_preds, std_preds = self._handle_mixture_model(pred_info)
         # these are actually NORMALIZED mean and std
+        # both torch tensors and on device
         ### END: new code block
 
         if self.h_idx == 0:
-            gamma = torch.from_numpy(np.random.normal(size=(batch_size, self.obs_dim)))
+            # gamma = torch.from_numpy(np.random.normal(size=(batch_size, self.obs_dim)))
+            gamma = torch.randn(batch_size, self.obs_dim, device=self.model_device)
         else:
-            hist_obs = np.stack(self.observed_gamma,
-                                axis=1)  # should be (batch_size, h_idx, obs_dim)
+            # hist_obs = np.stack(self.observed_gamma, axis=1)
+            hist_obs = torch.stack(self.observed_gamma, dim=1).to(self.model_device)
+            # should be (batch_size, h_idx, obs_dim)
             batch_size = hist_obs.shape[0]
             assert hist_obs.shape[1:] == (self.h_idx, self.obs_dim)
 
             gamma, _ = batch_conditional_sampling_with_joint_correlation(
                 corr_mat=self.error_corr_mat[1:, 1:],
                 hist_obs=hist_obs,
-                hist_means=np.zeros((batch_size, self.h_idx, self.obs_dim)),
-                hist_stds=np.ones((batch_size, self.h_idx, self.obs_dim)),
-                pred_means=np.zeros((batch_size, 1, self.obs_dim)),
-                pred_stds=np.ones((batch_size, 1, self.obs_dim)),
+                hist_means=torch.zeros((batch_size, self.h_idx, self.obs_dim), device=self.model_device),
+                hist_stds=torch.ones((batch_size, self.h_idx, self.obs_dim), device=self.model_device),
+                pred_means=torch.zeros((batch_size, 1, self.obs_dim), device=self.model_device),
+                pred_stds=torch.ones((batch_size, 1, self.obs_dim), device=self.model_device),
                 num_draw_per_rv=1
             )
             gamma = torch.from_numpy(gamma[:, 0, 0, :])

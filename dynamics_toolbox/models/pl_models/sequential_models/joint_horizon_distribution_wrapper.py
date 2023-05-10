@@ -147,6 +147,8 @@ class joint_horizon_distribution_wrapper():
         self.wrapped_model = wrapped_model
         self.input_dim = wrapped_model.input_dim
         self.output_dim = wrapped_model.output_dim
+        self.model_device = None
+        self.updated_model_device = False
 
         # check the dimensions of error_corr_mat
         self.error_corr_mat = np.load(error_corr_mat_path)
@@ -154,11 +156,12 @@ class joint_horizon_distribution_wrapper():
         if len(self.error_corr_mat.shape) == 2:
             dim_1, dim_2 = self.error_corr_mat.shape
             assert dim_1 == dim_2, "error_corr_mat must be (horizon, horizon) or (horizon, horizon, dim)"
-            self.error_corr_mat = np.tile(self.error_corr_mat, (1, 1, self.output_dim))
+            self.error_corr_mat = np.tile(self.error_corr_mat[..., None], (1, 1, self.output_dim))
+            print(self.error_corr_mat.shape)
         ###
         assert (len(self.error_corr_mat.shape) == 3,
                 "error_corr_mat must be (horizon, horizon, dim)")
-        assert self.error_corr_materror_corr_mat.shape[0] == self.error_corr_mat.shape[
+        assert self.error_corr_mat.shape[0] == self.error_corr_mat.shape[
             1], "error_corr_mat must be (horizon, horizon, dim)"
         self.max_horizon, _, self.obs_dim = self.error_corr_mat.shape
         assert self.obs_dim == self.output_dim, "output_dim of model must match obs_dim"
@@ -201,7 +204,7 @@ class joint_horizon_distribution_wrapper():
         """
         if len(info['mean_predictions'].shape) == 2:
             return info['mean_predictions'], info['std_predictions']
-        means, stds = info['mean_predictions'], info['std_predictions']
+        means, stds = torch.from_numpy(info['mean_predictions']), torch.from_numpy(info['std_predictions'])
         members = len(means)
         mean_out = torch.mean(means, dim=0)
         mean_var = torch.mean(stds.pow(2), dim=0)
@@ -214,6 +217,10 @@ class joint_horizon_distribution_wrapper():
         return mean_out, std_out
 
     def predict(self, model_input, **kwargs):
+        if not self.updated_model_device:
+            self.model_device = getattr(self.wrapped_model.normalizer, '1_scaling').device
+            self.updated_model_device = True
+
         assert self.wrapped_model is not None, "self.wrapped_model must be set before calling predict"
 
         # get shapes from model_input
@@ -234,15 +241,14 @@ class joint_horizon_distribution_wrapper():
         # ### END: original code block
 
         ### BEGIN: new code block
-        _, pred_info = self.wrapped_model.predict(model_input, **kwargs)
+        temp_pred, pred_info = self.wrapped_model.predict(model_input, **kwargs)
         obs_delta_mean_preds, std_preds = self._handle_mixture_model(pred_info)
         # these are actually NORMALIZED mean and std
         ### END: new code block
 
         if self.h_idx == 0:
-            gamma = np.random.normal(size=(batch_size, self.obs_dim))
+            gamma = torch.from_numpy(np.random.normal(size=(batch_size, self.obs_dim)))
         else:
-            # breakpoint()
             hist_obs = np.stack(self.observed_gamma,
                                 axis=1)  # should be (batch_size, h_idx, obs_dim)
             batch_size = hist_obs.shape[0]
@@ -257,17 +263,16 @@ class joint_horizon_distribution_wrapper():
                 pred_stds=np.ones((batch_size, 1, self.obs_dim)),
                 num_draw_per_rv=1
             )
-            gamma = gamma[:, 0, 0, :]
+            gamma = torch.from_numpy(gamma[:, 0, 0, :])
         assert obs_delta_mean_preds.shape == gamma.shape == std_preds.shape, "shapes of obs_delta_mean_preds, gamma, and std_preds must match"
         if self.apply_recal:
             use_std = std_preds * self.recal_constants[self.h_idx]
         else:
             use_std = std_preds
 
-        obs_delta = obs_delta_mean_preds + gamma * use_std
+        obs_delta = (obs_delta_mean_preds + gamma * use_std).to(self.model_device).float()
         ### BEGIN: new code block
-        obs_delta = self.wrapped_model._unnormalize_prediction_output(
-            torch.from_numpy(obs_delta)).numpy()
+        obs_delta = self.wrapped_model._unnormalize_prediction_output(obs_delta).cpu().numpy()
         ### END: new code block
         info = {'mean_predictions': obs_delta_mean_preds,  # this is non-normalized
                 'std_predictions': gamma * use_std}  # this is non-normalized

@@ -10,6 +10,7 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 
+from dynamics_toolbox.env_wrappers.bounders import Bounder
 from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
@@ -31,7 +32,8 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
-            unscale_penalizer: bool = True,
+            unscale_penalizer: bool = False,
+            bounder: Optional[Bounder] = None,
     ):
         """
         Constructor.
@@ -52,12 +54,14 @@ class ModelEnv(gym.Env):
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
             unscale_penalizer: Whether to use unscaled uncertainty for penalty.
+            bounder: Bounding for the states and rewards.
         """
         super().__init__()
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
+        self._bounder = bounder
         if not unscale_penalizer:
             self._std_scaling = 1
         elif (hasattr(self._dynamics, 'wrapped_model')
@@ -67,7 +71,7 @@ class ModelEnv(gym.Env):
                         '1_scaling').cpu().numpy()
         elif hasattr(self._dynamics.normalizer, '1_scaling'):
             self._std_scaling = getattr(self._dynamics.normalizer,
-                                       '1_scaling').cpu().numpy()
+                                        '1_scaling').cpu().numpy()
         else:
             self._std_scaling = 1
         self._penalty_coefficient = penalty_coefficient
@@ -135,6 +139,8 @@ class ModelEnv(gym.Env):
             [self._state.reshape(1, -1), action]))
         nxt = (model_out + self._state.reshape(1, -1) if self._model_output_are_deltas
                else model_out)
+        if self._bounder is not None:
+            nxt = self._bounder.bound_state(nxt, self._state.reshape(1, -1))
         self._t += 1
         info = {}
         rew, rew_info = self._compute_reward(self._state, action, nxt, model_info)
@@ -208,6 +214,8 @@ class ModelEnv(gym.Env):
             if self._reward_is_first_dim:
                 model_out = model_out[:, 1:]
             nxts = state + model_out if self._model_output_are_deltas else model_out
+            if self._bounder is not None:
+                nxts = self._bounder.bound_state(nxts, state)
             obs[:, h + 1, :] = nxts
             policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
@@ -339,6 +347,8 @@ class ModelEnv(gym.Env):
             if len(nxt.shape) == 1:
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
+        if self._bounder is not None:
+            rew = self._bounder.bound_reward(rew)
         if self._penalizer is not None:
             model_info['std_scaling'] = self._std_scaling
             raw_penalty = self._penalizer(model_info)

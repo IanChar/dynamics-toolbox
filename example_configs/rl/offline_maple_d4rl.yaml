@@ -28,6 +28,13 @@ train_loop:
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
+    bounder:
+        _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
+        spread_amt: 1.1
+        data:
+          _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
+          hdf5_path: 'data/d4rl/${env_name}.hdf5'
+          relative_path: True
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
     max_buffer_size: 1e6

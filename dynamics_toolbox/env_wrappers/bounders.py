@@ -56,7 +56,7 @@ class Bounder:
         if prev is not None:
             clipped = np.clip(
                 clipped,
-                prev - self._vel_lower,
+                prev + self._vel_lower,
                 prev + self._vel_upper,
             )
         return clipped

@@ -50,7 +50,7 @@ class ForwardDynamicsDataModule(LightningDataModule):
         if qset is None:
             qset = get_data_from_source(data_source)
         if 'terminals' in qset and account_for_d4rl_bug:
-            valid_idxs = np.argwhere(qset['terminals'] - 1)
+            valid_idxs = np.argwhere(qset['terminals'] - 1).flatten()
             qset = {k: v[valid_idxs] for k, v in qset.items()}
         self._xdata = np.hstack([qset['observations'], qset['actions']])
         if learn_rewards:

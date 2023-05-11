@@ -55,7 +55,7 @@ class SequentialRlDataModule(LightningDataModule):
         super().__init__()
         qset = get_data_from_source(data_source)
         if 'terminals' in qset and account_for_d4rl_bug:
-            valid_idxs = np.argwhere(qset['terminals'] - 1)
+            valid_idxs = np.argwhere(qset['terminals'] - 1).flatten()
             qset = {k: v[valid_idxs] for k, v in qset.items()}
         self._snippets = parse_into_snippet_datasets(
             qset,

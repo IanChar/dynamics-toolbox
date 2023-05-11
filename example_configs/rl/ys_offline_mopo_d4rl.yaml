@@ -17,7 +17,7 @@ train_loop:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
     dynamics_model:
       _target_: dynamics_toolbox.models.pl_models.sequential_models.joint_horizon_distribution_wrapper.joint_horizon_distribution_wrapper
-      error_corr_mat_path: ...
+      error_corr_mat_path: '/zfsauton2/home/youngsec/research/uq/timeseries_calibration/dynamics-toolbox/data/eye_100.npy'
       wrapped_model:
         _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
         parent_dir: 'trained_models/d4rl/${env_name}/${seed}'

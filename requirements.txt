@@ -7,5 +7,5 @@ torchmetrics==0.6.0
 gym
 tqdm
 matplotlib
-sklearn
+scikit-learn
 scipy

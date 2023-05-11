@@ -77,7 +77,7 @@ class Bounder:
         return reward
 
     @classmethod
-    def bounds_from_dataset(
+    def bound_from_dataset(
         cls,
         data: Dict[str, np.ndarray],
         spread_amt: float,
@@ -100,8 +100,8 @@ class Bounder:
                 bogus when terminals are present.
         """
         if bound_state:
-            state_mins = np.min(data['observations'], axis=-1)
-            state_maxs = np.max(data['observations'], axis=-1)
+            state_mins = np.min(data['observations'], axis=0)
+            state_maxs = np.max(data['observations'], axis=0)
             spread = state_maxs - state_mins
             midpt = (state_maxs + state_mins) / 2
             state_lows = midpt - spread / 2 * spread_amt
@@ -115,8 +115,8 @@ class Bounder:
                         - data['observations'][valid_idxs])
             else:
                 vels = data['next_observations'] - data['observations']
-            vel_mins = np.min(vels, axis=-1)
-            vel_maxs = np.max(vels, axis=-1)
+            vel_mins = np.min(vels, axis=0)
+            vel_maxs = np.max(vels, axis=0)
             spread = vel_maxs - vel_mins
             midpt = (vel_maxs + vel_mins) / 2
             vel_lows = midpt - spread / 2 * spread_amt
@@ -124,8 +124,8 @@ class Bounder:
         else:
             vel_lows, vel_highs = None, None
         if bound_reward:
-            rew_mins = np.min(data['rewards'], axis=-1)
-            rew_maxs = np.max(data['rewards'], axis=-1)
+            rew_mins = np.min(data['rewards'], axis=0)
+            rew_maxs = np.max(data['rewards'], axis=0)
             spread = rew_maxs - rew_mins
             midpt = (rew_maxs + rew_mins) / 2
             rew_lows = midpt - spread / 2 * spread_amt

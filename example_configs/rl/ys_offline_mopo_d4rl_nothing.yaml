@@ -19,8 +19,8 @@ train_loop:
     dynamics_model:
       _target_: dynamics_toolbox.models.pl_models.sequential_models.joint_horizon_distribution_wrapper.joint_horizon_distribution_wrapper
       error_corr_mat_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_corr_mat.npy'
-      recal_constants_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_recal_ratios.npy'
-      do_not_apply_corr: False
+      # recal_constants_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_recal_ratios.npy'
+      do_not_apply_corr: True
       wrapped_model:
         _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
         parent_dir: 'trained_models/d4rl/${env_name}/${seed}'

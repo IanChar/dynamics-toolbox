@@ -15,14 +15,17 @@ train_loop:
   batch_size: 256
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
+    unscale_penalizer: True
     dynamics_model:
       _target_: dynamics_toolbox.models.pl_models.sequential_models.joint_horizon_distribution_wrapper.joint_horizon_distribution_wrapper
-      error_corr_mat_path: ...
+      error_corr_mat_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_corr_mat.npy'
+      recal_constants_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_recal_ratios.npy'
+      do_not_apply_corr: False
       wrapped_model:
         _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
         parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
         sample_mode: 'sample_member_every_step'
-        load_n_best_models: 5
+        # load_n_best_models: 5
     penalizer:
       _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
       pen_name: 'std'
@@ -30,6 +33,13 @@ train_loop:
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
+    bounder:
+        _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
+        spread_amt: 3
+        data:
+          _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
+          hdf5_path: 'data/d4rl/${env_name}.hdf5'
+          relative_path: True
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
     max_buffer_size: 1e6

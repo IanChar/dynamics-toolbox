@@ -59,13 +59,19 @@ class ForwardDynamicsDataModule(LightningDataModule):
         else:
             self._ydata = qset['next_observations'] - qset['observations']
         self._learn_rewards = learn_rewards
-        self._val_proportion = val_proportion
-        self._test_proportion = test_proportion
         self._batch_size = batch_size
         self._num_workers = num_workers
         self._pin_memory = pin_memory
         self._seed = seed
         data_size = len(self._xdata)
+        if val_proportion > 1:
+            self._val_proportion = val_proportion / data_size
+        else:
+            self._val_proportion = val_proportion
+        if test_proportion > 1:
+            self._test_proportion = test_proportion / data_size
+        else:
+            self._test_proportion = test_proportion
         self._num_val = int(data_size * val_proportion)
         self._num_te = int(data_size * test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te

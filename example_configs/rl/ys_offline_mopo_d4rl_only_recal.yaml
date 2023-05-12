@@ -1,7 +1,6 @@
 name: ???
 env_name: ???
 seed: 0
-cuda_device: null
 env:
   _target_: gym.make
   id: ${env_name}
@@ -18,10 +17,15 @@ train_loop:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
     unscale_penalizer: True
     dynamics_model:
-      _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
-      sample_mode: 'sample_member_every_step'
-      load_n_best_models: 5
+      _target_: dynamics_toolbox.models.pl_models.sequential_models.joint_horizon_distribution_wrapper.joint_horizon_distribution_wrapper
+      error_corr_mat_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_corr_mat.npy'
+      recal_constants_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_recal_ratios.npy'
+      do_not_apply_corr: True
+      wrapped_model:
+        _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
+        parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+        sample_mode: 'sample_member_every_step'
+        # load_n_best_models: 5
     penalizer:
       _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
       pen_name: 'std'
@@ -51,7 +55,6 @@ algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sac.SAC
   discount: 0.99
   learning_rate: 3e-4
-  target_entropy: -3
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True
@@ -68,4 +71,4 @@ algorithm:
       - 256
 hydra:
   run:
-    dir: logs/mopo_baselines/${name}/${seed}
+    dir: logs/${name}/${seed}

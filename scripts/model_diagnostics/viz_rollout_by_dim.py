@@ -163,6 +163,8 @@ for pnum in range(len(preds)):
         if args.show_dataset_max:
             ax.axhline(mins[didx], ls=':', color='black')
             ax.axhline(maxs[didx], ls=':', color='black')
+            spread = maxs[didx] - mins[didx]
+            ax.set_ylim([mins[didx] - spread * 0.1, maxs[didx] + spread * 0.1])
         ax.plot(tsteps, np.mean(preds[pnum, :, :, didx], axis=0), color='cyan',
                 alpha=0.8)
         ax.plot(tsteps, obs[pnum, :, didx], ls='--', color='red')

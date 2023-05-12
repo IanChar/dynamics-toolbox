@@ -42,6 +42,7 @@ algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sac.SAC
   discount: 0.99
   learning_rate: 3e-4
+  target_entropy: -3
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True

@@ -188,7 +188,7 @@ def batch_conditional_sampling_with_joint_correlation(
 
 
 class joint_horizon_distribution_wrapper():
-    def __init__(self, wrapped_model, error_corr_mat_path, recal_constants_path=None):
+    def __init__(self, wrapped_model, error_corr_mat_path, recal_constants_path=None, do_not_apply_corr=False):
 
         # attributes to get from wrapped_model
         self.wrapped_model = wrapped_model
@@ -199,6 +199,7 @@ class joint_horizon_distribution_wrapper():
 
         # check the dimensions of error_corr_mat
         self.error_corr_mat = torch.from_numpy(np.load(error_corr_mat_path))
+        self.do_not_apply_corr = do_not_apply_corr
         ### temp code for testing
         if len(self.error_corr_mat.shape) == 2:
             dim_1, dim_2 = self.error_corr_mat.shape
@@ -275,7 +276,7 @@ class joint_horizon_distribution_wrapper():
     def predict(self, model_input, **kwargs):
         if not self.updated_model_device:
             self.model_device = getattr(self.wrapped_model.normalizer, '1_scaling').device
-            self.error_corr_mat = torch.from_numpy(self.error_corr_mat).to(self.model_device)
+            self.error_corr_mat = self.error_corr_mat.to(self.model_device)
             if self.apply_recal:
                 self.recal_constants = self.recal_constants.to(self.model_device)
             self.updated_model_device = True
@@ -301,6 +302,9 @@ class joint_horizon_distribution_wrapper():
 
         ### BEGIN: new code block
         temp_pred, pred_info = self.wrapped_model.predict(model_input, **kwargs)
+        if self.do_not_apply_corr:
+            return temp_pred, pred_info
+
         obs_delta_mean_preds, std_preds = self._handle_mixture_model(pred_info)
         # these are actually NORMALIZED mean and std
         # both torch tensors and on device

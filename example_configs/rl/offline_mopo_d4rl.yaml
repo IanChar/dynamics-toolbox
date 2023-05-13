@@ -1,6 +1,7 @@
 name: ???
 env_name: ???
 seed: 0
+cuda_device: null
 env:
   _target_: gym.make
   id: ${env_name}
@@ -15,7 +16,7 @@ train_loop:
   batch_size: 256
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
-    unscale_penalizer: False
+    unscale_penalizer: True
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
       parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
@@ -30,7 +31,7 @@ train_loop:
       env_name: ${env_name}
     bounder:
         _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-        spread_amt: 1.1
+        spread_amt: 3
         data:
           _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
           hdf5_path: 'data/d4rl/${env_name}.hdf5'
@@ -68,4 +69,4 @@ algorithm:
       - 256
 hydra:
   run:
-    dir: logs/${name}/${seed}
+    dir: logs/mopo_baselines/${name}/${seed}

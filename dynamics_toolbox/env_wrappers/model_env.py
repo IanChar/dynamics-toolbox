@@ -144,8 +144,8 @@ class ModelEnv(gym.Env):
         self._t += 1
         info = {}
         rew, rew_info = self._compute_reward(self._state, action, nxt, model_info)
-        if 'raw_penalty' in rew_info:
-            info['raw_penalty'] = float(rew_info['raw_penalty'])
+        if 'penalty' in rew_info:
+            info['penalty'] = float(rew_info['penalty'])
         # Compute terminal
         if self._terminal_function is not None:
             done = self._terminal_function(nxt)[0]
@@ -223,7 +223,7 @@ class ModelEnv(gym.Env):
             if self._terminal_function is None:
                 terms[:, h] = np.full(terms[:, h].shape, False)
             else:
-                terms[:, h] = self._terminal_function(nxts)
+                terms[:, h] = self._terminal_function(nxts).reshape(-1, 1)
                 if np.sum(terms[:, h]) > 0:
                     term_idxs = np.argwhere(terms[:, h].flatten())
                     masks[term_idxs, h + 1:] = 0
@@ -350,9 +350,10 @@ class ModelEnv(gym.Env):
             rew = self._reward_function(state, action, nxt)
         if self._bounder is not None:
             rew = self._bounder.bound_reward(rew)
+        info['raw_reward'] = rew
         if self._penalizer is not None:
             model_info['std_scaling'] = self._std_scaling
-            raw_penalty = self._penalizer(model_info)
-            rew -= self._penalty_coefficient * raw_penalty
-            info['raw_penalty'] = raw_penalty
+            penalty = self._penalizer(model_info)
+            rew -= self._penalty_coefficient * penalty
+            info['penalty'] = penalty
         return rew, info

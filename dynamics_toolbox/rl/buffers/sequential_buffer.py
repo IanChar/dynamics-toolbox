@@ -28,6 +28,7 @@ class SequentialReplayBuffer(ReplayBuffer):
         act_dim: int,
         max_buffer_size: int,
         lookback: int,
+        clear_every_n_epochs: int = -1,
     ):
         """
         Constructor.
@@ -37,11 +38,15 @@ class SequentialReplayBuffer(ReplayBuffer):
             act_dim: Dimension of the action space.
             max_buffer_size: The maximum buffer size.
             lookback: How big the lookback should be.
+            clear_every_n_epochs: Whether to clear the buffer after every epoch.
         """
         self._obs_dim = obs_dim
         self._act_dim = act_dim
         self._max_size = int(max_buffer_size)
         self._lookback = lookback
+        self._clear_every_n_epochs = clear_every_n_epochs
+        self._countdown_to_clear = (float('inf') if clear_every_n_epochs < 1
+                                    else clear_every_n_epochs)
         self.clear_buffer()
 
     def clear_buffer(self):
@@ -194,6 +199,12 @@ class SequentialReplayBuffer(ReplayBuffer):
         """Conver the current buffer to a forward dynamics module.."""
         raise NotImplementedError('TODO')
 
+    def end_epoch(self):
+        self._countdown_to_clear -= 1
+        if self._countdown_to_clear <= 0:
+            self.clear_buffer()
+            self._countdown_to_clear = self._clear_every_n_epochs
+
 
 class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
 
@@ -218,6 +229,8 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
         data['rewards'] = data['rewards'].reshape(-1, 1)
         data['terminals'] = data['terminals'].reshape(-1, 1)
         paths = parse_into_trajectories(data)
+        self._clear_every_n_epochs = float('inf')
+        self._countdown_to_clear = float('inf')
         for path in paths:
             path['observations'] = np.concatenate([
                 path['observations'],

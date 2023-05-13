@@ -209,7 +209,9 @@ class ModelEnv(gym.Env):
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
-            rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
+            curr_rew, rew_info = self._compute_reward(state, act, model_out, infos)
+            rews[:, h] = curr_rew
+            infos.update(rew_info)
             all_infos.append(infos)
             if self._reward_is_first_dim:
                 model_out = model_out[:, 1:]
@@ -221,8 +223,7 @@ class ModelEnv(gym.Env):
             if self._terminal_function is None:
                 terms[:, h] = np.full(terms[:, h].shape, False)
             else:
-                terms[:, h] = np.array([self._terminal_function(nxt)
-                                        for nxt in nxts])
+                terms[:, h] = self._terminal_function(nxts)
                 if np.sum(terms[:, h]) > 0:
                     term_idxs = np.argwhere(terms[:, h].flatten())
                     masks[term_idxs, h + 1:] = 0

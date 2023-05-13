@@ -1,5 +1,5 @@
 name: ???
-save_path: "trained_models/d4rl_v0"
+save_path: "trained_models/d4rl_v2"
 data_source: "data/d4rl_datasets/${name}.hdf5"
 seed: 1
 logger: tensorboard
@@ -29,10 +29,10 @@ model:
     weight_decay: 5e-5
 trainer:
     gpus: 1
-    max_epochs: 2000
+    max_epochs: 5000
 early_stopping:
-    patience: 100
-    min_delta: 0.0
+    patience: 5
+    min_delta: 0.001
 data_module:
     _target_: dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module.ForwardDynamicsDataModule
     batch_size: 256

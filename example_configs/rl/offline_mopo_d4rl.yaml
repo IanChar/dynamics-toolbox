@@ -38,6 +38,7 @@ train_loop:
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
     max_buffer_size: 1e6
+    clear_every_n_epochs: 5
   env_buffer:
     _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleOfflineReplayBuffer
     data:

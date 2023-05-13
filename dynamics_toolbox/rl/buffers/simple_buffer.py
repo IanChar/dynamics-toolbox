@@ -21,7 +21,7 @@ class SimpleReplayBuffer(ReplayBuffer):
         obs_dim: int,
         act_dim: int,
         max_buffer_size: int,
-        clear_every_epoch: bool = False,
+        clear_every_n_epochs: int = -1,
     ):
         """Constructor.
 
@@ -29,13 +29,15 @@ class SimpleReplayBuffer(ReplayBuffer):
             obs_dim: Dimension of the observation space.
             act_dim: Dimension of the action space.
             max_buffer_size: The maximum buffer size.
-            clear_every_epoch: Whether to clear the buffer after every epoch.
+            clear_every_n_epoch: Whether to clear the buffer after every epoch.
         """
         self._obs_dim = obs_dim
         self._act_dim = act_dim
         max_buffer_size = int(max_buffer_size)
         self._max_size = max_buffer_size
-        self._clear_every_epoch = clear_every_epoch
+        self._clear_every_epoch = clear_every_n_epochs
+        self._countdown_to_clear = (float('inf') if clear_every_n_epochs < 1
+                                    else clear_every_n_epochs)
         self.clear_buffer()
 
     def clear_buffer(self):
@@ -185,8 +187,10 @@ class SimpleReplayBuffer(ReplayBuffer):
         )
 
     def end_epoch(self):
-        if self._clear_every_epoch:
+        self._countdown_to_clear -= 1
+        if self._countdown_to_clear <= 0:
             self.clear_buffer()
+            self._countdown_to_clear = self._clear_epoch_every
 
 
 class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
@@ -210,4 +214,5 @@ class SimpleOfflineReplayBuffer(SimpleReplayBuffer):
         self._ptr = 0
         self._size = max_buffer_size
         self._max_size = max_buffer_size
-        self._clear_every_epoch = False
+        self._clear_every_n_epochs = float('inf')
+        self._countdown_to_clear = float('inf')

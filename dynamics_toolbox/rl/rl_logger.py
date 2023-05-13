@@ -100,12 +100,13 @@ class RLLogger:
         if self._summary_writer is not None:
             if returns_mean is not None:
                 self._summary_writer.add_scalar('Eval/returns_mean', returns_mean,
-                                                num_steps)
+                                                epoch)
             if returns_std is not None:
                 self._summary_writer.add_scalar('Eval/returns_std', returns_std,
-                                                num_steps)
+                                                epoch)
             for k, v in stats.items():
-                self._summary_writer.add_scalar(k, v, num_steps)
+                self._summary_writer.add_scalar(k, v, epoch)
+            self._summary_writer.add_scalar('Num Steps', num_steps, epoch)
         # Possibly checkpoint policy.
         if (self.checkpoint_policy_every is not None
                 and (epoch % self.checkpoint_policy_every) == 0):

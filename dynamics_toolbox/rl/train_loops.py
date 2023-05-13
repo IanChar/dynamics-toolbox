@@ -102,10 +102,19 @@ def batch_online_rl_training(
             )
         else:
             ret_mean, ret_std = None, None
+        stats_to_log = {}
+        stats_to_log.update({f'{k}/mean': np.mean([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/std': np.std([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/min': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/max': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,
-            stats={k: np.mean([d[k] for d in all_stats]) for k in all_stats[0].keys()},
+            stats=stats_to_log,
             returns_mean=ret_mean,
             returns_std=ret_std,
             policy=algorithm.policy,
@@ -199,10 +208,25 @@ def offline_mbrl_training(
             )
         else:
             ret_mean, ret_std = None, None
+        stats_to_log = {}
+        for prefix, ld in (('', all_stats), ('rollouts/', paths['info'])):
+            stats_to_log.update({f'{prefix}{k}/mean': np.mean([d[k] for d in ld])
+                                 for k in ld[0].keys()})
+            stats_to_log.update({f'{prefix}{k}/std': np.std([d[k] for d in ld])
+                                 for k in ld[0].keys()})
+            stats_to_log.update({f'{prefix}{k}/min': np.min([d[k] for d in ld])
+                                 for k in ld[0].keys()})
+            stats_to_log.update({f'{prefix}{k}/max': np.min([d[k] for d in ld])
+                                 for k in ld[0].keys()})
+        path_lengths = np.sum(paths['masks'], axis=-1)
+        stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)
+        stats_to_log['rollouts/path_length/std'] = np.std(path_lengths)
+        stats_to_log['rollouts/path_length/min'] = np.min(path_lengths)
+        stats_to_log['rollouts/path_length/max'] = np.max(path_lengths)
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,
-            stats={k: np.mean([d[k] for d in all_stats]) for k in all_stats[0].keys()},
+            stats=stats_to_log,
             returns_mean=ret_mean,
             returns_std=ret_std,
             policy=algorithm.policy,

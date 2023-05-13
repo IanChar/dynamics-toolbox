@@ -53,7 +53,7 @@ class Bounder:
         clipped = state
         if self._state_lower is not None and self._state_upper is not None:
             clipped = np.clip(state, self._state_lower, self._state_upper)
-        if (prev is not None and self._vel_lower is not None 
+        if (prev is not None and self._vel_lower is not None
                 and self._vel_upper is not None):
             clipped = np.clip(
                 clipped,

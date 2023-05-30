@@ -110,8 +110,12 @@ def evaluate_policy_in_gym(
     Returns: Average and standard deviation of score across episodes.
     """
     policy.deterministic = True
+    if hasattr(env, 'eval'):
+        env.eval()
     scores = [np.sum(gym_rollout_from_policy(env, policy, horizon)['rewards'])
               for _ in range(num_eps)]
+    if hasattr(env, 'eval'):
+        env.eval(False)
     return np.mean(scores), np.std(scores)
 
 

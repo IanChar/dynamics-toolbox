@@ -19,7 +19,7 @@ train_loop:
     unscale_penalizer: True
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+      parent_dir: 'trained_models/d4rl_v2/${env_name}/${seed}'
       sample_mode: 'sample_member_every_step'
       load_n_best_models: 5
     penalizer:
@@ -31,7 +31,7 @@ train_loop:
       env_name: ${env_name}
     bounder:
         _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-        spread_amt: 3
+        spread_amt: 10
         data:
           _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
           hdf5_path: 'data/d4rl/${env_name}.hdf5'

@@ -21,7 +21,7 @@ train_loop:
     unscale_penalizer: True
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+      parent_dir: 'trained_models/d4rl_v2/${env_name}/${seed}'
       sample_mode: 'sample_member_every_trajectory'
       load_n_best_models: 14
     penalizer:
@@ -33,7 +33,7 @@ train_loop:
       env_name: ${env_name}
     bounder:
         _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-        spread_amt: 3
+        spread_amt: 5
         data:
           _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
           hdf5_path: 'data/d4rl/${env_name}.hdf5'
@@ -42,6 +42,7 @@ train_loop:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
     max_buffer_size: 1e6
     lookback: ${history_size}
+    clear_every_n_epochs: 5
   env_buffer:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialOfflineReplayBuffer
     data:
@@ -55,6 +56,7 @@ algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
   discount: 0.99
   learning_rate: 3e-4
+  target_entropy: -3
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True

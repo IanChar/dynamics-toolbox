@@ -72,8 +72,8 @@ class ForwardDynamicsDataModule(LightningDataModule):
             self._test_proportion = test_proportion / data_size
         else:
             self._test_proportion = test_proportion
-        self._num_val = int(data_size * val_proportion)
-        self._num_te = int(data_size * test_proportion)
+        self._num_val = int(data_size * self._val_proportion)
+        self._num_te = int(data_size * self._test_proportion)
         self._num_tr = data_size - self._num_val - self._num_te
         self._tr_dataset, self._val_dataset, self._te_dataset = random_split(
             TensorDataset(torch.Tensor(self._xdata), torch.Tensor(self._ydata)),

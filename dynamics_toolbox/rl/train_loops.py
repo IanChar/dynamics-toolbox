@@ -209,15 +209,17 @@ def offline_mbrl_training(
         else:
             ret_mean, ret_std = None, None
         stats_to_log = {}
-        for prefix, ld in (('', all_stats), ('rollouts/', paths['info'])):
+        for prefix, ld, keys2add in (
+                ('', all_stats, list(all_stats[0].keys())),
+                ('rollouts/', paths['info'], ['penalty', 'raw_reward'])):
             stats_to_log.update({f'{prefix}{k}/mean': np.mean([d[k] for d in ld])
-                                 for k in ld[0].keys()})
+                                 for k in keys2add})
             stats_to_log.update({f'{prefix}{k}/std': np.std([d[k] for d in ld])
-                                 for k in ld[0].keys()})
+                                 for k in keys2add})
             stats_to_log.update({f'{prefix}{k}/min': np.min([d[k] for d in ld])
-                                 for k in ld[0].keys()})
+                                 for k in keys2add})
             stats_to_log.update({f'{prefix}{k}/max': np.min([d[k] for d in ld])
-                                 for k in ld[0].keys()})
+                                 for k in keys2add})
         path_lengths = np.sum(paths['masks'], axis=-1)
         stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)
         stats_to_log['rollouts/path_length/std'] = np.std(path_lengths)

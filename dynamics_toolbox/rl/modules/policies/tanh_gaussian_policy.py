@@ -248,7 +248,7 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             logprobs = dm.ones(len(actions))
         self._act_history = torch.cat([self._act_history, actions.unsqueeze(1)],
                                       dim=1)
-        return dm.get_numpy(actions.squeeze()), dm.get_numpy(logprobs.squeeze())
+        return dm.get_numpy(actions.squeeze(0)), dm.get_numpy(logprobs.squeeze())
 
     def get_reward_feedback(self, rewards: Union[float, np.ndarray]):
         """Get feedback from the environment about the last reward.

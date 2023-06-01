@@ -1,3 +1,3 @@
 # Settings for pytorch lightning early stopping.
-patience: 250
+patience: 100
 min_delta: 0.0

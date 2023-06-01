@@ -13,4 +13,4 @@ hydra:
     job:
         name: ${name}
     run:
-        dir: trained_models/${name}
+        dir: trained_models/${name}/${seed}

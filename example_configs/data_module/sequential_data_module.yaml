@@ -1,5 +1,5 @@
 _target_: dynamics_toolbox.data.pl_data_modules.sequential_data_module.SequentialDataModule
-batch_size: 64
+batch_size: 128
 learn_rewards: True
 val_proportion: 0.1
 test_proportion: 0.1

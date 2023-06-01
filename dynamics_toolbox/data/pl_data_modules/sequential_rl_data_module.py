@@ -29,6 +29,7 @@ class SequentialRlDataModule(LightningDataModule):
             pin_memory: bool = True,
             seed: int = 1,
             allow_padding: bool = True,
+            account_for_d4rl_bug: bool = True,
             **kwargs,
     ):
         """Constructor.
@@ -47,9 +48,15 @@ class SequentialRlDataModule(LightningDataModule):
             seed: The seed.
             allow_padding: Whether to allow padding of 0s if trajectory length is
                 smaller than snippet_size.
+            account_for_d4rl_bug: It turns out d4rl does not log next_observations
+                correctly if at a terminal state, so if you are using d4rl datasets
+                (specifically walker or hopper) make sure this is True.
         """
         super().__init__()
         qset = get_data_from_source(data_source)
+        if 'terminals' in qset and account_for_d4rl_bug:
+            valid_idxs = np.argwhere(qset['terminals'] - 1).flatten()
+            qset = {k: v[valid_idxs] for k, v in qset.items()}
         self._snippets = parse_into_snippet_datasets(
             qset,
             snippet_size=snippet_size,

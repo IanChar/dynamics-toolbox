@@ -4,6 +4,7 @@ Main file to use for training dynamics models.
 Author: Ian Char
 """
 import os
+import pickle as pkl
 
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -17,6 +18,8 @@ from dynamics_toolbox.utils.lightning.constructors import\
 @hydra.main(config_path='./example_configs', config_name='example_rnn')
 def train(cfg: DictConfig) -> None:
     """Train the model."""
+    import torch
+    torch.autograd.set_detect_anomaly(True)
     if cfg.get('debug', False):
         breakpoint()
     if 'model' not in cfg:
@@ -48,8 +51,14 @@ def train(cfg: DictConfig) -> None:
         del logger_hparams['dim_name_map']
     logger.log_hyperparams(logger_hparams)
     trainer.fit(model, data)
+    if data.val_dataloader() is not None:
+        val_dict = trainer.validate(model, datamodule=data)
+        with open('val_eval_stats.pkl', 'wb') as f:
+            pkl.dump(val_dict, f)
     if data.test_dataloader() is not None:
         test_dict = trainer.test(model, datamodule=data)[0]
+        with open('test_eval_stats.pkl', 'wb') as f:
+            pkl.dump(test_dict, f)
         tune_metric = cfg.get('tune_metric', 'test/loss')
         return_val = test_dict[tune_metric]
         if cfg.get('tune_objective', 'minimize') == 'maximize':
@@ -61,4 +70,3 @@ def train(cfg: DictConfig) -> None:
 
 if __name__ == '__main__':
     train()
-

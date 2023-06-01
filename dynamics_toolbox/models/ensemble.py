@@ -3,9 +3,11 @@ A dynamics model that is an ensemble of other dynamics models.
 
 Author: Ian Char
 """
+from collections import defaultdict
 from typing import Sequence, Tuple, Dict, Any, Optional, List
 
 import numpy as np
+import torch
 
 from dynamics_toolbox.models.abstract_model import AbstractModel
 from dynamics_toolbox.constants import sampling_modes
@@ -65,13 +67,15 @@ class Ensemble(AbstractModel):
         Returns:
             The output of the model and give a dictionary of related quantities.
         """
-        info_dict = {}
+        info_dict = defaultdict(list)
         nxts = []
         for member_idx, member in enumerate(self.members):
             nxt, info = member.predict(model_input)
             nxts.append(nxt)
-            info_dict[f'member_{member_idx}'] = info
+            for k, v in info.items():
+                info_dict[k].append(v)
         nxts = np.array(nxts)
+        info_dict = {k: np.array(v) for k, v in info_dict.items()}
         num_membs = len(self.members)
         if self._sample_mode == sampling_modes.RETURN_MEAN:
             return np.mean(nxts, axis=0), info_dict
@@ -106,6 +110,77 @@ class Ensemble(AbstractModel):
                 ensemble_idxs = [self._curr_sample[0] for _ in range(len(model_input))]
             return nxts[ensemble_idxs, np.arange(len(model_input))], info_dict
 
+    def single_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output for a single sample in the model.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
+            self.reset()
+        # if self._efficient_sampling:
+        #     return self._efficient_forward(net_in, single_sample=True)
+        if self._curr_sample is None:
+            self._curr_sample = self.draw_from_categorical(len(net_in))
+        info_dict = defaultdict(list)
+        deltas = []
+        for member_idx, member in enumerate(self.members):
+            delta, info = member.single_sample_output_from_torch(net_in)
+            deltas.append(delta)
+            for k, v in info.items():
+                info_dict[k].append(v)
+        deltas = torch.stack(deltas)
+        for k, v in info_dict.items():
+            info_dict[k] = torch.stack(v)
+        samp_idxs = self._curr_sample[0].repeat(len(net_in))
+        sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
+        info_dict['deltas'] = deltas
+        return sampled_delta, info_dict
+
+    def multi_sample_output_from_torch(
+            self,
+            net_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Get the output where each input is assumed to be from a different sample.
+
+        Args:
+            net_in: The input for the network.
+
+        Returns:
+            The deltas for next states and dictionary of info.
+        """
+        if self._sample_mode == sampling_modes.SAMPLE_MEMBER_EVERY_STEP:
+            self.reset()
+        # if self._efficient_sampling:
+        #     return self._efficient_forward(net_in, single_sample=False)
+        if self._curr_sample is None:
+            self._curr_sample = self.draw_from_categorical(len(net_in))
+        elif len(self._curr_sample) < len(net_in):
+            self._curr_sample = torch.cat([
+                self._curr_sample,
+                self.draw_from_categorical(len(net_in) - len(self._curr_sample)),
+            ], dim=0)
+        info_dict = defaultdict(list)
+        deltas = []
+        for member in self.members:
+            delta, info = member.multi_sample_output_from_torch(net_in)
+            deltas.append(delta)
+            for k, v in info.items():
+                info_dict[k].append(v)
+        deltas = torch.stack(deltas)
+        for k, v in info_dict.items():
+            info_dict[k] = torch.stack(v)
+        samp_idxs = self._curr_sample[:len(net_in)]
+        sampled_delta = deltas[samp_idxs, torch.arange(len(net_in))]
+        info_dict['deltas'] = deltas
+        return sampled_delta, info_dict
+
     def set_sample(self, sample: np.ndarray) -> None:
         """Set the current sample.
 
@@ -122,6 +197,28 @@ class Ensemble(AbstractModel):
         """
         for member in self.members:
             member.sample_mode = mode
+
+    def _normalize_prediction_input(self, model_input: torch.Tensor) -> torch.Tensor:
+        """Normalize the input for prediction.
+
+        Args:
+            model_input: The input to the model.
+
+        Returns:
+            The normalized input.
+        """
+        return self.members[0]._normalize_prediction_input(model_input)
+
+    def _unnormalize_prediction_output(self, output: torch.Tensor) -> torch.Tensor:
+        """Unnormalize the output of the model.
+
+        Args:
+            output: The output of the model.
+
+        Returns:
+            The unnormalized outptu.
+        """
+        return self.members[0]._unnormalize_prediction_output(output)
 
     @property
     def sample_mode(self) -> str:
@@ -163,6 +260,10 @@ class Ensemble(AbstractModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self.members[0].output_dim
+
+    @property
+    def normalizer(self):
+        return self.members[0].normalizer
 
     def draw_from_categorical(self, num_samples) -> np.ndarray:
         """Draw from categorical distribution.

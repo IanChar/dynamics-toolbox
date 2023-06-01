@@ -3,7 +3,7 @@ Utility for gym environments and gym data.
 
 Author: Ian Char
 """
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -23,10 +23,11 @@ def parse_into_trajectories(
     trajectories = []
     start_idx = 0
     for end_idx in range(1, dataset['observations'].shape[0]):
-        if end_idx == dataset['observations'].shape[0] - 1 or not np.allclose(
-            dataset['next_observations'][end_idx - 1],
-            dataset['observations'][end_idx],
-        ):
+        if (end_idx == dataset['observations'].shape[0] - 1
+                or not np.allclose(dataset['next_observations'][end_idx - 1],
+                                   dataset['observations'][end_idx])
+                or ('terminals' in dataset
+                    and dataset['terminals'][end_idx-1])):
             trajectories.append({k: v[start_idx:end_idx]
                                  for k, v in dataset.items()})
             start_idx = end_idx
@@ -40,6 +41,8 @@ def parse_into_snippet_datasets(
         test_proportion: float = 0.0,
         allow_padding: bool = False,
         shuffle: bool = True,
+        seed: Optional[int] = None,
+        no_snippet_overlap: bool = False,
 ) -> List[Dict[str, np.ndarray]]:
     """Parse into a sarsa dataset into snippets of rollouts.
 
@@ -53,6 +56,8 @@ def parse_into_snippet_datasets(
         allow_padding: Whether to allow padding of 0s if trajectory length is smaller
             than snippet_size.
         shuffle: Whether to shuffle the trajectories.
+        seed: Seed before shuffling in order to make sure we get the same splits.
+        no_snippet_overlap: Whether there should be overlap in snippets.
 
     Returns:
         Three dictionaries, one for each train, validation, and testing. Each contains
@@ -69,6 +74,8 @@ def parse_into_snippet_datasets(
                          f'{val_proportion} and {test_proportion}.')
     trajectories = parse_into_trajectories(qset)
     if shuffle:
+        if seed is not None:
+            np.random.seed(seed)
         np.random.shuffle(trajectories)
     min_trajectory_length = np.min([len(traj['observations']) for traj in trajectories])
     if snippet_size is None:
@@ -105,7 +112,8 @@ def parse_into_snippet_datasets(
                 dataset['mask'].append(np.array([1 if i < traj_len else 0
                                                  for i in range(snippet_size)]))
             else:
-                for idx in range(traj_len + 1 - snippet_size):
+                stride = snippet_size if no_snippet_overlap else 1
+                for idx in range(0, traj_len + 1 - snippet_size, stride):
                     for k, arr in dataset.items():
                         if k in traj:
                             arr.append(traj[k][idx:idx + snippet_size])

@@ -1,0 +1,48 @@
+name: ???
+save_path: "trained_models/d4rl_v2"
+data_source: "data/d4rl_datasets/${name}.hdf5"
+seed: 1
+logger: tensorboard
+normalization: "standardize"
+cuda_device: ???
+model:
+    _target_: dynamics_toolbox.models.pl_models.pnn.PNN
+    encoder_output_dim: 200
+    encoder_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 3
+       layer_size: 200
+       hidden_activation: "swish"
+    mean_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 0
+       layer_size: 200
+       hidden_activation: "swish"
+    logvar_net_cfg:
+       _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+       num_layers: 0
+       layer_size: 200
+       hidden_activation: "swish"
+    logvar_lower_bound: -10
+    logvar_upper_bound: 0.5
+    logvar_bound_loss_coef: 0.01
+    weight_decay: 5e-5
+trainer:
+    gpus: 1
+    max_epochs: 5000
+early_stopping:
+    patience: 5
+    min_delta: 0.001
+data_module:
+    _target_: dynamics_toolbox.data.pl_data_modules.forward_dynamics_data_module.ForwardDynamicsDataModule
+    batch_size: 256
+    learn_rewards: True
+    val_proportion: 1000
+    test_proportion: 0.0
+    pin_memory: True
+    num_workers: 4
+hydra:
+    job:
+        name: ${name}
+    run:
+        dir: ${save_path}/${name}/${seed}

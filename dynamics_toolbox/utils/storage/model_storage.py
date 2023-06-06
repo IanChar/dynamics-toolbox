@@ -70,10 +70,11 @@ def load_model_from_log_dir(
 
 
 def load_ensemble_from_list_of_log_dirs(
-        paths: List[str],
-        epochs: Optional[List[int]] = None,
-        sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
-        member_sample_mode: Optional[str] = None,
+    paths: List[str],
+    epochs: Optional[List[int]] = None,
+    sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+    member_sample_mode: Optional[str] = None,
+    ignore_errors: bool = False,
 ) -> Ensemble:
     """Load several models into an ensemble.
 
@@ -82,12 +83,19 @@ def load_ensemble_from_list_of_log_dirs(
         epochs: Epochs of the checkpoints to load in that correspond to the paths.
             Must be the same length as paths.
         sample_mode: The sampling mode for the ensemble.
+        ignore_errors: Ignore a member if we cannot load it in.
     """
     paths.sort()
     epochs = [None for _ in paths] if epochs is None else epochs
-    ensemble = Ensemble([load_model_from_log_dir(path, epoch)
-                         for path, epoch in zip(paths, epochs)],
-                        sample_mode=sample_mode)
+    members = []
+    for path, epoch in zip(paths, epochs):
+        try:
+            members.append(load_model_from_log_dir(path, epoch))
+        except BaseException as exc:
+            if ignore_errors:
+                continue
+            raise exc
+    ensemble = Ensemble(members, sample_mode=sample_mode)
     if member_sample_mode is not None:
         for memb in ensemble.members:
             memb.sample_mode = member_sample_mode
@@ -102,6 +110,7 @@ def load_ensemble_from_parent_dir(
     select_statistic: str = 'val/nll',
     lower_stat_is_better: bool = True,
     relative_path: bool = True,
+    ignore_errors: bool = False,
 ) -> Ensemble:
     """Load all the models contained in the parent directory
 
@@ -136,6 +145,7 @@ def load_ensemble_from_parent_dir(
         paths,
         sample_mode=sample_mode,
         member_sample_mode=member_sample_mode,
+        ignore_errors=ignore_errors,
     )
 
 

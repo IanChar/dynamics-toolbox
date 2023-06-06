@@ -85,6 +85,7 @@ def batch_online_rl_training(
         for path in paths:
             replay_buffer.add_paths(path)
         num_steps_taken += num_expl_steps_per_epoch
+        expl_returns = [np.sum(path['rewards']) for path in paths]
         # Train.
         logger.set_phase('Policy Updates')
         all_stats = []
@@ -111,6 +112,10 @@ def batch_online_rl_training(
                              for k in all_stats[0].keys()})
         stats_to_log.update({f'{k}/max': np.min([d[k] for d in all_stats])
                              for k in all_stats[0].keys()})
+        stats_to_log['ExplorationReturns/mean'] = np.mean(expl_returns)
+        stats_to_log['ExplorationReturns/std'] = np.std(expl_returns)
+        stats_to_log['ExplorationReturns/min'] = np.min(expl_returns)
+        stats_to_log['ExplorationReturns/max'] = np.max(expl_returns)
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,

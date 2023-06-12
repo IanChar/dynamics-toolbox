@@ -57,7 +57,6 @@ np.random.seed(args.seed)
 np.random.seed(args.seed)
 print('Loading in model and data...')
 dataset = load_from_hdf5(args.data_path)
-breakpoint()
 paths = parse_into_trajectories(dataset)
 if args.is_ensemble:
     model = load_ensemble_from_parent_dir(

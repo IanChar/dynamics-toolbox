@@ -30,21 +30,6 @@ class ActionPlanPolicy(Policy):
     def reset(self):
         self._t = 0
 
-    def get_action(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Get action.
-
-        Args:
-            obs_np: numpy array of shape (obs_dim,)
-
-        Returns:
-            * Sampled actions.
-            * Log probability.
-        """
-        if self._t >= self._max_horizon:
-            raise RuntimeError(f'Plan only valid for {self._max_horizon} timesteps.')
-        self._t += 1
-        return self._action_plan[0, self._t - 1], np.array([1.0])
-
     def get_actions(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Get multiple actions.
 
@@ -55,12 +40,17 @@ class ActionPlanPolicy(Policy):
             * Sampled actions w shape (batch_size, act_dim)
             * Logprobabilities for the actions (batch_size,)
         """
+        if len(obs_np.shape) == 1:
+            obs_np = obs_np[np.newaxis]
         if len(obs_np) != len(self._action_plan):
             raise ValueError('Expected observations to match number of plans')
         if self._t >= self._max_horizon:
             raise RuntimeError(f'Plan only valid for {self._max_horizon} timesteps.')
         self._t += 1
-        return self._action_plan[:, self._t - 1], np.ones(len(obs_np)).reshape(-1, 1)
+        return (
+            np.squeeze(self._action_plan[:, self._t - 1], axis=0),
+            np.ones(len(obs_np)),
+        )
 
     @property
     def act_dim(self) -> int:

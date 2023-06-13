@@ -46,3 +46,13 @@ class Policy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def act_dim(self) -> int:
         """Action dimension."""
+
+    @property
+    def deterministic(self) -> bool:
+        """Action dimension."""
+        return True
+
+    @deterministic.setter
+    def deterministic(self, mode: bool):
+        """Action dimension."""
+        pass

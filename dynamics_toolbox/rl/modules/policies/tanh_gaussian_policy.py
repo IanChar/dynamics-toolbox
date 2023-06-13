@@ -64,7 +64,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         self._act_dim = act_dim
         self._min_log_std = min_log_std
         self._max_log_std = max_log_std
-        self.deterministic = False
+        self._deterministic = False
         # Initialize last layer to correct distribution.
         self.get_layer(self.n_layers - 1).weight.data.uniform_(
             -last_layer_uinit,
@@ -265,3 +265,13 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             self._rew_history = rewards
         else:
             self._rew_history = torch.cat([self._rew_history, rewards], dim=1)
+
+    @property
+    def deterministic(self) -> bool:
+        """Action dimension."""
+        return self._deterministic
+
+    @deterministic.setter
+    def deterministic(self, mode: bool):
+        """Action dimension."""
+        self._deterministic = mode

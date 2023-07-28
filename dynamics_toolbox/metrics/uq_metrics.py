@@ -48,7 +48,6 @@ def multivariate_elipsoid_miscalibration(
 def miscalibration_from_samples(
     samples: np.ndarray,
     truths: np.ndarray,
-    include_overconfidence_scores: bool = False,
     fidelity: int = 99,
     use_intervals: bool = True,
 ) -> Union[np.ndarray, Tuple[np.ndarray]]:
@@ -57,16 +56,19 @@ def miscalibration_from_samples(
     Args:
         samples: Samples from the model w shape (num_tests, num_samples, dim)
         truths: True points w shape (num_tests, dim)
-        include_overconfidence_scores: Whether to compute overconfidence which is
-            sum of the differences above 0.
         fidelity: Fidelity of the quantiles to use.
         use_intervals: Whether to measure from intervals or with quantiles.
 
-    Returns: miscal and possibly overconfidence scores each w shape (dim,).
+    Returns:
+        * Miscal (dim,)
+        * Overconfidence (dim,)
+        * Obs props (dim, fidelity)
+        * Exp props (dim, fidelity)
+    miscal and possibly overconfidence scores each w shape (dim,).
     """
     B, N, D = samples.shape
-    miscals, overconfs = [], []
-    exp_props = np.linspace(0.01, 0.99, 99)
+    miscals, overconfs, ops, eps = [], [], [], []
+    exp_props = np.linspace(0, 1, fidelity + 2)[1:-1]
     for d in range(D):
         if use_intervals:
             obs_props = np.array([
@@ -83,9 +85,9 @@ def miscalibration_from_samples(
             ])
         miscals.append(np.mean(np.abs(exp_props - obs_props)))
         overconfs.append(np.mean(np.maximum(exp_props - obs_props, 0)))
-    if include_overconfidence_scores:
-        return np.array(miscals), np.array(overconfs)
-    return np.array(miscals)
+        ops.append(obs_props)
+        eps.append(exp_props)
+    return np.array(miscals), np.array(overconfs), np.array(ops), np.array(eps)
 
 
 def coverage_and_sharpness_from_samples(

@@ -3,7 +3,7 @@ A network that outputs a Gaussian predictive distribution.
 
 Author: Ian Char
 """
-from typing import Optional, Tuple, Dict, Any, Sequence, Callable
+from typing import Optional, Tuple, Dict, Any, Sequence, Callable, Union
 
 import hydra.utils
 import numpy as np
@@ -33,6 +33,9 @@ class PNN(AbstractPlModel):
             logvar_bound_loss_coef: float = 1e-3,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
+            sampling_distribution: str = 'Gaussian',
+            gp_length_scales: Union[float, Sequence[float]] = 3.0,
+            gp_num_bases: int = 100,
             **kwargs,
     ):
         """
@@ -84,6 +87,12 @@ class PNN(AbstractPlModel):
         self._recal_constants = None
         self._var_pinning = (logvar_lower_bound is not None
                              and logvar_upper_bound is not None)
+        self.sampling_distribution = sampling_distribution
+        self._gp_num_bases = gp_num_bases
+        if isinstance(gp_length_scales, float):
+            gp_length_scales = np.ones(input_dim) * gp_length_scales
+        self._gp_length_scales = torch.Tensor(gp_length_scales).reshape(1, 1, 1, -1)
+        self._curr_sample = None   # Only used for GPs.
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])
@@ -100,6 +109,10 @@ class PNN(AbstractPlModel):
                 'EV': ExplainedVariance(),
                 'IndvEV': ExplainedVariance('raw_values'),
         }
+
+    def reset(self) -> None:
+        """Reset the dynamics model."""
+        self._curr_sample = None
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
@@ -133,13 +146,25 @@ class PNN(AbstractPlModel):
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
-        if self.recal_constants is not None:
-            std_predictions *= self.recal_constants
-        if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
-            predictions = (torch.randn_like(mean_predictions) * std_predictions
-                           + mean_predictions)
+        if self.sampling_distribution == 'Gaussian':
+            if self.recal_constants is not None:
+                std_predictions *= self.recal_constants
+            if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
+                predictions = (torch.randn_like(mean_predictions) * std_predictions
+                               + mean_predictions)
+            else:
+                predictions = mean_predictions
+        elif self.sampling_distribution == 'GP':
+            self._curr_sample = self._sample_prior(1)
+            predictions = (
+                mean_predictions
+                + std_predictions * np.sqrt(2 / self._gp_num_bases)
+                * torch.cos((self._curr_sample[0]
+                             @ net_in.reshape(1, len(net_in), -1, 1)).squeeze(-1)
+                            + self._curr_sample[1]).sum(dim=0)
+            )
         else:
-            predictions = mean_predictions
+            raise ValueError(f'Unknown distribuction {self.sampling_distribution}')
         info = {'predictions': predictions,
                 'mean_predictions': mean_predictions,
                 'std_predictions': std_predictions}
@@ -265,6 +290,24 @@ class PNN(AbstractPlModel):
         else:
             self._recal_constants = constants.to(self.device)
         self._recal_constants = self._recal_constants.reshape(1, -1)
+
+    def _sample_prior(self, num_samples: int) -> Tuple[np.ndarray]:
+        """Sample coefficients for Fourier prior sample. Right now this is only for
+        the RBF kernel but we could possibly augment this in the future.
+
+        Args:
+            num_samples: Number of prior function samples.
+
+        Returns: Theta cosine coefficients and offsets each with shape
+            (num_bases, num_samples, out_dim, in_dim)
+            and (num_bases, num_samples, out_dim) respectively.
+        """
+        thetas = torch.randn(
+                self._gp_num_bases, num_samples, self.output_dim, self.input_dim)
+        thetas = (thetas * self._gp_length_scales).to(self.device)
+        betas = torch.rand(self._gp_num_bases, num_samples, self.output_dim)
+        betas = (betas * 2 * np.pi).to(self.device)
+        return thetas, betas
 
     def _get_test_and_validation_metrics(
             self,

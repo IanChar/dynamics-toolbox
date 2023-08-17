@@ -34,7 +34,7 @@ class PNN(AbstractPlModel):
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             sampling_distribution: str = 'Gaussian',
-            gp_length_scales: Union[float, Sequence[float]] = 3.0,
+            gp_length_scales: Union[float, str] = 3.0,
             gp_num_bases: int = 100,
             **kwargs,
     ):
@@ -60,6 +60,11 @@ class PNN(AbstractPlModel):
             hidden_activation: Activation of the networks hidden layers.
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
+            sampling_distribution: Distribution to sample from. Either Gaussian or GP.
+            gp_length_scales: Length scales. Either a float to apply to every
+                in-out dimension pair or a path to a .npy file with a ndarray
+                of shape (in_dim, out_dim)
+            gp_num_bases: Number of bases to use in the Fourier series approximation.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self._input_dim = input_dim
@@ -89,10 +94,8 @@ class PNN(AbstractPlModel):
                              and logvar_upper_bound is not None)
         self.sampling_distribution = sampling_distribution
         self._gp_num_bases = gp_num_bases
-        if isinstance(gp_length_scales, float):
-            gp_length_scales = np.ones(input_dim) * gp_length_scales
-        self._gp_length_scales = torch.Tensor(gp_length_scales).reshape(1, 1, 1, -1)
         self._curr_sample = None   # Only used for GPs.
+        self.load_gp_lengthscales(gp_length_scales)
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])
@@ -238,6 +241,22 @@ class PNN(AbstractPlModel):
         """Configure the optimizer"""
         return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
+    def load_gp_lengthscales(self, gp_length_scales: Union[float, str]):
+        """Load new GP lengthscales.
+
+        Args:
+            gp_length_scales: Length scales. Either a float to apply to every
+                in-out dimension pair or a path to a .npy file with a ndarray
+                of shape (in_dim, out_dim)
+        """
+        if isinstance(gp_length_scales, float):
+            self._gp_length_scales = (torch.ones(1, 1, self.output_dim, self.input_dim)
+                                      * gp_length_scales)
+        else:
+            self._gp_length_scales = torch.Tensor(
+                np.load(gp_length_scales)).reshape(1, 1,
+                                                   self.output_dim, self.input_dim)
+
     @property
     def sample_mode(self) -> str:
         """The sample mode is the method that in which we get next state."""
@@ -304,7 +323,7 @@ class PNN(AbstractPlModel):
         """
         thetas = torch.randn(
                 self._gp_num_bases, num_samples, self.output_dim, self.input_dim)
-        thetas = (thetas * self._gp_length_scales).to(self.device)
+        thetas = (thetas / self._gp_length_scales).to(self.device)
         betas = torch.rand(self._gp_num_bases, num_samples, self.output_dim)
         betas = (betas * 2 * np.pi).to(self.device)
         return thetas, betas

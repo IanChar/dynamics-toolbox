@@ -70,7 +70,10 @@ class Ensemble(AbstractModel):
         info_dict = defaultdict(list)
         nxts = []
         for member_idx, member in enumerate(self.members):
-            nxt, info = member.predict(model_input)
+            nxt, info = member.predict(
+                model_input,
+                each_input_is_different_sample=each_input_is_different_sample,
+            )
             nxts.append(nxt)
             for k, v in info.items():
                 info_dict[k].append(v)

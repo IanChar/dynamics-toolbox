@@ -158,7 +158,8 @@ class PNN(AbstractPlModel):
             else:
                 predictions = mean_predictions
         elif self.sampling_distribution == 'GP':
-            self._curr_sample = self._sample_prior(1)
+            if self._curr_sample is None:
+                self._curr_sample = self._sample_prior(1)
             predictions = (
                 mean_predictions
                 + std_predictions * np.sqrt(2 / self._gp_num_bases)

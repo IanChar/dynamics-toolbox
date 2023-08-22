@@ -33,6 +33,7 @@ ALL_ACTIVATIONS = {
     activations.SWISH: swish,
     activations.TANH: torch.tanh,
     activations.IDENTITY: identity,
+    activations.SIGMOID: F.sigmoid,
 }
 
 
@@ -45,4 +46,6 @@ def get_activation(name: str) -> Callable[[torch.Tensor], torch.Tensor]:
     Returns:
         The activation.
     """
+    if name is None:
+        return None
     return ALL_ACTIVATIONS[name]

@@ -247,7 +247,7 @@ class ModelEnv(gym.Env):
         # right now rollout length is usually <= sequence buffer lookback so it
         # is not a problem.
         if start_info is not None:
-            for k, v in start_info.keys():
+            for k, v in start_info.items():
                 if 'encoding' in k:
                     path_encoding = np.zeros((acts.shape[0],
                                               acts.shape[1], v.shape[-1]))

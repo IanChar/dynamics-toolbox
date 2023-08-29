@@ -414,5 +414,5 @@ def online_mbrl_training(
 
 def _reencode_buffer(algorithm: RLAlgorithm, buffer: ReplayBuffer):
     if (hasattr(algorithm, 'get_history_encoders')
-            and hasattr(buffer, 'reencode_paths'):
+            and hasattr(buffer, 'reencode_paths')):
         buffer.reencode_paths(algorithm.get_history_encoders())

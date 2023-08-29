@@ -247,7 +247,7 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
             data with observations, next_observations, rewards, actions, terminals.
         """
         encoding_dims = None
-        for k, v in data:
+        for k, v in data.items():
             if 'encoding' in k:
                 if encoding_dims is None:
                     encoding_dims = {}
@@ -281,7 +281,7 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
         Returns: Start states (num_samples, obs_dim)
         """
         indices = np.random.randint(0, len(self._starts), num_samples)
-        if self.encode_dims is None:
+        if self.encoding_dims is None:
             return self._starts[indices], {}
         return self._starts[indices], {
             f'{k}_encoding': getattr(self, f'_{k}_encoding')[indices]
@@ -297,24 +297,25 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
         Args:
             history_encoders: Name to history encoder.
         """
-        # TODO: The encoding should be the last encoding we saw. So it should
-        # start at 0 and be as long as the full observations (h + 1)
-        self.encode_dims = {}
+        self.encoding_dims = {}
         for path in self._paths:
-            obs_seq = dm.torch_ify(path['observations'][np.newaxis][:-1])
+            obs_seq = dm.torch_ify(path['observations'][np.newaxis])
             act_seq = dm.torch_ify(np.concatenate([
-                np.zeros(1, 1, self._act_dim),
-                path['actions'],
+                np.zeros((1, 1, self._act_dim)),
+                path['actions'][np.newaxis],
             ], axis=1))
             rew_seq = dm.torch_ify(np.concatenate([
-                np.zeros(1, 1, 1),
-                path['rewards'],
+                np.zeros((1, 1, 1)),
+                path['rewards'][np.newaxis],
             ], axis=1))
             for k, encoder in history_encoders.items():
                 with torch.no_grad():
-                    encoding = encoder.forward(obs_seq, act_seq, rew_seq)
-                path[f'{k}_encoding'] = dm.get_numpy(encoding)
-                self.encode_dims[k] = encoding.shape[-1]
-        self.clear_buffer
+                    encoding = encoder.forward(obs_seq, act_seq, rew_seq)[0]
+                path[f'{k}_encoding'] = np.concatenate([
+                    np.zeros((1, 1, encoding.shape[-1])),
+                    dm.get_numpy(encoding),
+                ], axis=1).squeeze(0)
+                self.encoding_dims[k] = encoding.shape[-1]
+        self.clear_buffer()
         for path in self._paths:
             self.add_paths(path)

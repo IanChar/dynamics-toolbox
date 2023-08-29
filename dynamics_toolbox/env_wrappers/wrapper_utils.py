@@ -79,7 +79,7 @@ def no_terminal(states: np.ndarray) -> np.ndarray:
     Returns: ndarray containing if it is a terminal state or not (batch_size,)
     """
     states = _add_axis_if_needed(states)
-    return np.any(np.abs(states) >= 100, axis=1),  # Added in MAPLE.
+    return np.any(np.abs(states) >= 100, axis=1)  # Added in MAPLE.
 
 
 def hopper_terminal(states: np.ndarray) -> np.ndarray:

@@ -8,6 +8,9 @@ from typing import Any, Callable, Dict
 import numpy as np
 
 
+MAX_PENALTY = 40
+
+
 def get_penalizer(pen_name: str) -> Callable[[Dict[str, Any]], np.ndarray]:
     """Get penalizer function
 
@@ -33,9 +36,10 @@ def std_width_penalizer(model_info: Dict[str, Any]) -> np.ndarray:
     """
     scalings = model_info['std_scaling'] if 'std_scaling' in model_info else 1
     if len(model_info['std_predictions'].shape) > 2:
-        return np.amax(np.linalg.norm(
+        penalty = np.amax(np.linalg.norm(
             model_info['std_predictions'] * scalings, axis=-1),
                        axis=0).reshape(-1, 1)
     else:
-        return np.linalg.norm(
-                model_info['std_predictions'] * scalings, axis=-1).reshape(-1, 1)
+        penalty = np.linalg.norm(model_info['std_predictions'] * scalings,
+                                 axis=-1).reshape(-1, 1)
+    return np.minimum(penalty, MAX_PENALTY)

@@ -76,7 +76,7 @@ class RNNEncoder(HistoryEncoder):
             elif "weight" in name:
                 nn.init.orthogonal_(param)
 
-    def forward(self, obs_seq, act_seq, rew_seq, history=None):
+    def forward(self, obs_seq, act_seq, rew_seq, history=None, encode_init=None):
         """Forward pass to get encodings.
 
         Args:
@@ -89,6 +89,9 @@ class RNNEncoder(HistoryEncoder):
                 If GRU expected shape is
                     (rnn_num_layers, batch_size, rnn_hidden_size)
                 If LSTM expected tuple of two of the above.
+            encoding_init: What to initialize the encoding at should have shape
+                (batch_size, encode dim). This will not be used if history is
+                provided.
 
         Returns:
             * Encodings of shape (batch size, seq length, out dim)
@@ -100,6 +103,8 @@ class RNNEncoder(HistoryEncoder):
                                          if seq is not None
                                          else None
                                          for seq in (obs_seq, act_seq, rew_seq)]
+        elif encode_init is not None:
+            history = encode_init.view(1, encode_init.shape[0], encode_init.shape[1])
         obs_encoding = self.encoder_activation(self.obs_encoder(obs_seq))
         encoding = [obs_encoding]
         if self.act_encoder is not None:

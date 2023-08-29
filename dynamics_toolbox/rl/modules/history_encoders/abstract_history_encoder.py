@@ -12,7 +12,7 @@ import torch.nn as nn
 class HistoryEncoder(nn.Module, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
-    def forward(self, obs_seq, act_seq, rew_seq, history=None):
+    def forward(self, obs_seq, act_seq, rew_seq, history=None, encoding_init=None):
         """Forward pass to get encodings.
 
         Args:
@@ -22,6 +22,8 @@ class HistoryEncoder(nn.Module, metaclass=abc.ABCMeta):
             history: Previous encoding if this is here then we do not have to
                 re-encode the full previous sequence and just need to take the last
                 element of the sequence of each thing.
+            encoding_init: What to initialize the encoding at should have shape
+                (batch_size, encode dim)
 
         Returns:
             * Encodings of shape (batch size, seq length, out dim)

@@ -12,7 +12,7 @@ import numpy as np
 
 class Policy(metaclass=abc.ABCMeta):
 
-    def reset(self):
+    def reset(self, **kwargs):
         pass
 
     def train(self, mode: bool = True):

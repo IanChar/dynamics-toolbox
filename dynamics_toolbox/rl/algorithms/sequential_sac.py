@@ -146,6 +146,7 @@ class SequentialSAC(RLAlgorithm):
             prev_rews,
             masks,
             pi_start_encodings,
+            q_start_encodings,
         )
         stats.update(loss_stats)
         self._policy_optimizer.zero_grad()
@@ -163,6 +164,7 @@ class SequentialSAC(RLAlgorithm):
             full_acts,
             full_rews,
             masks,
+            pi_start_encodings,
             q_start_encodings,
         )
         stats.update(loss_stats)
@@ -211,6 +213,7 @@ class SequentialSAC(RLAlgorithm):
         prev_rews: Tensor,
         masks: Tensor,
         pi_start_encodings: Optional[Tensor],
+        q_start_encodings: List[Optional[Tensor]],
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the policy loss.
 
@@ -219,6 +222,10 @@ class SequentialSAC(RLAlgorithm):
             prev_acts: Shape (batch_size, L, act_dim).
             prev_rews: Shape (batch_size, L, 1).
             masks: Shape (batch_size, L, 1).
+            pi_start_encodings: Encodings for where to start policy hidden state.
+            q_start_encodings: List of the start encodings for the q networks. Each
+                of this list members is either None or a tensor of shape
+                (batch_size, encode_dim)
 
         Returns: The loss and the dictionary of loss stats.
         """
@@ -228,7 +235,8 @@ class SequentialSAC(RLAlgorithm):
                                                   encode_init=pi_start_encodings)[:4]
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         values = torch.min(torch.stack([
-            qnet(obs, prev_acts, prev_rews, acts) for qnet in self.qnets
+            qnet(obs, prev_acts, prev_rews, acts, encode_init=qstart)
+            for qnet, qstart in zip(self.qnets, q_start_encodings)
         ]), dim=0)[0]
         loss = ((alpha * logprobs - values) * masks).sum() / num_valid
         loss_stats['Policy/polic_loss'] = loss.item()
@@ -247,6 +255,7 @@ class SequentialSAC(RLAlgorithm):
         full_acts: Tensor,
         full_rews: Tensor,
         masks: Tensor,
+        pi_start_encodings: Optional[Tensor],
         q_start_encodings: List[Optional[Tensor]],
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the Q Loss
@@ -262,6 +271,7 @@ class SequentialSAC(RLAlgorithm):
             full_acts: (batch_size, L + 1, act_dim)
             full_rews: (batch_size, L + 1, 1)
             masks: (batch_size, L, 1)
+            pi_start_encodings: Encodings for where to start policy hidden state.
             q_start_encodings: List of the start encodings for the q networks. Each
                 of this list members is either None or a tensor of shape
                 (batch_size, encode_dim)
@@ -272,7 +282,8 @@ class SequentialSAC(RLAlgorithm):
         num_valid = masks.sum()
         qpreds = [qnet(obs, prev_acts, prev_rews, acts, encode_init=qstart)
                   for qnet, qstart in zip(self.qnets, q_start_encodings)]
-        nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews)[:2]
+        nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews,
+                                             encode_init=pi_start_encodings)[:2]
         # Note that we have to trim off first step because we do not care about
         # it for next values.
         qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts,

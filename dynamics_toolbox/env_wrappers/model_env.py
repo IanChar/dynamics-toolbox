@@ -184,14 +184,18 @@ class ModelEnv(gym.Env):
             - masks: Mask for whether the data is real or not. 0 if the transition
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
-        policy.reset()
-        self._dynamics.reset()
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
             starts, start_info = self._start_dist(num_rollouts)
         else:
             assert len(starts) == num_rollouts, 'Number of starts must match.'
+        if start_info is not None:
+            pi_encoding = start_info.get('pi_encoding', None)
+        else:
+            pi_encoding = None
+        policy.reset(init_encoding=pi_encoding)
+        self._dynamics.reset()
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
         rews = np.zeros((starts.shape[0], horizon, 1))
         terms = np.full((starts.shape[0], horizon, 1), True)

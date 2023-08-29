@@ -13,6 +13,7 @@ train_loop:
   num_eval_eps: 10
   model_horizon: 10
   eval_horizon: 1000
+  eval_frequency: 10
   num_gradient_steps_per_epoch: 1000
   batch_size: 64
   batch_env_proportion: 0.05

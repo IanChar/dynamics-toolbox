@@ -181,9 +181,18 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
         self._obs_encoder = nn.Linear(self._obs_dim, obs_encode_dim)
         self.reset()
 
-    def reset(self):
-        """Reset by setting the histories to None."""
-        self._encode_history = None
+    def reset(self, init_encoding: Optional[Union[np.ndarray, Tensor]] = None):
+        """Reset by setting the histories to None.
+
+        Args:
+            init_encoding: The initial hidden encoding.
+        """
+        if init_encoding is not None:
+            self._encode_history = dm.torch_ify(init_encoding)
+            if len(self._encode_history.shape) < 3:
+                self._encode_history = self._encode_history.unsqueeze(0)
+        else:
+            self._encode_history = None
         self._obs_history = None
         self._act_history = None
         self._rew_history = None

@@ -167,6 +167,8 @@ class PNN(AbstractPlModel):
                              @ net_in.reshape(1, len(net_in), -1, 1)).squeeze(-1)
                             + self._curr_sample[1]).sum(dim=0)
             )
+        elif self.sampling_distribution == 'Mean':
+            predictions = mean_predictions
         else:
             raise ValueError(f'Unknown distribuction {self.sampling_distribution}')
         info = {'predictions': predictions,

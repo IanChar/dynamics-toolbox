@@ -163,6 +163,7 @@ class ModelEnv(gym.Env):
             policy: Policy,
             horizon: int,
             starts: Optional[np.ndarray] = None,
+            start_info: Optional[Dict] = None,
             show_progress: bool = False,
     ) -> Dict[str, np.ndarray]:
         """
@@ -188,7 +189,7 @@ class ModelEnv(gym.Env):
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
-            starts = self._start_dist(num_rollouts)
+            starts, start_info = self._start_dist(num_rollouts)
         else:
             assert len(starts) == num_rollouts, 'Number of starts must match.'
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
@@ -231,7 +232,7 @@ class ModelEnv(gym.Env):
                 pbar.update(1)
         if show_progress:
             pbar.close()
-        return {
+        paths = {
             'observations': obs,
             'actions': acts,
             'rewards': rews,
@@ -240,6 +241,19 @@ class ModelEnv(gym.Env):
             'masks': masks,
             'info': all_infos,
         }
+        # If the start came with an encoding, load this in as the first part of
+        # the path. The rest is 0s since right now there is no way to extract
+        # encoding as we roll out. TODO: Add a way to get these encodings. However,
+        # right now rollout length is usually <= sequence buffer lookback so it
+        # is not a problem.
+        if start_info is not None:
+            for k, v in start_info.keys():
+                if 'encoding' in k:
+                    path_encoding = np.zeros((acts.shape[0],
+                                              acts.shape[1], v.shape[-1]))
+                    path_encoding[:, 0] = v
+                    paths[k] = path_encoding
+        return paths
 
     def model_rollout_from_actions(
             self,

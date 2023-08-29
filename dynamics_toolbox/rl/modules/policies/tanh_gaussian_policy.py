@@ -188,7 +188,7 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
         self._act_history = None
         self._rew_history = None
 
-    def forward(self, obs_seq, act_seq, rew_seq, history=None):
+    def forward(self, obs_seq, act_seq, rew_seq, history=None, encode_init=None):
         """
         Forward pass. Where B = batch_size, L = seq length..
             * obs_seq: (B, L, obs_dim)
@@ -202,7 +202,9 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             * stds: (B, L, act_dim)
             * history: Depends on the sequence encoder.
         """
-        encoding, history = self._history_encoder(obs_seq, act_seq, rew_seq, history)
+        encoding, history = self._history_encoder(obs_seq, act_seq, rew_seq,
+                                                  history=history,
+                                                  encode_init=encode_init)
         obs_encoding = self.hidden_activation(self._obs_encoder(
             obs_seq[:, -encoding.shape[1]:]))
         if encoding.shape[1] == 1:
@@ -265,6 +267,11 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             self._rew_history = rewards
         else:
             self._rew_history = torch.cat([self._rew_history, rewards], dim=1)
+
+    @property
+    def history_encoder(self) -> HistoryEncoder:
+        """Action dimension."""
+        return self._history_encoder
 
     @property
     def deterministic(self) -> bool:

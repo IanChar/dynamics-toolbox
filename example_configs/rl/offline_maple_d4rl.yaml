@@ -15,13 +15,14 @@ train_loop:
   eval_horizon: 1000
   num_gradient_steps_per_epoch: 1000
   batch_size: 64
-  batch_env_proportion: 0.0
+  batch_env_proportion: 0.05
+  reencode_buffer_every: 4
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
     unscale_penalizer: True
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl_v2/${env_name}/${seed}'
+      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
       sample_mode: 'sample_member_every_trajectory'
       load_n_best_models: 14
     penalizer:
@@ -31,13 +32,13 @@ train_loop:
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
-    bounder:
-        _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-        spread_amt: 5
-        data:
-          _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
-          hdf5_path: 'data/d4rl/${env_name}.hdf5'
-          relative_path: True
+    # bounder:
+    #     _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
+    #     spread_amt: 5
+    #     data:
+    #       _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
+    #       hdf5_path: 'data/d4rl/${env_name}.hdf5'
+    #       relative_path: True
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
     max_buffer_size: 1e6
@@ -81,12 +82,12 @@ algorithm:
       rnn_type: 'GRU'
       rnn_hidden_size: 128
       obs_encode_dim: 64
-      act_encode_dim: 32
-      rew_encode_dim: 0
+      act_encode_dim: 16
+      rew_encode_dim: 16
     obs_act_encode_dim: 64
     hidden_sizes:
       - 256
       - 256
 hydra:
   run:
-    dir: logs/maple_baselines/${name}/${seed}
+    dir: logs/maple_baselines/${name}/${env_name}/${seed}

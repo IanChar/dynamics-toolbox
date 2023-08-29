@@ -4,7 +4,7 @@ A simple replay buffer.
 Author: Ian Char
 Date: April 6, 2023
 """
-from typing import Dict, Union
+from typing import Dict, Tuple, Union
 
 import numpy as np
 
@@ -157,7 +157,7 @@ class SimpleReplayBuffer(ReplayBuffer):
             'terminals': self._terms[idxs],
         }
 
-    def sample_starts(self, num_samples: int) -> np.ndarray:
+    def sample_starts(self, num_samples: int) -> Tuple[np.ndarray, Dict]:
         """Sample observations to be used as starts from the buffer
 
         Args:
@@ -167,7 +167,7 @@ class SimpleReplayBuffer(ReplayBuffer):
             obs: Observaitons shape (batch_size, obs_dim).
         """
         idxs = np.random.randint(0, self._size, size=num_samples)
-        return self._obs[idxs]
+        return self._obs[idxs], {}
 
     def to_forward_dynamics_module(
         self,

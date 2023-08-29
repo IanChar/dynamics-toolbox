@@ -144,6 +144,7 @@ def offline_mbrl_training(
     eval_frequency: int = 1,
     batch_size: int = 256,
     batch_env_proportion: float = 0.05,
+    reencode_buffer_every: int = -1,
     debug: bool = False,
     **kwargs
 ):
@@ -168,16 +169,23 @@ def offline_mbrl_training(
         batch_size: Size of batch for each gradient step.
         batch_env_proportion: Proportion of the batch that should be made up of
             offline data.
+        reencode_buffer_every: How often to reencode the buffer if using a history
+            encoder. If this is set to 0 or below, no reencoding happens.
         debug: Whether to set a breakpoint.
     """
     if debug:
         breakpoint()
     model_env.to(dm.device)
     num_steps_taken = 0
+    eps_since_last_reencode = 0
     num_expl_paths_per_epoch = int(num_expl_paths_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)
     model_batch_size = batch_size - env_batch_size
     model_env.start_dist = env_buffer.sample_starts
+    if reencode_buffer_every > 0:
+        _reencode_buffer(algorithm, env_buffer)
+        model_buffer.encoding_dims = env_buffer.encoding_dims
+        model_buffer.clear_buffer()
     # Time to train!
     logger.start(epochs)
     for ep in range(epochs):
@@ -202,6 +210,14 @@ def offline_mbrl_training(
                 batch = {k: np.concatenate([v, env_batch[k]], axis=0)
                          for k, v in batch.items()}
             all_stats.append(algorithm.grad_step(batch))
+        # Possibly re-encode the buffer.
+        if reencode_buffer_every > 0:
+            logger.set_phase('Reencoding Buffer')
+            if eps_since_last_reencode >= reencode_buffer_every:
+                _reencode_buffer(algorithm, env_buffer)
+                eps_since_last_reencode = 0
+            else:
+                eps_since_last_reencode += 1
         # Log.
         if ep % eval_frequency == 0:
             logger.set_phase('Policy Evaluation')
@@ -394,3 +410,9 @@ def online_mbrl_training(
         model_buffer.end_epoch()
         env_buffer.end_epoch()
     logger.end(algorithm.policy)
+
+
+def _reencode_buffer(algorithm: RLAlgorithm, buffer: ReplayBuffer):
+    if (hasattr(algorithm, 'get_history_encoders')
+            and hasattr(buffer, 'reencode_paths'):
+        buffer.reencode_paths(algorithm.get_history_encoders())

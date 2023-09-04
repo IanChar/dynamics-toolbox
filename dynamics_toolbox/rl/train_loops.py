@@ -239,7 +239,7 @@ def offline_mbrl_training(
                                  for k in keys2add})
             stats_to_log.update({f'{prefix}{k}/min': np.min([d[k] for d in ld])
                                  for k in keys2add})
-            stats_to_log.update({f'{prefix}{k}/max': np.min([d[k] for d in ld])
+            stats_to_log.update({f'{prefix}{k}/max': np.max([d[k] for d in ld])
                                  for k in keys2add})
         path_lengths = np.sum(paths['masks'], axis=-1)
         stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)

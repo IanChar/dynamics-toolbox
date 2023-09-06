@@ -39,11 +39,24 @@ def load_model_from_log_dir(
     if relative_path:
         path = os.path.join(DYNAMICS_TOOLBOX_PATH, path)
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
-    checkpoint_path = None
+    checkpoint_paths = []
     for root, dirs, files in os.walk(path):
-        if 'checkpoints' in dirs:
-            checkpoint_path = os.path.join(root, 'checkpoints')
+        if 'checkpoints' in dirs and len(os.listdir(os.path.join(root, 'checkpoints'))):
+            checkpoint_paths.append(os.path.join(root, 'checkpoints'))
             break
+    # Figure out each version of the paths.
+    if len(checkpoint_paths) > 1:
+        version_nums = []
+        for cp in checkpoint_paths:
+            version_num = -float('inf')
+            for cp_dirs in cp.split('/'):
+                if 'version_' in cp_dirs:
+                    version_num = int(cp_dirs.split('_'))
+                    break
+            version_nums.append(version_num)
+        checkpoint_path = checkpoint_paths[np.argmax(version_nums)]
+    else:
+        checkpoint_path = checkpoint_paths[0]
     if checkpoint_path is None:
         raise ValueError(f'Checkpoint directory not found in {path}')
     checkpoints = os.listdir(checkpoint_path)

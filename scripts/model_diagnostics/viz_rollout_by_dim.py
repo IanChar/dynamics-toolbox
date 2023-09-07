@@ -94,9 +94,10 @@ if args.include_terminals:
     rand_idxs = np.random.randint(len(dataset['observations']) - args.horizon,
                                   size=args.num_starts)
     terminal_idxs = np.argwhere(dataset['terminals']).flatten()
+    if not len(terminal_idxs):
+        raise ValueError('No Terminal Indexes.')
     rand_idxs = np.random.choice(terminal_idxs, size=args.num_starts)
     rand_idxs -= np.random.randint(args.horizon, size=len(rand_idxs))
-    # rand_idxs -= min(np.min(rand_idxs), args.horizon // 2)
     terminals = []
     for ri in rand_idxs:
         starts.append(dataset['observations'][ri])

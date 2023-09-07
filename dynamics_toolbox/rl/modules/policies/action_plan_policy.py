@@ -27,7 +27,7 @@ class ActionPlanPolicy(Policy):
         self._action_plan = action_plan
         self._max_horizon = action_plan.shape[1]
 
-    def reset(self):
+    def reset(self, **kwargs):
         self._t = 0
 
     def get_actions(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -47,8 +47,11 @@ class ActionPlanPolicy(Policy):
         if self._t >= self._max_horizon:
             raise RuntimeError(f'Plan only valid for {self._max_horizon} timesteps.')
         self._t += 1
+        actions = self._action_plan[:, self._t - 1]
+        if len(actions) == 1:
+            actions = np.squeeze(actions, axis=0)
         return (
-            np.squeeze(self._action_plan[:, self._t - 1], axis=0),
+            actions,
             np.ones(len(obs_np)),
         )
 

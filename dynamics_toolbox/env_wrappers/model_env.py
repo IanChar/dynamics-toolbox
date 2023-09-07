@@ -286,7 +286,8 @@ class ModelEnv(gym.Env):
         horizon = actions.shape[1]
         policy_wrap = ActionPlanPolicy(actions)
         return self.model_rollout_from_policy(num_rollouts, policy_wrap, horizon,
-                                              starts, show_progress)
+                                              starts=starts,
+                                              show_progress=show_progress)
 
     def render(self, mode='human'):
         """TODO: Figure out how to render given the real environment."""

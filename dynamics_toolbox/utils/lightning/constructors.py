@@ -80,7 +80,8 @@ def construct_all_pl_components_for_training(
     if hasattr(model, 'set_additional_model_params'):
         model.set_additional_model_params({'iterations': max_epochs})
     if data_module.num_validation > 0:
-        callbacks.append(ModelCheckpoint(monitor='val/loss'))
+        checkpoint_monitor = cfg.get('checkpoint_monitory', 'val/loss')
+        callbacks.append(ModelCheckpoint(monitor=checkpoint_monitor))
     if cfg['trainer'].get('gpus', 0) <= 1:
         # Only do progress bar if we are not doing multi-GPU. This is because
         # tqdm is not able to be pickled.

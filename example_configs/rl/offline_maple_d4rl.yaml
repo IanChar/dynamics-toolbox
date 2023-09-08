@@ -4,7 +4,7 @@ seed: 0
 history_size: 10
 cuda_device: null
 env:
-  _target_: gym.make
+  _target_: dynamics_toolbox.env_wrappers.wrapper_utils.make_og_envs
   id: ${env_name}
 train_loop:
   _target_: dynamics_toolbox.rl.train_loops.offline_mbrl_training
@@ -54,6 +54,7 @@ train_loop:
     lookback: ${history_size}
   logger:
     _target_: dynamics_toolbox.rl.rl_logger.RLLogger
+    checkpoint_policy_every: 50
 algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
   discount: 0.99

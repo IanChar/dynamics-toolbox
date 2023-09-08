@@ -165,6 +165,7 @@ class ModelEnv(gym.Env):
             starts: Optional[np.ndarray] = None,
             start_info: Optional[Dict] = None,
             show_progress: bool = False,
+            mask_tail_amount: float = 0.0,
     ) -> Dict[str, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
@@ -175,11 +176,13 @@ class ModelEnv(gym.Env):
             starts: All of the states to unroll from should have shape
                 (num_rollouts, obs_dim).
             show_progress: Whether to show the progress of the rollout.
+            mask_tail_amount: Percentage of extreme points to mask out for every
+                observation dimension and reward.
         Returns:
-            - obs: All observations (num_rollouts, horizon + 1, obs_dim)
-            - acts: The actions taken (num_rollouts, horizon, act_dim)
-            - rews: The rewards received (num_rollouts, horizon, 1)
-            - terms: The terminals (num_rollouts, horizon, 1)
+            - observations: All observations (num_rollouts, horizon + 1, obs_dim)
+            - actions: The actions taken (num_rollouts, horizon, act_dim)
+            - rewards: The rewards received (num_rollouts, horizon, 1)
+            - terminals: The terminals (num_rollouts, horizon, 1)
             - logprobs: The logprobabilities of actions (num_rollouts, horizon, 1)
             - masks: Mask for whether the data is real or not. 0 if the transition
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
@@ -236,6 +239,24 @@ class ModelEnv(gym.Env):
                 pbar.update(1)
         if show_progress:
             pbar.close()
+        if mask_tail_amount > 0.0:
+            for obdim in range(obs.shape[-1]):
+                low, high = np.quantile(obs[..., obdim],
+                                        [mask_tail_amount / 2,
+                                         1 - (mask_tail_amount / 2)])
+                extreme_idxs = np.argwhere(np.logical_or(
+                    obs[..., obdim] < low, obs[..., obdim] > high))
+                for etraj, eh in extreme_idxs:
+                    masks[etraj, eh:] = 0
+                    # TODO: Do we want to put a terminal before things go crazy?
+                    terms[etraj, min(eh - 1, 0)] = 1
+            low, high = np.quantile(rews, [mask_tail_amount / 2,
+                                           1 - (mask_tail_amount / 2)])
+            extreme_idxs = np.argwhere(np.logical_or(
+                rews[..., 0] < low, rews[..., 0] > high))
+            for etraj, eh in extreme_idxs:
+                masks[etraj, eh:] = 0
+                terms[etraj, min(eh - 1, 0)] = 1
         paths = {
             'observations': obs,
             'actions': acts,

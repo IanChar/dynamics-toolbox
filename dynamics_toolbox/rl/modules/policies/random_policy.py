@@ -46,9 +46,12 @@ class RandomPolicy(Policy):
         if len(obs_np.shape) == 1:
             obs_np = obs_np[np.newaxis]
         if self.action_space is None:
-            acts = np.random.uniform(-1, 1, size=(len(obs_np, self.action_dim)))
-        acts = np.array([self.action_space.sample() for _ in range(len(obs_np))])
-        return np.squeeze(acts, axis=0), np.ones(len(acts))
+            acts = np.random.uniform(-1, 1, size=(len(obs_np), self.action_dim))
+        else:
+            acts = np.array([self.action_space.sample() for _ in range(len(obs_np))])
+        if len(acts) == 1:
+            return np.squeeze(acts, axis=0), np.ones(len(acts))
+        return acts, np.ones(len(acts))
 
     @property
     def act_dim(self) -> int:

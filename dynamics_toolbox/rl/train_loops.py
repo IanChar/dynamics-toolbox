@@ -145,6 +145,7 @@ def offline_mbrl_training(
     batch_size: int = 256,
     batch_env_proportion: float = 0.05,
     reencode_buffer_every: int = -1,
+    mask_tail_amount: float = 0.005,
     debug: bool = False,
     **kwargs
 ):
@@ -171,6 +172,8 @@ def offline_mbrl_training(
             offline data.
         reencode_buffer_every: How often to reencode the buffer if using a history
             encoder. If this is set to 0 or below, no reencoding happens.
+        mask_tail_amount: Percentage of extreme points to mask out for every
+            observation dimension and reward.
         debug: Whether to set a breakpoint.
     """
     if debug:
@@ -197,6 +200,7 @@ def offline_mbrl_training(
             num_rollouts=num_expl_paths_per_epoch,
             policy=algorithm.policy,
             horizon=model_horizon,
+            mask_tail_amount=mask_tail_amount,
         )
         num_steps_taken += num_expl_paths_per_epoch * model_horizon
         model_buffer.add_paths(paths)
@@ -230,17 +234,27 @@ def offline_mbrl_training(
         else:
             ret_mean, ret_std = None, None
         stats_to_log = {}
-        for prefix, ld, keys2add in (
-                ('', all_stats, list(all_stats[0].keys())),
-                ('rollouts/', paths['info'], ['penalty', 'raw_reward'])):
-            stats_to_log.update({f'{prefix}{k}/mean': np.mean([d[k] for d in ld])
-                                 for k in keys2add})
-            stats_to_log.update({f'{prefix}{k}/std': np.std([d[k] for d in ld])
-                                 for k in keys2add})
-            stats_to_log.update({f'{prefix}{k}/min': np.min([d[k] for d in ld])
-                                 for k in keys2add})
-            stats_to_log.update({f'{prefix}{k}/max': np.max([d[k] for d in ld])
-                                 for k in keys2add})
+        # Log stats.
+        stats_to_log.update({f'{k}/mean': np.mean([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/std': np.std([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/min': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/max': np.max([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        # Log rollout stats.
+        for info_stat in ('penalty', 'raw_reward'):
+            if info_stat not in paths['info']:
+                continue
+            viable = np.concatenate([
+                np.where(paths['masks'][:, idx, 0], ii, np.nan)
+                for idx, ii in paths['info'][info_stat]
+            ])
+            stats_to_log['rollouts/{info_stat}/mean'] = np.nanmean(viable)
+            stats_to_log['rollouts/{info_stat}/std'] = np.nanstd(viable)
+            stats_to_log['rollouts/{info_stat}/min'] = np.nanmin(viable)
+            stats_to_log['rollouts/{info_stat}/max'] = np.nanmax(viable)
         path_lengths = np.sum(paths['masks'], axis=1)
         stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)
         stats_to_log['rollouts/path_length/std'] = np.std(path_lengths)

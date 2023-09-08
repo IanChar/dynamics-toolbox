@@ -18,6 +18,7 @@ train_loop:
   batch_size: 64
   batch_env_proportion: 0.05
   reencode_buffer_every: 4
+  mask_tail_amount: 0.001
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
     unscale_penalizer: True

@@ -245,16 +245,16 @@ def offline_mbrl_training(
                              for k in all_stats[0].keys()})
         # Log rollout stats.
         for info_stat in ('penalty', 'raw_reward'):
-            if info_stat not in paths['info']:
+            if info_stat not in paths['info'][0]:
                 continue
             viable = np.concatenate([
-                np.where(paths['masks'][:, idx, 0], ii, np.nan)
-                for idx, ii in paths['info'][info_stat]
+                np.where(paths['masks'][:, idx, 0], ii[info_stat].flatten(), np.nan)
+                for idx, ii in enumerate(paths['info'])
             ])
-            stats_to_log['rollouts/{info_stat}/mean'] = np.nanmean(viable)
-            stats_to_log['rollouts/{info_stat}/std'] = np.nanstd(viable)
-            stats_to_log['rollouts/{info_stat}/min'] = np.nanmin(viable)
-            stats_to_log['rollouts/{info_stat}/max'] = np.nanmax(viable)
+            stats_to_log[f'rollouts/{info_stat}/mean'] = np.nanmean(viable)
+            stats_to_log[f'rollouts/{info_stat}/std'] = np.nanstd(viable)
+            stats_to_log[f'rollouts/{info_stat}/min'] = np.nanmin(viable)
+            stats_to_log[f'rollouts/{info_stat}/max'] = np.nanmax(viable)
         path_lengths = np.sum(paths['masks'], axis=1)
         stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)
         stats_to_log['rollouts/path_length/std'] = np.std(path_lengths)

@@ -10,6 +10,17 @@ import gym
 import numpy as np
 
 
+def make_og_envs(id: str):
+    if 'halfcheetah' in id:
+        return gym.make('HalfCheetah-v2')
+    elif 'hopper' in id:
+        return gym.make('Hopper-v2')
+    elif 'walker' in id:
+        return gym.make('Walker2d-v2')
+    else:
+        raise ValueError(f'Unknown environment {id}')
+
+
 ###########################################################################
 #                            START DIST FUNCTIONS                         #
 ###########################################################################

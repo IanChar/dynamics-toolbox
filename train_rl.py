@@ -12,13 +12,11 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 
-import d4rl
 
-
-@hydra.main(config_path='./example_configs/rl', config_name='online_sac_mujoco')
+@hydra.main(config_path='./example_configs/rl', config_name='offline_maple_d4rl')
 def train_rl(cfg: DictConfig):
     # Instantiate the gym environment and get the obs and act dims.
-    extra_imports_for_env(cfg['env']['id'])
+    # extra_imports_for_env(cfg['env']['id'])
     env = hydra.utils.instantiate(cfg['env'])
     obs_dim = env.observation_space.low.shape[0]
     act_dim = env.action_space.low.shape[0]

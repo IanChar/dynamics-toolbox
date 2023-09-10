@@ -326,7 +326,7 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
                                 nxt_history[0],
                                 nxt_history[1],
                             ], dim=-1))
-                    encoding = torch.Tensor(encoding)
+                    encoding = torch.cat(encoding, dim=1)
                 else:
                     with torch.no_grad():
                         encoding = encoder.forward(obs_seq, act_seq, rew_seq)[0]

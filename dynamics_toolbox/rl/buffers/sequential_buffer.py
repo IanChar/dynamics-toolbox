@@ -309,8 +309,27 @@ class SequentialOfflineReplayBuffer(SequentialReplayBuffer):
                 path['rewards'][np.newaxis],
             ], axis=1))
             for k, encoder in history_encoders.items():
-                with torch.no_grad():
-                    encoding = encoder.forward(obs_seq, act_seq, rew_seq)[0]
+                # If the encoder uses an LSTM we have to actually step through
+                # each of the parts of the sequences one by one which is much slower.
+                if encoder.encoder_type == 'lstm':
+                    encoding = []
+                    last_history = None
+                    with torch.no_grad():
+                        for t_idx in range(obs_seq.shape[1]):
+                            _, nxt_history = encoder.forward(
+                                obs_seq[:, [t_idx]],
+                                act_seq[:, [t_idx]],
+                                rew_seq[:, [t_idx]],
+                                history=last_history)
+                            last_history = nxt_history
+                            encoding.append(torch.cat([
+                                nxt_history[0],
+                                nxt_history[1],
+                            ], dim=-1))
+                    encoding = torch.Tensor(encoding)
+                else:
+                    with torch.no_grad():
+                        encoding = encoder.forward(obs_seq, act_seq, rew_seq)[0]
                 path[f'{k}_encoding'] = np.concatenate([
                     np.zeros((1, 1, encoding.shape[-1])),
                     dm.get_numpy(encoding),

@@ -109,4 +109,6 @@ plt.ylabel(args.yname)
 plt.legend()
 if args.title:
     plt.title(args.title, fontsize=16)
+else:
+    plt.title(args.data_path.split('/')[-1])
 plt.show()

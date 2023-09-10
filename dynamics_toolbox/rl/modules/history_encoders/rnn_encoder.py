@@ -55,6 +55,7 @@ class RNNEncoder(HistoryEncoder):
         else:
             self.rew_encoder = None
         total_encode_dim = obs_encode_dim + act_encode_dim + rew_encode_dim
+        self.rnn_type = rnn_type.lower()
         if rnn_type.lower() == 'gru':
             rnn_class = torch.nn.GRU
         elif rnn_type.lower() == 'lstm':
@@ -91,7 +92,10 @@ class RNNEncoder(HistoryEncoder):
                 If LSTM expected tuple of two of the above.
             encoding_init: What to initialize the encoding at should have shape
                 (batch_size, encode dim). This will not be used if history is
-                provided.
+                provided. If LSTM we expect
+                    (rnn_num_layers, batch_size, 2 * rnn_hidden_size)
+                where hidden state and cell are concatted in last dimension and
+                in that order.
 
         Returns:
             * Encodings of shape (batch size, seq length, out dim)
@@ -105,6 +109,9 @@ class RNNEncoder(HistoryEncoder):
                                          for seq in (obs_seq, act_seq, rew_seq)]
         elif encode_init is not None:
             history = encode_init.view(1, encode_init.shape[0], encode_init.shape[1])
+            if self.rnn_type == 'lstm':
+                split = history.shape[-1] // 2
+                history = (history[..., :split], history[..., split:])
         obs_encoding = self.encoder_activation(self.obs_encoder(obs_seq))
         encoding = [obs_encoding]
         if self.act_encoder is not None:
@@ -119,3 +126,8 @@ class RNNEncoder(HistoryEncoder):
     def out_dim(self) -> int:
         """Output dimension of the encoding."""
         return self._out_dim
+
+    @property
+    def encoder_type(self) -> int:
+        """Output dimension of the encoding."""
+        return self.rnn_type

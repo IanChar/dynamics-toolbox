@@ -35,3 +35,8 @@ class HistoryEncoder(nn.Module, metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def out_dim(self) -> int:
         """Output dimension of the encoding."""
+
+    @property
+    @abc.abstractmethod
+    def encoder_type(self) -> int:
+        """Output dimension of the encoding."""

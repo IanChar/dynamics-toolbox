@@ -3,6 +3,7 @@ A network that outputs a Gaussian predictive distribution.
 
 Author: Ian Char
 """
+import math
 from typing import Optional, Tuple, Dict, Any, Sequence, Callable, Union
 
 import hydra.utils
@@ -95,7 +96,7 @@ class PNN(AbstractPlModel):
         self.sampling_distribution = sampling_distribution
         self._gp_num_bases = gp_num_bases
         self._curr_sample = None   # Only used for GPs.
-        self.load_gp_lengthscales(gp_length_scales)
+        self.kernel = None
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])
@@ -158,15 +159,23 @@ class PNN(AbstractPlModel):
             else:
                 predictions = mean_predictions
         elif self.sampling_distribution == 'GP':
+            assert self.kernel is not None
             if self._curr_sample is None:
                 self._curr_sample = self._sample_prior(1)
-            predictions = (
-                mean_predictions
-                + std_predictions * np.sqrt(2 / self._gp_num_bases)
-                * torch.cos((self._curr_sample[0]
-                             @ net_in.reshape(1, len(net_in), -1, 1)).squeeze(-1)
-                            + self._curr_sample[1]).sum(dim=0)
-            )
+            if hasattr(self.kernel, 'encoder'):
+                encoding_in = (torch.cat([net_in, std_predictions], dim=-1)
+                               if self.kernel.input_dim > net_in.shape[-1]
+                               else net_in)
+                with torch.no_grad():
+                    encoding = self.kernel.encoder(encoding_in)
+                if self.output_dim == 1:
+                    encoding = encoding.unsqueeze(0)
+                prior_draws = math.sqrt(2 / self._gp_num_bases) * torch.stack([
+                    torch.cos((self._curr_sample[0][:, :, outdim]
+                               * encoding[[outdim]]).sum(dim=-1)
+                              + self._curr_sample[1][..., outdim]).sum(dim=0)
+                    for outdim in range(self.output_dim)], dim=1)
+            predictions = mean_predictions + std_predictions * prior_draws
         elif self.sampling_distribution == 'Mean':
             predictions = mean_predictions
         else:
@@ -244,21 +253,17 @@ class PNN(AbstractPlModel):
         """Configure the optimizer"""
         return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
-    def load_gp_lengthscales(self, gp_length_scales: Union[float, str]):
-        """Load new GP lengthscales.
+    def set_kernel(self, kernel):
+        """Load in a kernel that was trained for GP smoothness."""
+        self.kernel = kernel
 
-        Args:
-            gp_length_scales: Length scales. Either a float to apply to every
-                in-out dimension pair or a path to a .npy file with a ndarray
-                of shape (in_dim, out_dim)
-        """
-        if isinstance(gp_length_scales, float):
-            self._gp_length_scales = (torch.ones(1, 1, self.output_dim, self.input_dim)
-                                      * gp_length_scales)
-        else:
-            self._gp_length_scales = torch.Tensor(
-                np.load(gp_length_scales)).reshape(1, 1,
-                                                   self.output_dim, self.input_dim)
+    def to(self, device):
+        super().to(device)
+        if self._recal_constants is not None:
+            self._recal_constants = self._recal_constants.to(device)
+        if self.kernel is not None:
+            self.kernel = self.kernel.to(device)
+        return self
 
     @property
     def sample_mode(self) -> str:
@@ -324,10 +329,17 @@ class PNN(AbstractPlModel):
             (num_bases, num_samples, out_dim, in_dim)
             and (num_bases, num_samples, out_dim) respectively.
         """
+        assert self.kernel is not None
         thetas = torch.randn(
-                self._gp_num_bases, num_samples, self.output_dim, self.input_dim)
-        thetas = (thetas / self._gp_length_scales).to(self.device)
-        betas = torch.rand(self._gp_num_bases, num_samples, self.output_dim)
+                self._gp_num_bases, num_samples,
+                self.kernel.lengthscales.shape[-2],
+                self.kernel.lengthscales.shape[-1])
+        with torch.no_grad():
+            thetas = (thetas
+                      / self.kernel.lengthscales.unsqueeze(0).unsqueeze(0)
+                      ).to(self.device)
+        betas = torch.rand(self._gp_num_bases, num_samples,
+                           self.kernel.lengthscales.shape[-2])
         betas = (betas * 2 * np.pi).to(self.device)
         return thetas, betas
 

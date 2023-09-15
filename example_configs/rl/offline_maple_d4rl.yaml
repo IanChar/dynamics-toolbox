@@ -18,13 +18,14 @@ train_loop:
   batch_size: 64
   batch_env_proportion: 0.05
   reencode_buffer_every: 4
-  mask_tail_amount: 0.001
+  mask_tail_amount: 0.0001
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
-    unscale_penalizer: True
+    unscale_penalizer: False
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
       parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+      # parent_dir: 'trained_models/d4rl/${env_name}/0'
       sample_mode: 'sample_member_every_trajectory'
       load_n_best_models: 14
     penalizer:
@@ -60,7 +61,7 @@ algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
   discount: 0.99
   learning_rate: 3e-4
-  target_entropy: -3
+  target_entropy: null
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True
@@ -69,7 +70,7 @@ algorithm:
     _target_: dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy.SequentialTanhGaussianPolicy
     history_encoder:
       _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
-      rnn_type: 'GRU'
+      rnn_type: 'LSTM'
       rnn_hidden_size: 128
       obs_encode_dim: 64
       act_encode_dim: 16
@@ -82,7 +83,7 @@ algorithm:
     _target_: dynamics_toolbox.rl.modules.valnets.qnet.SequentialQNet
     history_encoder:
       _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
-      rnn_type: 'GRU'
+      rnn_type: 'LSTM'
       rnn_hidden_size: 128
       obs_encode_dim: 64
       act_encode_dim: 16

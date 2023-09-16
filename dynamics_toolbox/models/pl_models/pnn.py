@@ -150,32 +150,21 @@ class PNN(AbstractPlModel):
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
+        if self.recal_constants is not None:
+            std_predictions *= self.recal_constants
         if self.sampling_distribution == 'Gaussian':
-            if self.recal_constants is not None:
-                std_predictions *= self.recal_constants
             if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
                 predictions = (torch.randn_like(mean_predictions) * std_predictions
                                + mean_predictions)
             else:
                 predictions = mean_predictions
         elif self.sampling_distribution == 'GP':
-            assert self.kernel is not None
-            if self._curr_sample is None:
-                self._curr_sample = self._sample_prior(1)
-            if hasattr(self.kernel, 'encoder'):
-                encoding_in = (torch.cat([net_in, std_predictions], dim=-1)
-                               if self.kernel.input_dim > net_in.shape[-1]
-                               else net_in)
-                with torch.no_grad():
-                    encoding = self.kernel.encoder(encoding_in)
-                if self.output_dim == 1:
-                    encoding = encoding.unsqueeze(0)
-                prior_draws = math.sqrt(2 / self._gp_num_bases) * torch.stack([
-                    torch.cos((self._curr_sample[0][:, :, outdim]
-                               * encoding[[outdim]]).sum(dim=-1)
-                              + self._curr_sample[1][..., outdim]).sum(dim=0)
-                    for outdim in range(self.output_dim)], dim=1)
-            predictions = mean_predictions + std_predictions * prior_draws
+            predictions = self._make_gp_prediction(
+                net_in,
+                mean_predictions,
+                std_predictions,
+                single_sample=True,
+            )
         elif self.sampling_distribution == 'Mean':
             predictions = mean_predictions
         else:
@@ -197,6 +186,22 @@ class PNN(AbstractPlModel):
         Returns:
             The deltas for next states and dictionary of info.
         """
+        if self.sampling_distribution == 'GP':
+            with torch.no_grad():
+                mean_predictions, logvar_predictions = self.forward(net_in)
+            std_predictions = (0.5 * logvar_predictions).exp()
+            if self.recal_constants is not None:
+                std_predictions *= self.recal_constants
+            predictions = self._make_gp_prediction(
+                net_in,
+                mean_predictions,
+                std_predictions,
+                single_sample=False,
+            )
+            info = {'predictions': predictions,
+                    'mean_predictions': mean_predictions,
+                    'std_predictions': std_predictions}
+            return predictions, info
         return self.single_sample_output_from_torch(net_in)
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -317,6 +322,43 @@ class PNN(AbstractPlModel):
         else:
             self._recal_constants = constants.to(self.device)
         self._recal_constants = self._recal_constants.reshape(1, -1)
+
+    def _make_gp_prediction(
+        self,
+        net_in: torch.Tensor,
+        mean_predictions: torch.Tensor,
+        std_predictions: torch.Tensor,
+        single_sample: bool,
+    ):
+        assert self.kernel is not None
+        if self._curr_sample is None:
+            if single_sample:
+                self._curr_sample = self._sample_prior(1)
+            else:
+                self._curr_sample = self._sample_prior(len(net_in))
+        if hasattr(self.kernel, 'encoder'):
+            encoding_in = (torch.cat([net_in, std_predictions], dim=-1)
+                           if self.kernel.input_dim > net_in.shape[-1]
+                           else net_in)
+            with torch.no_grad():
+                encoding = self.kernel.encoder(encoding_in)
+            if self.output_dim == 1:
+                encoding = encoding.unsqueeze(0)
+            prior_draws = math.sqrt(2 / self._gp_num_bases) * torch.stack([
+                torch.cos((self._curr_sample[0][:, :, outdim]
+                           * encoding[[outdim]]).sum(dim=-1)
+                          + self._curr_sample[1][..., outdim]).sum(dim=0)
+                for outdim in range(self.output_dim)], dim=1)
+        else:
+            with torch.no_grad():
+                prior_draws = (
+                    math.sqrt(2 / self._gp_num_bases)
+                    * torch.cos((self._curr_sample[0]
+                                 @ net_in.reshape(1, len(net_in),
+                                                  -1, 1)).squeeze(-1)
+                                + self._curr_sample[1]).sum(dim=0)
+                )
+        return mean_predictions + std_predictions * prior_draws
 
     def _sample_prior(self, num_samples: int) -> Tuple[np.ndarray]:
         """Sample coefficients for Fourier prior sample. Right now this is only for

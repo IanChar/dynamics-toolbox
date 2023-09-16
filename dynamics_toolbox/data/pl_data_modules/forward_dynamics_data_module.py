@@ -132,6 +132,11 @@ class ForwardDynamicsDataModule(LightningDataModule):
         return self._xdata, self._ydata
 
     @property
+    def val_data(self) -> Sequence[np.array]:
+        """Get all of the data."""
+        return self._val_dataset
+
+    @property
     def input_data(self) -> np.array:
         """The input data.."""
         return self._xdata

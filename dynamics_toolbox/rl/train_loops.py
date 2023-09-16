@@ -184,7 +184,8 @@ def offline_mbrl_training(
     num_expl_paths_per_epoch = int(num_expl_paths_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)
     model_batch_size = batch_size - env_batch_size
-    model_env.start_dist = env_buffer.sample_starts
+    if model_env.start_dist is None:
+        model_env.start_dist = env_buffer.sample_starts
     if reencode_buffer_every > 0:
         _reencode_buffer(algorithm, env_buffer)
         model_buffer.encoding_dims = env_buffer.encoding_dims

@@ -21,6 +21,8 @@ def get_penalizer(pen_name: str) -> Callable[[Dict[str, Any]], np.ndarray]:
     """
     if pen_name == 'std':
         return std_width_penalizer
+    if pen_name == 'disagreement':
+        return disagreement_penalizer
     else:
         raise ValueError(f'Unknown penalizer {pen_name}')
 
@@ -43,3 +45,16 @@ def std_width_penalizer(model_info: Dict[str, Any]) -> np.ndarray:
         penalty = np.linalg.norm(model_info['std_predictions'] * scalings,
                                  axis=-1).reshape(-1, 1)
     return np.minimum(penalty, MAX_PENALTY)
+
+
+def disagreement_penalizer(model_info: Dict[str, Any]) -> np.ndarray:
+    """Penalize based on the width of std prediction.
+
+    Args:
+        model_info: Info outputted from model prediction.
+
+    Returns:
+        The penalty for each of the predictions.
+    """
+    return np.linalg.norm(np.std(model_info['predictions'], axis=0),
+                          axis=-1).reshape(-1, 1)

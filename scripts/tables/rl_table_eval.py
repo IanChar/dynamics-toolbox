@@ -56,7 +56,7 @@ for child in children:
         sample_cutoff = np.max(sample_amounts) * (1 - args.average_last)
         df_cutoff = df[df['Samples'] >= sample_cutoff]
         avg_results = df_cutoff[args.stat].mean()
-        err_results = df_cutoff[args.stat].sem()
+        err_results = df_cutoff.groupby(['seed'])[args.stat].mean().sem()
         avg_results, err_results, baselines =\
             d4rl_normalize_and_get_baselines(child_path, avg_results, err_results)
         results[child][LEGEND_MAP[method]] = (avg_results, err_results)
@@ -70,13 +70,19 @@ rows = []
 for k, v in results.items():
     row = [k]
     for mn in method_names:
-        row.append(f'{v[mn][0]:0.2f} +- {v[mn][1]:0.2f}')
+        if mn in v:
+            row.append(f'{v[mn][0]:0.2f} +- {v[mn][1]:0.2f}')
+        else:
+            row.append('TODO')
     rows.append(row)
 avg_row = ['Average']
 for mn in method_names:
     avg_score = 0
     for v in results.values():
-        avg_score += v[mn][0]
+        if mn in v:
+            avg_score += v[mn][0]
+        else:
+            avg_score += 0
     avg_row.append(f'{avg_score / len(results):0.2f}')
 rows.append(avg_row)
 table = tabulate(rows, headers=headers, tablefmt=args.table_format)

@@ -375,7 +375,7 @@ class PNN(AbstractPlModel):
         thetas = torch.randn(
                 self._gp_num_bases, num_samples,
                 self.kernel.lengthscales.shape[-2],
-                self.kernel.lengthscales.shape[-1])
+                self.kernel.lengthscales.shape[-1], device=self.device)
         with torch.no_grad():
             thetas = (thetas
                       / self.kernel.lengthscales.unsqueeze(0).unsqueeze(0)

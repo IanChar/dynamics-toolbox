@@ -23,6 +23,7 @@ def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
     relative_path: bool = False,
+    **kwargs
 ) -> AbstractPlModel:
     """Load a model from a log directory.
 
@@ -38,11 +39,24 @@ def load_model_from_log_dir(
     if relative_path:
         path = os.path.join(DYNAMICS_TOOLBOX_PATH, path)
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
-    checkpoint_path = None
+    checkpoint_paths = []
     for root, dirs, files in os.walk(path):
-        if 'checkpoints' in dirs:
-            checkpoint_path = os.path.join(root, 'checkpoints')
+        if 'checkpoints' in dirs and len(os.listdir(os.path.join(root, 'checkpoints'))):
+            checkpoint_paths.append(os.path.join(root, 'checkpoints'))
             break
+    # Figure out each version of the paths.
+    if len(checkpoint_paths) > 1:
+        version_nums = []
+        for cp in checkpoint_paths:
+            version_num = -float('inf')
+            for cp_dirs in cp.split('/'):
+                if 'version_' in cp_dirs:
+                    version_num = int(cp_dirs.split('_'))
+                    break
+            version_nums.append(version_num)
+        checkpoint_path = checkpoint_paths[np.argmax(version_nums)]
+    else:
+        checkpoint_path = checkpoint_paths[0]
     if checkpoint_path is None:
         raise ValueError(f'Checkpoint directory not found in {path}')
     checkpoints = os.listdir(checkpoint_path)
@@ -56,15 +70,24 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     model_path = os.path.join(checkpoint_path, checkpoints[epidx])
-    model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
-    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    should_recurse = cfg['model'].get('_recursive_', False)
+    model = hydra.utils.instantiate(cfg['model'], _recursive_=should_recurse, **kwargs)
+    if hasattr(model, 'wrapped_model'):
+        wrapped_model = model.wrapped_model
+    else:
+        wrapped_model = None
+    model = model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    if wrapped_model is not None:
+        model.set_wrapped_model(wrapped_model)
+    return model
 
 
 def load_ensemble_from_list_of_log_dirs(
-        paths: List[str],
-        epochs: Optional[List[int]] = None,
-        sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
-        member_sample_mode: Optional[str] = None,
+    paths: List[str],
+    epochs: Optional[List[int]] = None,
+    sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
+    member_sample_mode: Optional[str] = None,
+    ignore_errors: bool = False,
 ) -> Ensemble:
     """Load several models into an ensemble.
 
@@ -73,12 +96,19 @@ def load_ensemble_from_list_of_log_dirs(
         epochs: Epochs of the checkpoints to load in that correspond to the paths.
             Must be the same length as paths.
         sample_mode: The sampling mode for the ensemble.
+        ignore_errors: Ignore a member if we cannot load it in.
     """
     paths.sort()
     epochs = [None for _ in paths] if epochs is None else epochs
-    ensemble = Ensemble([load_model_from_log_dir(path, epoch)
-                         for path, epoch in zip(paths, epochs)],
-                        sample_mode=sample_mode)
+    members = []
+    for path, epoch in zip(paths, epochs):
+        try:
+            members.append(load_model_from_log_dir(path, epoch))
+        except BaseException as exc:
+            if ignore_errors:
+                continue
+            raise exc
+    ensemble = Ensemble(members, sample_mode=sample_mode)
     if member_sample_mode is not None:
         for memb in ensemble.members:
             memb.sample_mode = member_sample_mode
@@ -93,6 +123,7 @@ def load_ensemble_from_parent_dir(
     select_statistic: str = 'val/nll',
     lower_stat_is_better: bool = True,
     relative_path: bool = True,
+    ignore_errors: bool = False,
 ) -> Ensemble:
     """Load all the models contained in the parent directory
 
@@ -127,6 +158,7 @@ def load_ensemble_from_parent_dir(
         paths,
         sample_mode=sample_mode,
         member_sample_mode=member_sample_mode,
+        ignore_errors=ignore_errors,
     )
 
 

@@ -5,7 +5,7 @@ Author: Ian Char
 Date: April 13, 2023
 """
 from copy import deepcopy
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import torch
 import torch.nn as nn
@@ -14,6 +14,9 @@ from torch import Tensor
 from dynamics_toolbox.rl.algorithms.abstract_rl_algorithm import RLAlgorithm
 from dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy import (
     SequentialTanhGaussianPolicy,
+)
+from dynamics_toolbox.rl.modules.history_encoders.abstract_history_encoder import (
+    HistoryEncoder,
 )
 from dynamics_toolbox.rl.modules.valnets.qnet import SequentialQNet
 from dynamics_toolbox.rl.util.misc import soft_update_net
@@ -97,6 +100,16 @@ class SequentialSAC(RLAlgorithm):
         else:
             self._alpha_optimizer = None
 
+    def get_history_encoders(self) -> Dict[str, HistoryEncoder]:
+        """Get dictionary of the history encoders.
+
+        Returns: Dictionary of history encoders.
+        """
+        hist_encoders = {'pi': self.policy.history_encoder}
+        for qidx in range(1, self.num_qnets + 1):
+            hist_encoders[f'q{qidx}'] = self.qnets[qidx - 1].history_encoder
+        return hist_encoders
+
     def _compute_losses(
         self,
         pt_batch: Dict[str, Tensor],
@@ -120,6 +133,11 @@ class SequentialSAC(RLAlgorithm):
         full_obs = torch.cat([obs, nxts[:, [-1]]], dim=1)
         full_acts = pt_batch['actions']
         full_rews = pt_batch['rewards']
+        pi_start_encodings = pt_batch.get('pi_encoding', None)
+        q_start_encodings = [
+            pt_batch.get(f'q{qidx}_encoding', None)
+            for qidx in range(1, self.num_qnets + 1)
+        ]
         stats = {}
         # Policy loss.
         loss, loss_stats = self._compute_policy_loss(
@@ -127,6 +145,8 @@ class SequentialSAC(RLAlgorithm):
             prev_acts,
             prev_rews,
             masks,
+            pi_start_encodings,
+            q_start_encodings,
         )
         stats.update(loss_stats)
         self._policy_optimizer.zero_grad()
@@ -144,6 +164,8 @@ class SequentialSAC(RLAlgorithm):
             full_acts,
             full_rews,
             masks,
+            pi_start_encodings,
+            q_start_encodings,
         )
         stats.update(loss_stats)
         self._q_optimizer.zero_grad()
@@ -190,6 +212,8 @@ class SequentialSAC(RLAlgorithm):
         prev_acts: Tensor,
         prev_rews: Tensor,
         masks: Tensor,
+        pi_start_encodings: Optional[Tensor],
+        q_start_encodings: List[Optional[Tensor]],
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the policy loss.
 
@@ -198,15 +222,21 @@ class SequentialSAC(RLAlgorithm):
             prev_acts: Shape (batch_size, L, act_dim).
             prev_rews: Shape (batch_size, L, 1).
             masks: Shape (batch_size, L, 1).
+            pi_start_encodings: Encodings for where to start policy hidden state.
+            q_start_encodings: List of the start encodings for the q networks. Each
+                of this list members is either None or a tensor of shape
+                (batch_size, encode_dim)
 
         Returns: The loss and the dictionary of loss stats.
         """
         loss_stats = {}
         num_valid = masks.sum().item()
-        acts, logprobs, means, stds = self.policy(obs, prev_acts, prev_rews)[:4]
+        acts, logprobs, means, stds = self.policy(obs, prev_acts, prev_rews,
+                                                  encode_init=pi_start_encodings)[:4]
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         values = torch.min(torch.stack([
-            qnet(obs, prev_acts, prev_rews, acts) for qnet in self.qnets
+            qnet(obs, prev_acts, prev_rews, acts, encode_init=qstart)
+            for qnet, qstart in zip(self.qnets, q_start_encodings)
         ]), dim=0)[0]
         loss = ((alpha * logprobs - values) * masks).sum() / num_valid
         loss_stats['Policy/polic_loss'] = loss.item()
@@ -225,6 +255,8 @@ class SequentialSAC(RLAlgorithm):
         full_acts: Tensor,
         full_rews: Tensor,
         masks: Tensor,
+        pi_start_encodings: Optional[Tensor],
+        q_start_encodings: List[Optional[Tensor]],
     ) -> Tuple[Tensor, Dict[str, float]]:
         """Compute the Q Loss
 
@@ -239,18 +271,25 @@ class SequentialSAC(RLAlgorithm):
             full_acts: (batch_size, L + 1, act_dim)
             full_rews: (batch_size, L + 1, 1)
             masks: (batch_size, L, 1)
+            pi_start_encodings: Encodings for where to start policy hidden state.
+            q_start_encodings: List of the start encodings for the q networks. Each
+                of this list members is either None or a tensor of shape
+                (batch_size, encode_dim)
 
         Returns: The loss and the dictionary of loss stats.
         """
         alpha = self.log_alpha.exp().item() if self.entropy_tune else 1
         num_valid = masks.sum()
-        qpreds = [qnet(obs, prev_acts, prev_rews, acts)
-                  for qnet in self.qnets]
-        nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews)[:2]
+        qpreds = [qnet(obs, prev_acts, prev_rews, acts, encode_init=qstart)
+                  for qnet, qstart in zip(self.qnets, q_start_encodings)]
+        nxt_acts, nxt_logprobs = self.policy(full_obs, full_acts, full_rews,
+                                             encode_init=pi_start_encodings)[:2]
         # Note that we have to trim off first step because we do not care about
         # it for next values.
-        qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts)[:, 1:]
-                         for tqnet in self.target_qnets]
+        qtarget_preds = [tqnet(full_obs, full_acts, full_rews, nxt_acts,
+                               encode_init=tstart)[:, 1:]
+                         for tqnet, tstart in
+                         zip(self.target_qnets, q_start_encodings)]
         target_qs = torch.min(torch.stack(qtarget_preds), dim=0)[0]
         target_qs -= alpha * nxt_logprobs[:, 1:]
         bellman_targets = (rews + (1. - terms) * self.discount * target_qs).detach()

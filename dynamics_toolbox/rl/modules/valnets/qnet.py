@@ -96,6 +96,7 @@ class SequentialQNet(FCNetwork):
         prev_act_seq: Tensor,
         rew_seq: Tensor,
         act_seq: Tensor,
+        encode_init: Optional[Tensor] = None,
     ) -> Tensor:
         """
         Forward pass. Where B = batch_size, L = seq length..
@@ -108,7 +109,13 @@ class SequentialQNet(FCNetwork):
 
         Returns: Tensor
         """
-        encoding = self._history_encoder(obs_seq, prev_act_seq, rew_seq)[0]
+        encoding = self._history_encoder(obs_seq, prev_act_seq, rew_seq,
+                                         encode_init=encode_init)[0]
         obs_act_encoding = self.hidden_activation(self._obs_act_encoder(
             torch.cat([obs_seq, act_seq], dim=-1)))
         return super().forward(torch.cat([encoding, obs_act_encoding], dim=-1))
+
+    @property
+    def history_encoder(self) -> HistoryEncoder:
+        """Action dimension."""
+        return self._history_encoder

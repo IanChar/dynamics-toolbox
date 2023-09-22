@@ -2,9 +2,8 @@ name: ???
 env_name: ???
 seed: 0
 history_size: 10
-cuda_device: null
 env:
-  _target_: dynamics_toolbox.env_wrappers.wrapper_utils.make_og_envs
+  _target_: gym.make
   id: ${env_name}
 train_loop:
   _target_: dynamics_toolbox.rl.train_loops.offline_mbrl_training
@@ -13,21 +12,21 @@ train_loop:
   num_eval_eps: 10
   model_horizon: 10
   eval_horizon: 1000
-  eval_frequency: 10
   num_gradient_steps_per_epoch: 1000
   batch_size: 64
-  batch_env_proportion: 0.05
-  reencode_buffer_every: 4
-  mask_tail_amount: 0.0001
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
-    unscale_penalizer: False
+    unscale_penalizer: True
     dynamics_model:
-      _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
-      # parent_dir: 'trained_models/d4rl/${env_name}/0'
-      sample_mode: 'sample_member_every_trajectory'
-      load_n_best_models: 14
+      _target_: dynamics_toolbox.models.pl_models.sequential_models.joint_horizon_distribution_wrapper.joint_horizon_distribution_wrapper
+      error_corr_mat_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_corr_mat.npy'
+      recal_constants_path: '/home/scratch/youngsec/timeseries_calibration/dynamics-toolbox/data/d4rl/corr_recal/${env_name}_seed${seed}_recal_ratios.npy'
+      do_not_apply_corr: False
+      wrapped_model:
+        _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
+        parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
+        sample_mode: 'sample_member_every_step'
+        # load_n_best_models: 14
     penalizer:
       _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
       pen_name: 'std'
@@ -35,18 +34,17 @@ train_loop:
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
-    # bounder:
-    #     _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-    #     spread_amt: 5
-    #     data:
-    #       _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
-    #       hdf5_path: 'data/d4rl/${env_name}.hdf5'
-    #       relative_path: True
+    bounder:
+        _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
+        spread_amt: 3
+        data:
+          _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
+          hdf5_path: 'data/d4rl/${env_name}.hdf5'
+          relative_path: True
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialReplayBuffer
     max_buffer_size: 1e6
     lookback: ${history_size}
-    clear_every_n_epochs: 5
   env_buffer:
     _target_: dynamics_toolbox.rl.buffers.sequential_buffer.SequentialOfflineReplayBuffer
     data:
@@ -56,12 +54,10 @@ train_loop:
     lookback: ${history_size}
   logger:
     _target_: dynamics_toolbox.rl.rl_logger.RLLogger
-    checkpoint_policy_every: 50
 algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
   discount: 0.99
   learning_rate: 3e-4
-  target_entropy: null
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True
@@ -70,7 +66,7 @@ algorithm:
     _target_: dynamics_toolbox.rl.modules.policies.tanh_gaussian_policy.SequentialTanhGaussianPolicy
     history_encoder:
       _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
-      rnn_type: 'LSTM'
+      rnn_type: 'GRU'
       rnn_hidden_size: 128
       obs_encode_dim: 64
       act_encode_dim: 16
@@ -83,15 +79,15 @@ algorithm:
     _target_: dynamics_toolbox.rl.modules.valnets.qnet.SequentialQNet
     history_encoder:
       _target_: dynamics_toolbox.rl.modules.history_encoders.RNNEncoder
-      rnn_type: 'LSTM'
+      rnn_type: 'GRU'
       rnn_hidden_size: 128
       obs_encode_dim: 64
-      act_encode_dim: 16
-      rew_encode_dim: 16
+      act_encode_dim: 32
+      rew_encode_dim: 0
     obs_act_encode_dim: 64
     hidden_sizes:
       - 256
       - 256
 hydra:
   run:
-    dir: logs/maple_baselines/${name}/${env_name}/${seed}
+    dir: logs/${name}/${seed}

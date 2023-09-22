@@ -98,6 +98,7 @@ def evaluate_policy_in_gym(
     policy: Policy,
     num_eps: int,
     horizon: Optional[int] = None,
+    env_eval: bool = True,
 ) -> Tuple[float, float]:
     """Do one rollout in a gym environment.
 
@@ -106,12 +107,18 @@ def evaluate_policy_in_gym(
         policy: The policy to use.
         num_eps: Number of episodes to evaluate on.
         horizon: Horizon of the episode. If None, will run until terminal.
+        env_eval: If the environment has an evaluation mode, whether it should
+            be activated.
 
     Returns: Average and standard deviation of score across episodes.
     """
     policy.deterministic = True
+    if hasattr(env, 'eval'):
+        env.eval(env_eval)
     scores = [np.sum(gym_rollout_from_policy(env, policy, horizon)['rewards'])
               for _ in range(num_eps)]
+    if hasattr(env, 'eval'):
+        env.eval(False)
     return np.mean(scores), np.std(scores)
 
 

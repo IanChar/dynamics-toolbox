@@ -10,6 +10,17 @@ import gym
 import numpy as np
 
 
+def make_og_envs(id: str):
+    if 'halfcheetah' in id:
+        return gym.make('HalfCheetah-v2')
+    elif 'hopper' in id:
+        return gym.make('Hopper-v2')
+    elif 'walker' in id:
+        return gym.make('Walker2d-v2')
+    else:
+        raise ValueError(f'Unknown environment {id}')
+
+
 ###########################################################################
 #                            START DIST FUNCTIONS                         #
 ###########################################################################
@@ -79,7 +90,7 @@ def no_terminal(states: np.ndarray) -> np.ndarray:
     Returns: ndarray containing if it is a terminal state or not (batch_size,)
     """
     states = _add_axis_if_needed(states)
-    return np.full(states.shape[0], False)
+    return np.any(np.abs(states) >= 100, axis=1)  # Added in MAPLE.
 
 
 def hopper_terminal(states: np.ndarray) -> np.ndarray:
@@ -100,6 +111,7 @@ def hopper_terminal(states: np.ndarray) -> np.ndarray:
         np.abs(states[:, 1:] >= 100).all(axis=-1),
         height <= 0.7,
         np.abs(angle) >= 0.2,
+        np.any(np.abs(states) >= 100, axis=1),  # Added in MAPLE.
     ])
 
 
@@ -121,6 +133,7 @@ def walker_terminal(states: np.ndarray) -> np.ndarray:
         height >= 2.0,
         angle <= -1.0,
         angle >= 1.0,
+        np.any(np.abs(states) >= 100, axis=1),  # Added in MAPLE.
     ])
 
 

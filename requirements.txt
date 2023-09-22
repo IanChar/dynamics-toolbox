@@ -3,8 +3,9 @@ hydra-core
 numpy
 torch
 pytorch-lightning==1.4.2
+torchmetrics==0.6.0
 gym
 tqdm
 matplotlib
-sklearn
+scikit-learn
 scipy

@@ -4,7 +4,6 @@ Construction functions for lightning.
 Author: Ian Char
 """
 from typing import Tuple
-import os
 
 import hydra.utils
 import numpy as np
@@ -21,6 +20,7 @@ from dynamics_toolbox.utils.lightning.single_progress_bar import SingleProgressB
 from dynamics_toolbox.utils.pytorch.modules.normalizer import (
     Normalizer, InputNormalizer
 )
+from dynamics_toolbox.utils.storage.qdata import load_from_hdf5
 
 
 def construct_all_pl_components_for_training(
@@ -48,11 +48,19 @@ def construct_all_pl_components_for_training(
     if 'normalization' not in cfg:
         normalizer = None
     elif cfg['normalization'] == 'standardize':
-        normalizer = Normalizer(
-            [(torch.Tensor(np.mean(b.reshape(-1, b.shape[-1]), axis=0)),
-              torch.Tensor(np.std(b.reshape(-1, b.shape[-1]), axis=0)))
-             for b in data_module.data]
-        )
+        normconst_path = cfg.get('normalization_constants', None)
+        if normconst_path is None:
+            normalizer = Normalizer(
+                [(torch.Tensor(np.mean(b.reshape(-1, b.shape[-1]), axis=0)),
+                  torch.Tensor(np.std(b.reshape(-1, b.shape[-1]), axis=0)))
+                 for b in data_module.data]
+            )
+        else:
+            consts = load_from_hdf5(normconst_path)
+            normalizer = Normalizer([
+                (torch.Tensor(consts['x_mean']), torch.Tensor(consts['x_std'])),
+                (torch.Tensor(consts['y_mean']), torch.Tensor(consts['y_std'])),
+            ])
     elif cfg['normalization'] == 'standardize_input':
         b = data_module.data[0]
         normalizer = InputNormalizer(
@@ -72,7 +80,8 @@ def construct_all_pl_components_for_training(
     if hasattr(model, 'set_additional_model_params'):
         model.set_additional_model_params({'iterations': max_epochs})
     if data_module.num_validation > 0:
-        callbacks.append(ModelCheckpoint(monitor='val/loss'))
+        checkpoint_monitor = cfg.get('checkpoint_monitor', 'val/loss')
+        callbacks.append(ModelCheckpoint(monitor=checkpoint_monitor))
     if cfg['trainer'].get('gpus', 0) <= 1:
         # Only do progress bar if we are not doing multi-GPU. This is because
         # tqdm is not able to be pickled.

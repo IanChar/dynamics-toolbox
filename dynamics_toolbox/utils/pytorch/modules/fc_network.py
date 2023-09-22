@@ -22,6 +22,8 @@ class FCNetwork(torch.nn.Module):
         hidden_activation: Callable[[Tensor], Tensor] = F.relu,
         out_activation: Optional[Callable[[Tensor], Tensor]] = None,
         num_heads: int = 1,
+        head_hidden_sizes: Optional[Sequence[int]] = None,
+        head_activation=F.relu,
     ):
         """Constructor.
 
@@ -33,6 +35,9 @@ class FCNetwork(torch.nn.Module):
             out_activation: The activation function to apply on output. If there
                 are multiple heads there should also be a corresponding amount of
                 out activations.
+            num_heads: The number of output heads.
+            head_hidden_sizes: Number of hidden sizes for each head.
+            head_activation: The activation function for each head network.
         """
         super().__init__()
         assert (out_activation is None
@@ -49,12 +54,23 @@ class FCNetwork(torch.nn.Module):
                 self._add_linear_layer(hidden_sizes[hidx],
                                        hidden_sizes[hidx+1], hidx + 1)
             if self._num_heads == 1:
+                assert head_hidden_sizes is None, ('Does not support one head '
+                                                   'with hidden sizes')
                 self._add_linear_layer(hidden_sizes[-1], output_dim,
                                        len(hidden_sizes))
             else:
-                for nh in range(self._num_heads):
-                    self._add_linear_layer(hidden_sizes[-1], output_dim,
-                                           layer_name=f'head_{nh}')
+                if head_hidden_sizes is None:
+                    for nh in range(self._num_heads):
+                        self._add_linear_layer(hidden_sizes[-1], output_dim,
+                                               layer_name=f'head_{nh}')
+                else:
+                    for nh in range(self._num_heads):
+                        setattr(self, f'head_{nh}', FCNetwork(
+                            input_dim=hidden_sizes[-1],
+                            output_dim=output_dim,
+                            hidden_sizes=head_hidden_sizes,
+                            hidden_activation=head_activation,
+                        ))
             self._n_layers = len(hidden_sizes) + 1
         self._hidden_activation = hidden_activation
         self._out_activation = out_activation

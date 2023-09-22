@@ -64,7 +64,7 @@ class TanhGaussianPolicy(FCNetwork, Policy):
         self._act_dim = act_dim
         self._min_log_std = min_log_std
         self._max_log_std = max_log_std
-        self.deterministic = False
+        self._deterministic = False
         # Initialize last layer to correct distribution.
         self.get_layer(self.n_layers - 1).weight.data.uniform_(
             -last_layer_uinit,
@@ -181,14 +181,23 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
         self._obs_encoder = nn.Linear(self._obs_dim, obs_encode_dim)
         self.reset()
 
-    def reset(self):
-        """Reset by setting the histories to None."""
-        self._encode_history = None
+    def reset(self, init_encoding: Optional[Union[np.ndarray, Tensor]] = None):
+        """Reset by setting the histories to None.
+
+        Args:
+            init_encoding: The initial hidden encoding.
+        """
+        if init_encoding is not None:
+            self._encode_history = dm.torch_ify(init_encoding)
+            if len(self._encode_history.shape) < 3:
+                self._encode_history = self._encode_history.unsqueeze(0)
+        else:
+            self._encode_history = None
         self._obs_history = None
         self._act_history = None
         self._rew_history = None
 
-    def forward(self, obs_seq, act_seq, rew_seq, history=None):
+    def forward(self, obs_seq, act_seq, rew_seq, history=None, encode_init=None):
         """
         Forward pass. Where B = batch_size, L = seq length..
             * obs_seq: (B, L, obs_dim)
@@ -202,7 +211,9 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             * stds: (B, L, act_dim)
             * history: Depends on the sequence encoder.
         """
-        encoding, history = self._history_encoder(obs_seq, act_seq, rew_seq, history)
+        encoding, history = self._history_encoder(obs_seq, act_seq, rew_seq,
+                                                  history=history,
+                                                  encode_init=encode_init)
         obs_encoding = self.hidden_activation(self._obs_encoder(
             obs_seq[:, -encoding.shape[1]:]))
         if encoding.shape[1] == 1:
@@ -248,7 +259,7 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             logprobs = dm.ones(len(actions))
         self._act_history = torch.cat([self._act_history, actions.unsqueeze(1)],
                                       dim=1)
-        return dm.get_numpy(actions.squeeze()), dm.get_numpy(logprobs.squeeze())
+        return dm.get_numpy(actions.squeeze(0)), dm.get_numpy(logprobs.squeeze())
 
     def get_reward_feedback(self, rewards: Union[float, np.ndarray]):
         """Get feedback from the environment about the last reward.
@@ -265,3 +276,18 @@ class SequentialTanhGaussianPolicy(TanhGaussianPolicy):
             self._rew_history = rewards
         else:
             self._rew_history = torch.cat([self._rew_history, rewards], dim=1)
+
+    @property
+    def history_encoder(self) -> HistoryEncoder:
+        """Action dimension."""
+        return self._history_encoder
+
+    @property
+    def deterministic(self) -> bool:
+        """Action dimension."""
+        return self._deterministic
+
+    @deterministic.setter
+    def deterministic(self, mode: bool):
+        """Action dimension."""
+        self._deterministic = mode

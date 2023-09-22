@@ -85,6 +85,7 @@ def batch_online_rl_training(
         for path in paths:
             replay_buffer.add_paths(path)
         num_steps_taken += num_expl_steps_per_epoch
+        expl_returns = [np.sum(path['rewards']) for path in paths]
         # Train.
         logger.set_phase('Policy Updates')
         all_stats = []
@@ -102,10 +103,23 @@ def batch_online_rl_training(
             )
         else:
             ret_mean, ret_std = None, None
+        stats_to_log = {}
+        stats_to_log.update({f'{k}/mean': np.mean([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/std': np.std([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/min': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/max': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log['ExplorationReturns/mean'] = np.mean(expl_returns)
+        stats_to_log['ExplorationReturns/std'] = np.std(expl_returns)
+        stats_to_log['ExplorationReturns/min'] = np.min(expl_returns)
+        stats_to_log['ExplorationReturns/max'] = np.max(expl_returns)
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,
-            stats={k: np.mean([d[k] for d in all_stats]) for k in all_stats[0].keys()},
+            stats=stats_to_log,
             returns_mean=ret_mean,
             returns_std=ret_std,
             policy=algorithm.policy,
@@ -130,6 +144,8 @@ def offline_mbrl_training(
     eval_frequency: int = 1,
     batch_size: int = 256,
     batch_env_proportion: float = 0.05,
+    reencode_buffer_every: int = -1,
+    mask_tail_amount: float = 0.005,
     debug: bool = False,
     **kwargs
 ):
@@ -154,16 +170,26 @@ def offline_mbrl_training(
         batch_size: Size of batch for each gradient step.
         batch_env_proportion: Proportion of the batch that should be made up of
             offline data.
+        reencode_buffer_every: How often to reencode the buffer if using a history
+            encoder. If this is set to 0 or below, no reencoding happens.
+        mask_tail_amount: Percentage of extreme points to mask out for every
+            observation dimension and reward.
         debug: Whether to set a breakpoint.
     """
     if debug:
         breakpoint()
     model_env.to(dm.device)
     num_steps_taken = 0
+    eps_since_last_reencode = 0
     num_expl_paths_per_epoch = int(num_expl_paths_per_epoch)
     env_batch_size = int(batch_env_proportion * batch_size)
     model_batch_size = batch_size - env_batch_size
-    model_env.start_dist = env_buffer.sample_starts
+    if model_env.start_dist is None:
+        model_env.start_dist = env_buffer.sample_starts
+    if reencode_buffer_every > 0:
+        _reencode_buffer(algorithm, env_buffer)
+        model_buffer.encoding_dims = env_buffer.encoding_dims
+        model_buffer.clear_buffer()
     # Time to train!
     logger.start(epochs)
     for ep in range(epochs):
@@ -175,6 +201,7 @@ def offline_mbrl_training(
             num_rollouts=num_expl_paths_per_epoch,
             policy=algorithm.policy,
             horizon=model_horizon,
+            mask_tail_amount=mask_tail_amount,
         )
         num_steps_taken += num_expl_paths_per_epoch * model_horizon
         model_buffer.add_paths(paths)
@@ -188,6 +215,14 @@ def offline_mbrl_training(
                 batch = {k: np.concatenate([v, env_batch[k]], axis=0)
                          for k, v in batch.items()}
             all_stats.append(algorithm.grad_step(batch))
+        # Possibly re-encode the buffer.
+        if reencode_buffer_every > 0:
+            logger.set_phase('Reencoding Buffer')
+            if eps_since_last_reencode >= reencode_buffer_every:
+                _reencode_buffer(algorithm, env_buffer)
+                eps_since_last_reencode = 0
+            else:
+                eps_since_last_reencode += 1
         # Log.
         if ep % eval_frequency == 0:
             logger.set_phase('Policy Evaluation')
@@ -199,10 +234,37 @@ def offline_mbrl_training(
             )
         else:
             ret_mean, ret_std = None, None
+        stats_to_log = {}
+        # Log stats.
+        stats_to_log.update({f'{k}/mean': np.mean([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/std': np.std([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/min': np.min([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        stats_to_log.update({f'{k}/max': np.max([d[k] for d in all_stats])
+                             for k in all_stats[0].keys()})
+        # Log rollout stats.
+        for info_stat in ('penalty', 'raw_reward'):
+            if info_stat not in paths['info'][0]:
+                continue
+            viable = np.concatenate([
+                np.where(paths['masks'][:, idx, 0], ii[info_stat].flatten(), np.nan)
+                for idx, ii in enumerate(paths['info'])
+            ])
+            stats_to_log[f'rollouts/{info_stat}/mean'] = np.nanmean(viable)
+            stats_to_log[f'rollouts/{info_stat}/std'] = np.nanstd(viable)
+            stats_to_log[f'rollouts/{info_stat}/min'] = np.nanmin(viable)
+            stats_to_log[f'rollouts/{info_stat}/max'] = np.nanmax(viable)
+        path_lengths = np.sum(paths['masks'], axis=1)
+        stats_to_log['rollouts/path_length/mean'] = np.mean(path_lengths)
+        stats_to_log['rollouts/path_length/std'] = np.std(path_lengths)
+        stats_to_log['rollouts/path_length/min'] = np.min(path_lengths)
+        stats_to_log['rollouts/path_length/max'] = np.max(path_lengths)
         logger.log_epoch(
             epoch=ep,
             num_steps=num_steps_taken,
-            stats={k: np.mean([d[k] for d in all_stats]) for k in all_stats[0].keys()},
+            stats=stats_to_log,
             returns_mean=ret_mean,
             returns_std=ret_std,
             policy=algorithm.policy,
@@ -363,3 +425,9 @@ def online_mbrl_training(
         model_buffer.end_epoch()
         env_buffer.end_epoch()
     logger.end(algorithm.policy)
+
+
+def _reencode_buffer(algorithm: RLAlgorithm, buffer: ReplayBuffer):
+    if (hasattr(algorithm, 'get_history_encoders')
+            and hasattr(buffer, 'reencode_paths')):
+        buffer.reencode_paths(algorithm.get_history_encoders())

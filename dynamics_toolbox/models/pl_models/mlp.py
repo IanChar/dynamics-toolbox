@@ -29,6 +29,7 @@ class MLP(AbstractPlModel):
             layer_size: Optional[int] = None,
             architecture: Optional[str] = None,
             hidden_activation: str = activations.RELU,
+            out_activation: Optional[str] = None,
             loss_type: str = losses.MSE,
             weight_decay: Optional[float] = 0.0,
             **kwargs,
@@ -45,6 +46,7 @@ class MLP(AbstractPlModel):
                 a string of underscore separated ints e.g. 256_100_64.
                 If provided, this overrides num_layers and layer_sizes.
             hidden_activation: Activation to use.
+            out_activation: Activation to use on the output.
             loss_type: The name of the loss function to use.
             weight_decay: The weight decay for the optimizer.
         """
@@ -55,6 +57,7 @@ class MLP(AbstractPlModel):
             output_dim=output_dim,
             hidden_sizes=hidden_sizes,
             hidden_activation=get_activation(hidden_activation),
+            out_activation=get_activation(out_activation),
         )
         self._learning_rate = learning_rate
         self._weight_decay = weight_decay

@@ -3,7 +3,8 @@ A network that outputs a Gaussian predictive distribution.
 
 Author: Ian Char
 """
-from typing import Optional, Tuple, Dict, Any, Sequence, Callable
+import math
+from typing import Optional, Tuple, Dict, Any, Sequence, Callable, Union
 
 import hydra.utils
 import numpy as np
@@ -33,6 +34,9 @@ class PNN(AbstractPlModel):
             logvar_bound_loss_coef: float = 1e-3,
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
+            sampling_distribution: str = 'Gaussian',
+            gp_length_scales: Union[float, str] = 3.0,
+            gp_num_bases: int = 100,
             **kwargs,
     ):
         """
@@ -57,6 +61,11 @@ class PNN(AbstractPlModel):
             hidden_activation: Activation of the networks hidden layers.
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
+            sampling_distribution: Distribution to sample from. Either Gaussian or GP.
+            gp_length_scales: Length scales. Either a float to apply to every
+                in-out dimension pair or a path to a .npy file with a ndarray
+                of shape (in_dim, out_dim)
+            gp_num_bases: Number of bases to use in the Fourier series approximation.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self._input_dim = input_dim
@@ -84,6 +93,11 @@ class PNN(AbstractPlModel):
         self._recal_constants = None
         self._var_pinning = (logvar_lower_bound is not None
                              and logvar_upper_bound is not None)
+        self.sampling_distribution = sampling_distribution
+        self._gp_num_bases = gp_num_bases
+        self._curr_sample = None   # Only used for GPs.
+        self.kernel = None
+        self.bmp = None
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])
@@ -100,6 +114,13 @@ class PNN(AbstractPlModel):
                 'EV': ExplainedVariance(),
                 'IndvEV': ExplainedVariance('raw_values'),
         }
+
+    def reset(self) -> None:
+        """Reset the dynamics model."""
+        self._curr_sample = None
+        if self.bmp is not None:
+            for bm in self.bmp:
+                bm.reset()
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
@@ -130,16 +151,30 @@ class PNN(AbstractPlModel):
         Returns:
             The predictions for next states and dictionary of info.
         """
+        if self.sampling_distribution == 'BMP':
+            raise ValueError('Cannot single sample BMP')
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
         if self.recal_constants is not None:
             std_predictions *= self.recal_constants
-        if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
-            predictions = (torch.randn_like(mean_predictions) * std_predictions
-                           + mean_predictions)
-        else:
+        if self.sampling_distribution == 'Gaussian':
+            if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
+                predictions = (torch.randn_like(mean_predictions) * std_predictions
+                               + mean_predictions)
+            else:
+                predictions = mean_predictions
+        elif self.sampling_distribution == 'GP':
+            predictions = self._make_gp_prediction(
+                net_in,
+                mean_predictions,
+                std_predictions,
+                single_sample=True,
+            )
+        elif self.sampling_distribution == 'Mean':
             predictions = mean_predictions
+        else:
+            raise ValueError(f'Unknown distribuction {self.sampling_distribution}')
         info = {'predictions': predictions,
                 'mean_predictions': mean_predictions,
                 'std_predictions': std_predictions}
@@ -157,6 +192,29 @@ class PNN(AbstractPlModel):
         Returns:
             The deltas for next states and dictionary of info.
         """
+        if self.sampling_distribution == 'GP' or self.sampling_distribution == 'BMP':
+            with torch.no_grad():
+                mean_predictions, logvar_predictions = self.forward(net_in)
+            std_predictions = (0.5 * logvar_predictions).exp()
+            if self.recal_constants is not None:
+                std_predictions *= self.recal_constants
+            if self.sampling_distribution == 'GP':
+                predictions = self._make_gp_prediction(
+                    net_in,
+                    mean_predictions,
+                    std_predictions,
+                    single_sample=False,
+                )
+            else:
+                predictions = self._make_bmp_prediction(
+                    net_in,
+                    mean_predictions,
+                    std_predictions,
+                )
+            info = {'predictions': predictions,
+                    'mean_predictions': mean_predictions,
+                    'std_predictions': std_predictions}
+            return predictions, info
         return self.single_sample_output_from_torch(net_in)
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -213,6 +271,20 @@ class PNN(AbstractPlModel):
         """Configure the optimizer"""
         return torch.optim.Adam(self.parameters(), lr=self._learning_rate)
 
+    def set_kernel(self, kernel):
+        """Load in a kernel that was trained for GP smoothness."""
+        self.kernel = kernel
+
+    def to(self, device):
+        super().to(device)
+        if self._recal_constants is not None:
+            self._recal_constants = self._recal_constants.to(device)
+        if self.kernel is not None:
+            self.kernel = self.kernel.to(device)
+        if self.bmp is not None:
+            self.bmp = [bm.to(device) for bm in self.bmp]
+        return self
+
     @property
     def sample_mode(self) -> str:
         """The sample mode is the method that in which we get next state."""
@@ -265,6 +337,85 @@ class PNN(AbstractPlModel):
         else:
             self._recal_constants = constants.to(self.device)
         self._recal_constants = self._recal_constants.reshape(1, -1)
+
+    def _make_gp_prediction(
+        self,
+        net_in: torch.Tensor,
+        mean_predictions: torch.Tensor,
+        std_predictions: torch.Tensor,
+        single_sample: bool,
+    ):
+        assert self.kernel is not None
+        if self._curr_sample is None:
+            if single_sample:
+                self._curr_sample = self._sample_prior(1)
+            else:
+                self._curr_sample = self._sample_prior(len(net_in))
+        if hasattr(self.kernel, 'encoder'):
+            encoding_in = (torch.cat([net_in, std_predictions], dim=-1)
+                           if self.kernel.input_dim > net_in.shape[-1]
+                           else net_in)
+            with torch.no_grad():
+                encoding = self.kernel.encoder(encoding_in)
+            if self.output_dim == 1:
+                encoding = encoding.unsqueeze(0)
+            prior_draws = math.sqrt(2 / self._gp_num_bases) * torch.stack([
+                torch.cos((self._curr_sample[0][:, :, outdim]
+                           * encoding[[outdim]]).sum(dim=-1)
+                          + self._curr_sample[1][..., outdim]).sum(dim=0)
+                for outdim in range(self.output_dim)], dim=1)
+        else:
+            with torch.no_grad():
+                prior_draws = (
+                    math.sqrt(2 / self._gp_num_bases)
+                    * torch.cos((self._curr_sample[0]
+                                 @ net_in.reshape(1, len(net_in),
+                                                  -1, 1)).squeeze(-1)
+                                + self._curr_sample[1]).sum(dim=0)
+                )
+        return mean_predictions + std_predictions * prior_draws
+
+    def _make_bmp_prediction(
+        self,
+        net_in: torch.Tensor,
+        mean_predictions: torch.Tensor,
+        std_predictions: torch.Tensor,
+    ):
+        """Make prediction with the beta mixture sampling procedure."""
+        q_preds = torch.stack([
+            bm.sample_next_q_no_grad(net_in.unsqueeze(1),
+                                     output_numpy=False)[0].squeeze()
+            for bm in self.bmp
+        ], dim=1)
+        return (
+            mean_predictions
+            + std_predictions * math.sqrt(2) * torch.erfinv(2 * q_preds - 1)
+        )
+
+    def _sample_prior(self, num_samples: int) -> Tuple[np.ndarray]:
+        """Sample coefficients for Fourier prior sample. Right now this is only for
+        the RBF kernel but we could possibly augment this in the future.
+
+        Args:
+            num_samples: Number of prior function samples.
+
+        Returns: Theta cosine coefficients and offsets each with shape
+            (num_bases, num_samples, out_dim, in_dim)
+            and (num_bases, num_samples, out_dim) respectively.
+        """
+        assert self.kernel is not None
+        thetas = torch.randn(
+                self._gp_num_bases, num_samples,
+                self.kernel.lengthscales.shape[-2],
+                self.kernel.lengthscales.shape[-1], device=self.device)
+        with torch.no_grad():
+            thetas = (thetas
+                      / self.kernel.lengthscales.unsqueeze(0).unsqueeze(0)
+                      ).to(self.device)
+        betas = torch.rand(self._gp_num_bases, num_samples,
+                           self.kernel.lengthscales.shape[-2])
+        betas = (betas * 2 * np.pi).to(self.device)
+        return thetas, betas
 
     def _get_test_and_validation_metrics(
             self,

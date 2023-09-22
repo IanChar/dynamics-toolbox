@@ -10,6 +10,7 @@ import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
 
+from dynamics_toolbox.env_wrappers.bounders import Bounder
 from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.rl.modules.policies.action_plan_policy import ActionPlanPolicy
 from dynamics_toolbox.models.abstract_model import AbstractModel
@@ -31,6 +32,8 @@ class ModelEnv(gym.Env):
             reward_is_first_dim: bool = True,
             real_env: Optional[gym.Env] = None,
             model_output_are_deltas: Optional[bool] = True,
+            unscale_penalizer: bool = False,
+            bounder: Optional[Bounder] = None,
     ):
         """
         Constructor.
@@ -50,16 +53,28 @@ class ModelEnv(gym.Env):
             real_env: The real environment being modelled.
             model_output_are_deltas: Whether the model predicts delta in state or the
                 actual full state.
+            unscale_penalizer: Whether to use unscaled uncertainty for penalty.
+            bounder: Bounding for the states and rewards.
         """
         super().__init__()
         self._dynamics = dynamics_model
         self._start_dist = start_distribution
         self._horizon = horizon
         self._penalizer = penalizer
-        self._penalty_coefficient = (
-            penalty_coefficient
-            * getattr(self._dynamics.normalizer, '1_scaling')
-        )
+        self._bounder = bounder
+        if not unscale_penalizer:
+            self._std_scaling = 1
+        elif (hasattr(self._dynamics, 'wrapped_model')
+                and hasattr(self._dynamics.wrapped_model.normalizer, '1_scaling')):
+            self._std_scaling =\
+                getattr(self._dynamics.wrapped_model.normalizer,
+                        '1_scaling').cpu().numpy()
+        elif hasattr(self._dynamics.normalizer, '1_scaling'):
+            self._std_scaling = getattr(self._dynamics.normalizer,
+                                        '1_scaling').cpu().numpy()
+        else:
+            self._std_scaling = 1
+        self._penalty_coefficient = penalty_coefficient
         self._terminal_function = terminal_function
         self._reward_function = reward_function
         self._reward_is_first_dim = reward_is_first_dim
@@ -124,11 +139,13 @@ class ModelEnv(gym.Env):
             [self._state.reshape(1, -1), action]))
         nxt = (model_out + self._state.reshape(1, -1) if self._model_output_are_deltas
                else model_out)
+        if self._bounder is not None:
+            nxt = self._bounder.bound_state(nxt, self._state.reshape(1, -1))
         self._t += 1
         info = {}
         rew, rew_info = self._compute_reward(self._state, action, nxt, model_info)
-        if 'raw_penalty' in rew_info:
-            info['raw_penalty'] = float(rew_info['raw_penalty'])
+        if 'penalty' in rew_info:
+            info['penalty'] = float(rew_info['penalty'])
         # Compute terminal
         if self._terminal_function is not None:
             done = self._terminal_function(nxt)[0]
@@ -146,7 +163,9 @@ class ModelEnv(gym.Env):
             policy: Policy,
             horizon: int,
             starts: Optional[np.ndarray] = None,
+            start_info: Optional[Dict] = None,
             show_progress: bool = False,
+            mask_tail_amount: float = 0.0,
     ) -> Dict[str, np.ndarray]:
         """
         Unroll multiple different trajectories using a policy.
@@ -157,27 +176,35 @@ class ModelEnv(gym.Env):
             starts: All of the states to unroll from should have shape
                 (num_rollouts, obs_dim).
             show_progress: Whether to show the progress of the rollout.
+            mask_tail_amount: Percentage of extreme points to mask out for every
+                observation dimension and reward.
         Returns:
-            - obs: All observations (num_rollouts, horizon + 1, obs_dim)
-            - acts: The actions taken (num_rollouts, horizon, act_dim)
-            - rews: The rewards received (num_rollouts, horizon, 1)
-            - terms: The terminals (num_rollouts, horizon, 1)
+            - observations: All observations (num_rollouts, horizon + 1, obs_dim)
+            - actions: The actions taken (num_rollouts, horizon, act_dim)
+            - rewards: The rewards received (num_rollouts, horizon, 1)
+            - terminals: The terminals (num_rollouts, horizon, 1)
             - logprobs: The logprobabilities of actions (num_rollouts, horizon, 1)
             - masks: Mask for whether the data is real or not. 0 if the transition
                 happened after a terminal. Has shape (num_rollouts, horizon, 1)
         """
-        policy.reset()
         if starts is None:
             if self._start_dist is None:
                 raise ValueError('Starts must be provided if start state dist is not.')
-            starts = self._start_dist(num_rollouts)
+            starts, start_info = self._start_dist(num_rollouts)
         else:
             assert len(starts) == num_rollouts, 'Number of starts must match.'
+        if start_info is not None:
+            pi_encoding = start_info.get('pi_encoding', None)
+        else:
+            pi_encoding = None
+        policy.reset(init_encoding=pi_encoding)
+        self._dynamics.reset()
         obs = np.zeros((starts.shape[0], horizon + 1, starts.shape[1]))
         rews = np.zeros((starts.shape[0], horizon, 1))
         terms = np.full((starts.shape[0], horizon, 1), True)
         logprobs = np.zeros((starts.shape[0], horizon, 1))
         masks = np.ones((starts.shape[0], horizon, 1))
+        all_infos = []
         obs[:, 0, :] = starts
         acts = None
         if show_progress:
@@ -190,17 +217,21 @@ class ModelEnv(gym.Env):
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
-            rews[:, h] = self._compute_reward(state, act, model_out, infos)[0]
+            curr_rew, rew_info = self._compute_reward(state, act, model_out, infos)
+            rews[:, h] = curr_rew
+            infos.update(rew_info)
+            all_infos.append(infos)
             if self._reward_is_first_dim:
                 model_out = model_out[:, 1:]
             nxts = state + model_out if self._model_output_are_deltas else model_out
+            if self._bounder is not None:
+                nxts = self._bounder.bound_state(nxts, state)
             obs[:, h + 1, :] = nxts
             policy.get_reward_feedback(rews[:, h])
             if self._terminal_function is None:
                 terms[:, h] = np.full(terms[:, h].shape, False)
             else:
-                terms[:, h] = np.array([self._terminal_function(nxt)
-                                        for nxt in nxts])
+                terms[:, h] = self._terminal_function(nxts).reshape(-1, 1)
                 if np.sum(terms[:, h]) > 0:
                     term_idxs = np.argwhere(terms[:, h].flatten())
                     masks[term_idxs, h + 1:] = 0
@@ -208,14 +239,46 @@ class ModelEnv(gym.Env):
                 pbar.update(1)
         if show_progress:
             pbar.close()
-        return {
+        if mask_tail_amount > 0.0:
+            for obdim in range(obs.shape[-1]):
+                low, high = np.quantile(obs[..., obdim],
+                                        [mask_tail_amount / 2,
+                                         1 - (mask_tail_amount / 2)])
+                extreme_idxs = np.argwhere(np.logical_or(
+                    obs[..., obdim] < low, obs[..., obdim] > high))
+                for etraj, eh in extreme_idxs:
+                    masks[etraj, eh:] = 0
+                    # TODO: Do we want to put a terminal before things go crazy?
+                    terms[etraj, min(eh - 1, 0)] = 1
+            low, high = np.quantile(rews, [mask_tail_amount / 2,
+                                           1 - (mask_tail_amount / 2)])
+            extreme_idxs = np.argwhere(np.logical_or(
+                rews[..., 0] < low, rews[..., 0] > high))
+            for etraj, eh in extreme_idxs:
+                masks[etraj, eh:] = 0
+                terms[etraj, min(eh - 1, 0)] = 1
+        paths = {
             'observations': obs,
             'actions': acts,
             'rewards': rews,
             'terminals': terms,
             'logprobs': logprobs,
             'masks': masks,
+            'info': all_infos,
         }
+        # If the start came with an encoding, load this in as the first part of
+        # the path. The rest is 0s since right now there is no way to extract
+        # encoding as we roll out. TODO: Add a way to get these encodings. However,
+        # right now rollout length is usually <= sequence buffer lookback so it
+        # is not a problem.
+        if start_info is not None:
+            for k, v in start_info.items():
+                if 'encoding' in k:
+                    path_encoding = np.zeros((acts.shape[0],
+                                              acts.shape[1], v.shape[-1]))
+                    path_encoding[:, 0] = v
+                    paths[k] = path_encoding
+        return paths
 
     def model_rollout_from_actions(
             self,
@@ -244,7 +307,8 @@ class ModelEnv(gym.Env):
         horizon = actions.shape[1]
         policy_wrap = ActionPlanPolicy(actions)
         return self.model_rollout_from_policy(num_rollouts, policy_wrap, horizon,
-                                              starts, show_progress)
+                                              starts=starts,
+                                              show_progress=show_progress)
 
     def render(self, mode='human'):
         """TODO: Figure out how to render given the real environment."""
@@ -262,6 +326,13 @@ class ModelEnv(gym.Env):
                     member.to(device)
         elif isinstance(self._dynamics, nn.Module):
             self._dynamics.to(device)
+        if hasattr(self._dynamics, 'wrapped_model'):
+            if isinstance(self._dynamics.wrapped_model, Ensemble):
+                for member in self._dynamics.wrapped_model.members:
+                    if isinstance(member, nn.Module):
+                        member.to(device)
+            elif isinstance(self._dynamics.wrapped_model, nn.Module):
+                self._dynamics.wrapped_model.to(device)
 
     @property
     def t(self) -> int:
@@ -317,8 +388,12 @@ class ModelEnv(gym.Env):
             if len(nxt.shape) == 1:
                 nxt = nxt.reshape(1, -1)
             rew = self._reward_function(state, action, nxt)
+        if self._bounder is not None:
+            rew = self._bounder.bound_reward(rew)
+        info['raw_reward'] = rew
         if self._penalizer is not None:
-            raw_penalty = self._penalizer(model_info)
-            rew -= self._penalty_coefficient * raw_penalty
-            info['raw_penalty'] = raw_penalty
+            model_info['std_scaling'] = self._std_scaling
+            penalty = self._penalizer(model_info)
+            rew -= self._penalty_coefficient * penalty
+            info['penalty'] = penalty
         return rew, info

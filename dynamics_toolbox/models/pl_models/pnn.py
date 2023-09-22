@@ -97,6 +97,7 @@ class PNN(AbstractPlModel):
         self._gp_num_bases = gp_num_bases
         self._curr_sample = None   # Only used for GPs.
         self.kernel = None
+        self.bmp = None
         if self._var_pinning:
             self._min_logvar = torch.nn.Parameter(
                 torch.Tensor([logvar_lower_bound])
@@ -117,6 +118,9 @@ class PNN(AbstractPlModel):
     def reset(self) -> None:
         """Reset the dynamics model."""
         self._curr_sample = None
+        if self.bmp is not None:
+            for bm in self.bmp:
+                bm.reset()
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
@@ -147,6 +151,8 @@ class PNN(AbstractPlModel):
         Returns:
             The predictions for next states and dictionary of info.
         """
+        if self.sampling_distribution == 'BMP':
+            raise ValueError('Cannot single sample BMP')
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
@@ -186,18 +192,25 @@ class PNN(AbstractPlModel):
         Returns:
             The deltas for next states and dictionary of info.
         """
-        if self.sampling_distribution == 'GP':
+        if self.sampling_distribution == 'GP' or self.sampling_distribution == 'BMP':
             with torch.no_grad():
                 mean_predictions, logvar_predictions = self.forward(net_in)
             std_predictions = (0.5 * logvar_predictions).exp()
             if self.recal_constants is not None:
                 std_predictions *= self.recal_constants
-            predictions = self._make_gp_prediction(
-                net_in,
-                mean_predictions,
-                std_predictions,
-                single_sample=False,
-            )
+            if self.sampling_distribution == 'GP':
+                predictions = self._make_gp_prediction(
+                    net_in,
+                    mean_predictions,
+                    std_predictions,
+                    single_sample=False,
+                )
+            else:
+                predictions = self._make_bmp_prediction(
+                    net_in,
+                    mean_predictions,
+                    std_predictions,
+                )
             info = {'predictions': predictions,
                     'mean_predictions': mean_predictions,
                     'std_predictions': std_predictions}
@@ -268,6 +281,8 @@ class PNN(AbstractPlModel):
             self._recal_constants = self._recal_constants.to(device)
         if self.kernel is not None:
             self.kernel = self.kernel.to(device)
+        if self.bmp is not None:
+            self.bmp = [bm.to(device) for bm in self.bmp]
         return self
 
     @property
@@ -359,6 +374,23 @@ class PNN(AbstractPlModel):
                                 + self._curr_sample[1]).sum(dim=0)
                 )
         return mean_predictions + std_predictions * prior_draws
+
+    def _make_bmp_prediction(
+        self,
+        net_in: torch.Tensor,
+        mean_predictions: torch.Tensor,
+        std_predictions: torch.Tensor,
+    ):
+        """Make prediction with the beta mixture sampling procedure."""
+        q_preds = torch.stack([
+            bm.sample_next_q_no_grad(net_in.unsqueeze(1),
+                                     output_numpy=False)[0].squeeze()
+            for bm in self.bmp
+        ], dim=1)
+        return (
+            mean_predictions
+            + std_predictions * math.sqrt(2) * torch.erfinv(2 * q_preds - 1)
+        )
 
     def _sample_prior(self, num_samples: int) -> Tuple[np.ndarray]:
         """Sample coefficients for Fourier prior sample. Right now this is only for

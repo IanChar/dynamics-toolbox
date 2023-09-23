@@ -28,9 +28,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str)
-parser.add_argument('--horizon', type=int, default=10)
+parser.add_argument('--horizon', type=int, default=30)
 parser.add_argument('--samples_per_start', type=int, default=1)
-parser.add_argument('--num_starts', type=int, default=3)
+parser.add_argument('--num_starts', type=int, default=1)
 parser.add_argument('--is_ensemble', action='store_true')
 parser.add_argument('--sampling_mode', type=str, default='sample_from_dist')
 parser.add_argument('--ensemble_sampling_mode', type=str,
@@ -65,7 +65,10 @@ if args.is_ensemble:
         member_sample_mode=args.sampling_mode,
     )
 else:
-    model = load_model_from_log_dir(path=args.model_path)
+    from autocal.utils import fancy_load
+    model = fancy_load(path=args.model_path)
+    model.sampling_distribution = 'Gaussian'
+    # model = load_model_from_log_dir(path=args.model_path)
     model.sample_mode = args.sampling_mode
 if args.wrapper_path is not None:
     wrapper = load_model_from_log_dir(path=args.wrapper_path)

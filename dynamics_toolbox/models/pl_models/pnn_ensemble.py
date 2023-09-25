@@ -4,37 +4,27 @@ A network that outputs a Gaussian predictive distribution.
 Author: Ian Char
 """
 import math
-from typing import Optional, Tuple, Dict, Any, Sequence, Callable, Union
+from typing import Tuple, Dict, Any, Sequence, Callable, Union
 
-import hydra.utils
 import numpy as np
 import torch
-import torch.nn.functional as F
-from omegaconf import DictConfig
-from torchmetrics import ExplainedVariance
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
+from dynamics_toolbox.models.pl_models.pnn import PNN
 
 
-class PNN(AbstractPlModel):
+class PNNEnsemble(AbstractPlModel):
     """Two headed network that outputs mean and log variance of a Gaussian."""
 
     def __init__(
             self,
             input_dim: int,
             output_dim: int,
-            encoder_output_dim: int,
-            encoder_cfg: DictConfig,
-            mean_net_cfg: DictConfig,
-            logvar_net_cfg: DictConfig,
-            learning_rate: float = 1e-3,
-            logvar_lower_bound: Optional[float] = None,
-            logvar_upper_bound: Optional[float] = None,
-            logvar_bound_loss_coef: float = 1e-3,
-            sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
-            weight_decay: Optional[float] = 0.0,
+            pnns: Sequence[PNN],
+            std_mode: str = 'max',
             sampling_distribution: str = 'Gaussian',
+            sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             gp_length_scales: Union[float, str] = 3.0,
             gp_num_bases: int = 100,
             **kwargs,
@@ -70,50 +60,14 @@ class PNN(AbstractPlModel):
         super().__init__(input_dim, output_dim, **kwargs)
         self._input_dim = input_dim
         self._output_dim = output_dim
-        self._encoder = hydra.utils.instantiate(
-            encoder_cfg,
-            input_dim=input_dim,
-            output_dim=encoder_output_dim,
-            _recursive_=False,
-        )
-        self._mean_head = hydra.utils.instantiate(
-            mean_net_cfg,
-            input_dim=encoder_output_dim,
-            output_dim=output_dim,
-            _recursive_=False,
-        )
-        self._logvar_head = hydra.utils.instantiate(
-            logvar_net_cfg,
-            input_dim=encoder_output_dim,
-            output_dim=output_dim,
-            _recursive_=False,
-        )
-        self._learning_rate = learning_rate
-        self._weight_decay = weight_decay
-        self._recal_constants = None
-        self._var_pinning = (logvar_lower_bound is not None
-                             and logvar_upper_bound is not None)
+        self._pnns = pnns
         self.sampling_distribution = sampling_distribution
         self._gp_num_bases = gp_num_bases
         self._curr_sample = None   # Only used for GPs.
         self.kernel = None
         self.bmp = None
-        if self._var_pinning:
-            self._min_logvar = torch.nn.Parameter(
-                torch.Tensor([logvar_lower_bound])
-                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
-            self._max_logvar = torch.nn.Parameter(
-                torch.Tensor([logvar_upper_bound])
-                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
-        else:
-            self._min_logvar = None
-            self._max_logvar = None
-        self._logvar_bound_loss_coef = logvar_bound_loss_coef
         self._sample_mode = sample_mode
-        self._metrics = {
-                'EV': ExplainedVariance(),
-                'IndvEV': ExplainedVariance('raw_values'),
-        }
+        self._std_mode = std_mode
 
     def reset(self) -> None:
         """Reset the dynamics model."""
@@ -121,6 +75,8 @@ class PNN(AbstractPlModel):
         if self.bmp is not None:
             for bm in self.bmp:
                 bm.reset()
+        for pnn in self._pnns:
+            pnn.reset()
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward function for network
@@ -131,13 +87,12 @@ class PNN(AbstractPlModel):
         Returns:
             The output of the networ.
         """
-        encoded = self._encoder.forward(x)
-        mean = self._mean_head.forward(encoded)
-        logvar = self._logvar_head.forward(encoded)
-        if self._var_pinning:
-            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
-            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
-        return mean, logvar
+        means, logvars = [], []
+        for pnn in self._pnns:
+            pnn_out = pnn.forward(x)
+            means.append(pnn_out[0])
+            logvars.append(pnn_out[1])
+        return torch.stack(means), torch.stack(logvars)
 
     def single_sample_output_from_torch(
             self,
@@ -155,7 +110,12 @@ class PNN(AbstractPlModel):
             raise ValueError('Cannot single sample BMP')
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
+        mean_predictions = mean_predictions.mean(dim=0)
         std_predictions = (0.5 * logvar_predictions).exp()
+        if self._std_mode == 'max':
+            std_predictions = std_predictions.max(dim=0).values
+        else:
+            std_predictions = std_predictions.mean(dim=0)
         if self.recal_constants is not None:
             std_predictions *= self.recal_constants
         if self.sampling_distribution == 'Gaussian':
@@ -195,7 +155,12 @@ class PNN(AbstractPlModel):
         if self.sampling_distribution == 'GP' or self.sampling_distribution == 'BMP':
             with torch.no_grad():
                 mean_predictions, logvar_predictions = self.forward(net_in)
+            mean_predictions = mean_predictions.mean(dim=0)
             std_predictions = (0.5 * logvar_predictions).exp()
+            if self._std_mode == 'max':
+                std_predictions = std_predictions.max(dim=0).values
+            else:
+                std_predictions = std_predictions.mean(dim=0)
             if self.recal_constants is not None:
                 std_predictions *= self.recal_constants
             if self.sampling_distribution == 'GP':

@@ -201,6 +201,10 @@ class Ensemble(AbstractModel):
         for member in self.members:
             member.sample_mode = mode
 
+    def to(self, device):
+        self._members = [m.to(device) for m in self._members]
+        return self
+
     def _normalize_prediction_input(self, model_input: torch.Tensor) -> torch.Tensor:
         """Normalize the input for prediction.
 

@@ -32,7 +32,8 @@ def gym_rollout_from_policy(
         * logprobs: Log probabilities of taking actions w shape (horizon, 1)
     """
     obs, acts, rews, terms, logprobs = [[] for _ in range(5)]
-    obs.append(env.reset())
+    start_obs, _ = env.reset()
+    obs.append(start_obs)
     policy.eval()
     policy.reset()
     running = True
@@ -41,7 +42,7 @@ def gym_rollout_from_policy(
         act, logprob = policy.get_actions(obs[-1])
         acts.append(act)
         logprobs.append(logprob)
-        ob, rew, term, _ = env.step(unnormalize_action(env, act))
+        ob, rew, term, _, _ = env.step(unnormalize_action(env, act))
         obs.append(ob)
         rews.append(rew)
         terms.append(term)

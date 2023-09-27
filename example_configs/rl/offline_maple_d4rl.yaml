@@ -15,9 +15,10 @@ train_loop:
   eval_horizon: 1000
   eval_frequency: 10
   num_gradient_steps_per_epoch: 1000
-  batch_size: 64
+  batch_size: 128
   batch_env_proportion: 0.05
-  reencode_buffer_every: 4
+  reencode_buffer_every: -1
+  # reencode_buffer_every: 4
   mask_tail_amount: 0.0001
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
@@ -61,7 +62,7 @@ algorithm:
   _target_: dynamics_toolbox.rl.algorithms.sequential_sac.SequentialSAC
   discount: 0.99
   learning_rate: 3e-4
-  target_entropy: null
+  target_entropy: -3
   soft_target_update_weight: 5e-3
   soft_target_update_frequency: 1
   entropy_tune: True

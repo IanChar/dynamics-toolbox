@@ -11,9 +11,10 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 
 from dynamics_toolbox.rl.util.gym_util import extra_imports_for_env
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
+import dynamics_toolbox.rl.envs
 
 
-@hydra.main(config_path='./example_configs/rl', config_name='offline_maple_d4rl')
+@hydra.main(config_path='./example_configs/rl', config_name='offline_mopo_d4rl')
 def train_rl(cfg: DictConfig):
     # Instantiate the gym environment and get the obs and act dims.
     # extra_imports_for_env(cfg['env']['id'])

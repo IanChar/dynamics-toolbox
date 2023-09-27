@@ -22,7 +22,7 @@ class PNNEnsemble(AbstractPlModel):
             input_dim: int,
             output_dim: int,
             pnns: Sequence[PNN],
-            std_mode: str = 'max',
+            std_mode: str = 'mean',
             sampling_distribution: str = 'Gaussian',
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             gp_length_scales: Union[float, str] = 3.0,
@@ -242,6 +242,7 @@ class PNNEnsemble(AbstractPlModel):
 
     def to(self, device):
         super().to(device)
+        self._pnns = [pnn.to(device) for pnn in self._pnns]
         if self._recal_constants is not None:
             self._recal_constants = self._recal_constants.to(device)
         if self.kernel is not None:

@@ -117,7 +117,7 @@ class BetaTracking(gym.Env):
             start = self.sample_starts(1)[0]
         self.state = start
         self._error_accum = None
-        return self._form_observation(self.state, self.target)
+        return self._form_observation(self.state, self.target), {}
 
     def sample_starts(self, n_starts):
         start_ws = np.array([
@@ -218,7 +218,7 @@ class BetaTracking(gym.Env):
             next_state, self.target, None, self.state)
         self.state = next_state
         rew = np.abs(obs[0] - self.target)
-        return obs, rew, False, {'target': self.target}
+        return obs, rew, False, {'target': self.target}, {}
 
     def rollout(
         self,

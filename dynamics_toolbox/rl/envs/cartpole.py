@@ -49,7 +49,7 @@ class CartPole(gym.Env):
         self.state = np.random.uniform(low=-0.05, high=0.05, size=4)
         if self.model is not None:
             self.model.reset()
-        return self.state
+        return self.state, {}
 
     def step(self, action):
         self.state, stats = self.transition(self.state, action)
@@ -81,7 +81,7 @@ class CartPole(gym.Env):
                     axis=-1).reshape(-1, 1)
             penalty = float(penalty)
             reward -= penalty
-        return self.state, reward, done, {}
+        return self.state, reward, done, {}, {}
 
     def _true_transition(self, s, a):
         force = self._force_mag * float(a)

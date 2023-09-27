@@ -3,39 +3,41 @@ env_name: ???
 seed: 0
 cuda_device: null
 env:
-  _target_: gym.make
+  _target_: dynamics_toolbox.env_wrappers.wrapper_utils.make_og_envs
   id: ${env_name}
 train_loop:
   _target_: dynamics_toolbox.rl.train_loops.offline_mbrl_training
   epochs: 1000
   num_expl_paths_per_epoch: 50e3
   num_eval_eps: 10
-  model_horizon: 5
+  model_horizon: 10
   eval_horizon: 1000
+  eval_frequency: 10
   num_gradient_steps_per_epoch: 1000
   batch_size: 256
+  mask_tail_amount: 0.0001
   model_env:
     _target_: dynamics_toolbox.env_wrappers.model_env.ModelEnv
-    unscale_penalizer: True
+    unscale_penalizer: False
     dynamics_model:
       _target_: dynamics_toolbox.utils.storage.model_storage.load_ensemble_from_parent_dir
-      parent_dir: 'trained_models/d4rl_v2/${env_name}/${seed}'
+      parent_dir: 'trained_models/d4rl/${env_name}/${seed}'
       sample_mode: 'sample_member_every_step'
       load_n_best_models: 5
     penalizer:
       _target_: dynamics_toolbox.env_wrappers.penalizers.get_penalizer
       pen_name: 'std'
-    penalty_coefficient: 1.0
+    penalty_coefficient: 0.25
     terminal_function:
       _target_: dynamics_toolbox.env_wrappers.wrapper_utils.get_terminal_from_env_name
       env_name: ${env_name}
-    bounder:
-        _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
-        spread_amt: 10
-        data:
-          _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
-          hdf5_path: 'data/d4rl/${env_name}.hdf5'
-          relative_path: True
+    # bounder:
+    #     _target_: dynamics_toolbox.env_wrappers.bounders.Bounder.bound_from_dataset
+    #     spread_amt: 10
+    #     data:
+    #       _target_: dynamics_toolbox.utils.storage.qdata.load_from_hdf5
+    #       hdf5_path: 'data/d4rl/${env_name}.hdf5'
+    #       relative_path: True
   model_buffer:
     _target_: dynamics_toolbox.rl.buffers.simple_buffer.SimpleReplayBuffer
     max_buffer_size: 1e6
@@ -69,4 +71,4 @@ algorithm:
       - 256
 hydra:
   run:
-    dir: logs/mopo_baselines/${name}/${seed}
+    dir: logs/mopo_baselines/${name}/${env_name}/${seed}

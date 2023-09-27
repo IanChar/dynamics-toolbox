@@ -107,8 +107,6 @@ def construct_all_pl_components_for_training(
         **cfg['trainer'],
         logger=logger,
         callbacks=callbacks,
-        progress_bar_refresh_rate=0,
-        gpus=1,
     )
     return model, data_module, trainer, logger, cfg
 

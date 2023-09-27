@@ -65,6 +65,7 @@ for child in children:
 # %% Create the table.
 ###########################################################################
 method_names = list(LEGEND_MAP.values())
+method_names.sort()
 headers = ['Environment'] + method_names
 rows = []
 for k, v in results.items():

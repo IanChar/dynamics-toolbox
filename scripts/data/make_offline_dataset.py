@@ -5,13 +5,14 @@ Author: Ian Char
 Date: 9/10/2020
 """
 import argparse
-import pickle as pkl
 
 import gym
 import h5py
 import numpy as np
 import torch
 from tqdm import tqdm
+
+import dynamics_toolbox.rl.envs
 
 
 class RandomPolicy(object):
@@ -21,6 +22,7 @@ class RandomPolicy(object):
 
     def get_action(self, state):
         return self.action_space.sample(), None
+
 
 def load_in_policy(args):
     if args.is_rlkit_policy:
@@ -34,7 +36,9 @@ def load_in_policy(args):
         raise NotImplementedError('TODO')
     return policy
 
+
 def collect_data(args):
+    np.random.seed(args.seed)
     env = gym.make(args.env)
     if args.policy_path is not None:
         policy = load_in_policy(args)
@@ -42,7 +46,7 @@ def collect_data(args):
         policy = RandomPolicy(env)
     print("Policy loaded")
     observations, actions, rewards, next_observations, terminals, timeouts =\
-            [[] for _ in range(6)]
+        [[] for _ in range(6)]
     pbar = tqdm(total=args.num_collects)
     earlyterms = []
     neps = 0
@@ -104,5 +108,6 @@ if __name__ == "__main__":
     parser.add_argument('--terminate_at_horizon', action='store_true',
                         help='States at end of time limit marked as terminal.')
     parser.add_argument('--is_rlkit_policy', action='store_true')
+    parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
     collect_data(args)

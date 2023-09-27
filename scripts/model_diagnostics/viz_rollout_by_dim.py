@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_path', type=str, required='True')
 parser.add_argument('--data_path', type=str, required='True')
 parser.add_argument('--save_dir', type=str)
-parser.add_argument('--horizon', type=int, default=30)
+parser.add_argument('--horizon', type=int, default=10)
 parser.add_argument('--samples_per_start', type=int, default=1)
 parser.add_argument('--num_starts', type=int, default=1)
 parser.add_argument('--is_ensemble', action='store_true')
@@ -68,6 +68,7 @@ else:
     from autocal.utils import fancy_load
     model = fancy_load(path=args.model_path)
     model.sampling_distribution = 'Gaussian'
+    # model.sampling_distribution = 'GP'
     # model = load_model_from_log_dir(path=args.model_path)
     model.sample_mode = args.sampling_mode
 if args.wrapper_path is not None:

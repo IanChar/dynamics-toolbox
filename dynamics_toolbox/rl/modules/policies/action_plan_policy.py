@@ -48,8 +48,8 @@ class ActionPlanPolicy(Policy):
             raise RuntimeError(f'Plan only valid for {self._max_horizon} timesteps.')
         self._t += 1
         actions = self._action_plan[:, self._t - 1]
-        if len(actions) == 1:
-            actions = np.squeeze(actions, axis=0)
+        # if len(actions) == 1:
+        #     actions = np.squeeze(actions, axis=0)
         return (
             actions,
             np.ones(len(obs_np)),

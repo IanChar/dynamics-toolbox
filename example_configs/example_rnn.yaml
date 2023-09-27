@@ -1,10 +1,10 @@
-name: "example_rnn"
+name: "example_rnn_walker_obs_noise_0.1_action_noise_0"
 save_path: "trained_models"
-data_source: "data/pendulum_1k.hdf5"
+data_source: "/home/scratch/rohans2/auto-recal/Walker2d-v3/obs_noise_0.1_action_noise_0.h5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"
-cuda_device: null
+cuda_device: 1
 defaults:
     - model: rpnn
     - trainer: pl_trainer

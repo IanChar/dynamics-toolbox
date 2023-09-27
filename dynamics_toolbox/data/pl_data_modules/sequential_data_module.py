@@ -77,11 +77,18 @@ class SequentialDataModule(LightningDataModule):
         datasets = []
         self._xdata, self._ydata = None, None
         for ds in self._snippets:
-            nexts = ds['next_observations']
+            if 'next_observations' in ds.keys():
+                nexts = ds['next_observations']
+            else:
+                nexts = ds['next_obs']
             if predict_deltas:
                 nexts -= ds['observations']
             if learn_rewards:
-                nexts = np.concatenate([ds['rewards'], nexts], axis=-1)
+                if len(ds['rewards'].shape) < len(nexts.shape):
+                    nexts = np.concatenate([ds['rewards'][..., np.newaxis], nexts], axis=-1)
+                else:
+                    nexts = np.concatenate([ds['rewards'], nexts], axis=-1)
+            
             xdata = np.concatenate((ds['observations'], ds['actions']), axis=-1)
             datasets.append(TensorDataset(
                 torch.Tensor(xdata),

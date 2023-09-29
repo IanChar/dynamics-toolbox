@@ -67,7 +67,7 @@ class BetaTracking(gym.Env):
         """
         super().__init__()
         self.dynamics_model = dynamics_model
-        self.uncertainty_penalty_coef = uncertainty_penalty_coef
+        self._uncertainty_penalty_coef = uncertainty_penalty_coef
         self.observation_dim = 4
         self.observation_space = gym.spaces.Box(
             -np.ones(self.observation_dim),
@@ -201,8 +201,8 @@ class BetaTracking(gym.Env):
         if self.dynamics_model is None or self._eval_mode:
             return self._true_transition(action)
         else:
-            pred, info = self.dynamics_model.predict(np.concatenate([self.beta_state,
-                                                                     action])
+            pred, stats = self.dynamics_model.predict(np.concatenate([self.beta_state,
+                                                                      action])
                                                      .reshape(1, -1))
             self.beta_state += pred.flatten()
             self.state = np.array([
@@ -224,6 +224,26 @@ class BetaTracking(gym.Env):
             else:
                 disrupt = False
             rew -= disrupt * 10
+            if self._uncertainty_penalty_coef > 0 and stats is not None:
+                if 'std_predictions' in stats:
+                    # Do MOPO style penalty.
+                    if len(stats['std_predictions'].shape) > 2:
+                        penalty = np.amax(np.linalg.norm(
+                            stats['std_predictions']
+                            * self._uncertainty_penalty_coef,
+                            axis=-1), axis=0).reshape(-1, 1)
+                    else:
+                        penalty = np.linalg.norm(stats['std_predictions']
+                                                 * self._uncertainty_penalty_coef,
+                                                 axis=-1).reshape(-1, 1)
+                else:
+                    # Do disagreement based penalty.
+                    assert len(stats['predictions'].shape) > 2
+                    penalty = np.linalg.norm(
+                        np.std(stats['predictions'], axis=0),
+                        axis=-1).reshape(-1, 1)
+                penalty = float(penalty)
+                rew -= penalty
             return obs, rew, disrupt, {'target': self.target}, {}
 
     def eval(self, mode: bool = True):

@@ -17,7 +17,7 @@ PINJ_ACT_SCALE = 0.25 * PINJ_SIG
 TRANSITION_COEF = 2e2
 BETA_OBS_COEF = 5.0
 DT = 0.025
-DISRUPTION_PENALTY = 10
+DISRUPTION_PENALTY = 100
 
 
 class BetaTracking(gym.Env):
@@ -225,7 +225,8 @@ class BetaTracking(gym.Env):
                 obs = np.concatenate([self.beta_state, np.array([self.target])])
             else:
                 obs = self.beta_state
-            rew = (5 - np.abs(self.beta_state[0] - self.target)) / 10
+            rew = ((2.5 - np.abs(self.beta_state[0] - self.target)) / 2.5) ** 2
+            rew -= float(action) / 10
             if self._beta_disrupt_boundary:
                 disrupt = self.beta_state[0] > self._beta_disrupt_boundary
             else:
@@ -419,7 +420,8 @@ class BetaTracking(gym.Env):
             disrupt = obs[0] > self._beta_disrupt_boundary
         else:
             disrupt = False
-        rew -= disrupt * 10
+        rew -= float(action) / 10
+        rew -= disrupt * DISRUPTION_PENALTY
         return obs, rew, disrupt, {'target': self.target}, {}
 
     def _form_observation(self, state, target, task=None, last_state=None):
@@ -467,7 +469,8 @@ class BetaTracking(gym.Env):
                 (target.reshape(-1, 1) - BETAN_MU) / BETAN_SIG,
                 (state[:, 2].reshape(-1, 1) - PINJ_MU) / PINJ_SIG,
             ], axis=1)
-        return obs, (5 - np.abs(errs)) / 10
+        rew = ((2.5 - np.abs(errs)) / 2.5) ** 2
+        return obs, rew
 
     @staticmethod
     def viz_trajectory(
@@ -489,16 +492,26 @@ class BetaTracking(gym.Env):
             actions = [actions]
         num_trajs = len(observations)
         alpha = 10 / (9 + num_trajs)
-        fig, axd = plt.subplot_mosaic([['w', 'p'],
-                                       ['a', 'a']])
-        power_idx = -2 if observations[0].shape[1] > 3 else -1
+        includes_targets = observations[0].shape[1] > 3
+        if includes_targets:
+            fig, axd = plt.subplot_mosaic([['w', 'p'],
+                                           ['err', 'err'],
+                                           ['a', 'a']])
+        else:
+            fig, axd = plt.subplot_mosaic([['w', 'p'],
+                                           ['a', 'a']])
+        power_idx = -2 if includes_targets else -1
         for tidx, ob in enumerate(observations):
             color = 'cornflowerblue' if num_trajs > len(colors) else colors[tidx]
             axd['w'].plot(ob[:, 0], color=color, alpha=alpha)
             axd['p'].plot(ob[:, power_idx], color=color, alpha=alpha)
             axd['a'].plot(actions[tidx].flatten(), color=color, alpha=alpha)
+            if includes_targets:
+                axd['err'].plot(ob[:, 0] - ob[:, -1], color=color, alpha=alpha)
         axd['w'].set_xlabel('Time')
-        axd['w'].set_ylabel('Stored Energy')
+        axd['w'].set_ylabel('BetaN')
         axd['p'].set_xlabel('Time')
         axd['p'].set_ylabel('Power')
+        axd['a'].set_xlabel('Time')
+        axd['a'].set_ylabel('Policy Action')
         plt.show()

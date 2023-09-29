@@ -107,7 +107,7 @@ class CartPole(gym.Env):
             x_dot + x_acc * self._dt,
             theta + theta_dot * self._dt,
             theta_dot + theta_acc * self._dt,
-        ]), {}
+        ]), None
 
     def _model_transition(self, s, a):
         if not isinstance(a, np.ndarray):

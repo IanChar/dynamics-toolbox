@@ -17,6 +17,7 @@ PINJ_ACT_SCALE = 0.25 * PINJ_SIG
 TRANSITION_COEF = 2e2
 BETA_OBS_COEF = 5.0
 DT = 0.025
+DISRUPTION_PENALTY = 10
 
 
 class BetaTracking(gym.Env):
@@ -203,27 +204,34 @@ class BetaTracking(gym.Env):
         else:
             pred, stats = self.dynamics_model.predict(np.concatenate([self.beta_state,
                                                                       action])
-                                                     .reshape(1, -1))
+                                                      .reshape(1, -1))
             self.beta_state += pred.flatten()
-            self.state = np.array([
+            self.beta_state = np.array([
                 self.beta_state[0],
-                self.beta_state[1],
+                float(np.clip(
+                    self.beta_state[1],
+                    self._dw_bounds[0] * self._aminor * self._bt / self._ip
+                    * BETA_OBS_COEF,
+                    self._dw_bounds[1] * self._aminor * self._bt / self._ip
+                    * BETA_OBS_COEF,
+                )),
                 float(np.clip(
                     self.beta_state[2],
-                    self._pinj_bounds[0],
-                    self._pinj_bounds[1],
+                    self._pinj_bounds[0] * 1e-6,
+                    self._pinj_bounds[1] * 1e-6,
                 )),
             ])
             if self._include_target_in_obs:
-                obs = np.concatenate([self.state, np.array([self.target])])
+                obs = np.concatenate([self.beta_state, np.array([self.target])])
             else:
-                obs = self.state
-            rew = -np.abs(self.state[0] - self.target)
+                obs = self.beta_state
+            rew = (5 - np.abs(self.beta_state[0] - self.target)) / 10
             if self._beta_disrupt_boundary:
-                disrupt = self.state[0] > self._beta_disrupt_boundary
+                disrupt = self.beta_state[0] > self._beta_disrupt_boundary
             else:
                 disrupt = False
-            rew -= disrupt * 10
+            disrupt = disrupt or self.beta_state[0] < 0
+            rew -= disrupt * DISRUPTION_PENALTY
             if self._uncertainty_penalty_coef > 0 and stats is not None:
                 if 'std_predictions' in stats:
                     # Do MOPO style penalty.
@@ -459,7 +467,7 @@ class BetaTracking(gym.Env):
                 (target.reshape(-1, 1) - BETAN_MU) / BETAN_SIG,
                 (state[:, 2].reshape(-1, 1) - PINJ_MU) / PINJ_SIG,
             ], axis=1)
-        return obs, -np.abs(errs) / BETAN_SIG
+        return obs, (5 - np.abs(errs)) / 10
 
     @staticmethod
     def viz_trajectory(
@@ -481,11 +489,14 @@ class BetaTracking(gym.Env):
             actions = [actions]
         num_trajs = len(observations)
         alpha = 10 / (9 + num_trajs)
-        fig, axd = plt.subplot_mosaic([['w', 'p']])
+        fig, axd = plt.subplot_mosaic([['w', 'p'],
+                                       ['a', 'a']])
+        power_idx = -2 if observations[0].shape[1] > 3 else -1
         for tidx, ob in enumerate(observations):
             color = 'cornflowerblue' if num_trajs > len(colors) else colors[tidx]
             axd['w'].plot(ob[:, 0], color=color, alpha=alpha)
-            axd['p'].plot(ob[:, -1], color=color, alpha=alpha)
+            axd['p'].plot(ob[:, power_idx], color=color, alpha=alpha)
+            axd['a'].plot(actions[tidx].flatten(), color=color, alpha=alpha)
         axd['w'].set_xlabel('Time')
         axd['w'].set_ylabel('Stored Energy')
         axd['p'].set_xlabel('Time')

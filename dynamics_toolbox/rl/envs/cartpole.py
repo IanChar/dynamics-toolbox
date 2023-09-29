@@ -40,6 +40,7 @@ class CartPole(gym.Env):
         self.state = None
         self.model = dynamics_model
         self._uncertainty_penalty_coef = uncertainty_penalty_coef
+        self._eval_mode = False
         if dynamics_model is None:
             self.transition = self._true_transition
         else:
@@ -50,6 +51,14 @@ class CartPole(gym.Env):
         if self.model is not None:
             self.model.reset()
         return self.state, {}
+
+    def eval(self, mode: bool = True):
+        """Change eval mode."""
+        self._eval_mode = mode
+        if mode or self.model is None:
+            self.transition = self._true_transition
+        else:
+            self.transition = self._model_transition
 
     def step(self, action):
         self.state, stats = self.transition(self.state, action)
@@ -103,9 +112,9 @@ class CartPole(gym.Env):
     def _model_transition(self, s, a):
         if not isinstance(a, np.ndarray):
             a = np.array([a])
-        delta, info = self.model.predict(np.concatenate([s, a]),
+        delta, info = self.model.predict(np.concatenate([s, a]).reshape(1, -1),
                                          each_input_is_different_sample=False)
-        return delta + s, info
+        return delta.flatten() + s, info
 
     @staticmethod
     def viz_trajectory(

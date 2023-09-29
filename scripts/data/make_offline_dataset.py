@@ -13,15 +13,7 @@ import torch
 from tqdm import tqdm
 
 import dynamics_toolbox.rl.envs
-
-
-class RandomPolicy(object):
-
-    def __init__(self, env):
-        self.action_space = env.action_space
-
-    def get_action(self, state):
-        return self.action_space.sample(), None
+from dynamics_toolbox.rl.modules.policies.random_policy import RandomPolicy
 
 
 def load_in_policy(args):
@@ -40,10 +32,13 @@ def load_in_policy(args):
 def collect_data(args):
     np.random.seed(args.seed)
     env = gym.make(args.env)
-    if args.policy_path is not None:
-        policy = load_in_policy(args)
-    else:
-        policy = RandomPolicy(env)
+    from dynamics_toolbox.rl.modules.policies.pid_policy import PID
+    # policy = PID(0.1, 0.001, 0.001, ob_idx=0, target_dist=(1.5, 2.1))  # ID
+    policy = PID(0.2, 0.0, 0.25, ob_idx=0, target_dist=(1.8, 2.15))  # OOD
+    # if args.policy_path is not None:
+    #     policy = load_in_policy(args)
+    # else:
+    #     policy = RandomPolicy(action_space=env.action_space)
     print("Policy loaded")
     observations, actions, rewards, next_observations, terminals, timeouts =\
         [[] for _ in range(6)]
@@ -53,7 +48,8 @@ def collect_data(args):
     returns = []
     while len(observations) < args.num_collects:
         done = False
-        s = env.reset()
+        s, _ = env.reset()
+        policy.reset()
         neps += 1
         t = 0
         timeout = False

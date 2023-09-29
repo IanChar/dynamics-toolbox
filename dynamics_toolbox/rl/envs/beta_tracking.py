@@ -29,6 +29,10 @@ class BetaTracking(gym.Env):
 
     def __init__(
         self,
+        dynamics_model=None,
+        uncertainty_penalty_coef=0.0,
+        include_target_in_obs: bool = False,
+        beta_disrupt_boundary: Optional[float] = 2.2,
         w_start_dist: Tuple[float, float] = (5e4, 2.5e3),
         dw_start_dist: Tuple[float, float] = (0, 2.5e3),
         pinj_start_dist: Tuple[float, float] = (1.0e6, 1e5),
@@ -43,13 +47,10 @@ class BetaTracking(gym.Env):
         sample_parameters_every_episode: bool = False,
         fully_observable: bool = True,
         action_is_change: bool = True,
-        include_pid_in_obs: bool = False,
     ):
         """Constructor.
 
         Args:
-            include_pid_in_obs: Whether the observation space should have PID
-                components included.
             w_start_dist: Mean and std deviation for the W start distribution.
             pinj_start_dist: Mean and std deviation for the Pinj start distribution.
             aminor_dist: Mean and std deviation for aminor.
@@ -65,6 +66,8 @@ class BetaTracking(gym.Env):
                 the delta based on the midpoint of the power bounds.
         """
         super().__init__()
+        self.dynamics_model = dynamics_model
+        self.uncertainty_penalty_coef = uncertainty_penalty_coef
         self.observation_dim = 4
         self.observation_space = gym.spaces.Box(
             -np.ones(self.observation_dim),
@@ -86,6 +89,8 @@ class BetaTracking(gym.Env):
         self._momentum = momentum
         self._sample_parameters_every_episode = sample_parameters_every_episode
         self._fully_observable = fully_observable
+        self._include_target_in_obs = include_target_in_obs
+        self._beta_disrupt_boundary = beta_disrupt_boundary
         self.state = None
         self._dt = 0.025
         self.reset_task()
@@ -117,7 +122,14 @@ class BetaTracking(gym.Env):
             start = self.sample_starts(1)[0]
         self.state = start
         self._error_accum = None
-        return self._form_observation(self.state, self.target), {}
+        obs = self._form_observation(self.state, self.target)
+        if self.dynamics_model is not None:
+            self.dynamics_model.reset()
+            if self._include_target_in_obs:
+                self.state = obs[:-1]
+            else:
+                self.state = obs
+        return obs, {}
 
     def sample_starts(self, n_starts):
         start_ws = np.array([
@@ -185,40 +197,33 @@ class BetaTracking(gym.Env):
             The next state, the reward, whether it is terminal and info dict.
         """
         self.t += 1
-        if self._action_is_change:
-            pinj_change = np.clip(action, -1, 1) * PINJ_ACT_SCALE
-            next_pinj = float(np.clip(
-                self.state[2] + pinj_change,
-                self._pinj_bounds[0],
-                self._pinj_bounds[1]
-            ))
+        if self.dynamics_model is None:
+            return self._true_transition(action)
         else:
-            midpoint = (self._pinj_bounds[1] - self._pinj_bounds[0]) / 2
-            # next_pinj = np.clip(action, -1, 1) * midpoint + midpoint
-            next_pinj = float(np.clip(
-                np.clip(action, -1, 1) * midpoint + midpoint,
-                self.state[2] - PINJ_ACT_SCALE,
-                self.state[2] + PINJ_ACT_SCALE,
-            ))
-        next_dw = float(np.clip((self._momentum * self.state[1]
-                                + (1 - self._momentum) * (next_pinj
-                                - TRANSITION_COEF * self.state[0]
-                                * self._ip ** -0.93
-                                * self._bt ** -0.15
-                                * self.state[2] ** 0.69)),
-                                self._dw_bounds[0],
-                                self._dw_bounds[1]))
-        next_w = float(np.clip(
-            self.state[0] + self._dt * self.state[1],
-            self._w_bounds[0],
-            self._w_bounds[1],
-        ))
-        next_state = np.array([next_w, next_dw, next_pinj]).flatten()
-        obs, rew = self._form_observation_and_rew(
-            next_state, self.target, None, self.state)
-        self.state = next_state
-        rew = np.abs(obs[0] - self.target)
-        return obs, rew, False, {'target': self.target}, {}
+            pred, info = self.dynamics_model.predict(np.concatenate([self.state,
+                                                                     action])
+                                                     .reshape(1, -1))
+            self.state += pred.flatten()
+            self.state = np.array([
+                self.state[0],
+                self.state[1],
+                float(np.clip(
+                    self.state[2],
+                    self._pinj_bounds[0],
+                    self._pinj_bounds[1],
+                )),
+            ])
+            if self._include_target_in_obs:
+                obs = np.concatenate([self.state, np.array([self.target])])
+            else:
+                obs = self.state
+            rew = -np.abs(self.state[0] - self.target)
+            if self._beta_disrupt_boundary:
+                disrupt = self.state[0] > self._beta_disrupt_boundary
+            else:
+                disrupt = False
+            rew -= disrupt * 10
+            return obs, rew, disrupt, {'target': self.target}, {}
 
     def rollout(
         self,
@@ -344,6 +349,46 @@ class BetaTracking(gym.Env):
         return np.array([random.uniform(*self._betan_target_bounds)
                          for _ in range(num_target_trajs)])
 
+    def _true_transition(self, action):
+        if self._action_is_change:
+            pinj_change = np.clip(action, -1, 1) * PINJ_ACT_SCALE
+            next_pinj = float(np.clip(
+                self.state[2] + pinj_change,
+                self._pinj_bounds[0],
+                self._pinj_bounds[1]
+            ))
+        else:
+            midpoint = (self._pinj_bounds[1] - self._pinj_bounds[0]) / 2
+            # next_pinj = np.clip(action, -1, 1) * midpoint + midpoint
+            next_pinj = float(np.clip(
+                np.clip(action, -1, 1) * midpoint + midpoint,
+                self.state[2] - PINJ_ACT_SCALE,
+                self.state[2] + PINJ_ACT_SCALE,
+            ))
+        next_dw = float(np.clip((self._momentum * self.state[1]
+                                + (1 - self._momentum) * (next_pinj
+                                - TRANSITION_COEF * self.state[0]
+                                * self._ip ** -0.93
+                                * self._bt ** -0.15
+                                * self.state[2] ** 0.69)),
+                                self._dw_bounds[0],
+                                self._dw_bounds[1]))
+        next_w = float(np.clip(
+            self.state[0] + self._dt * self.state[1],
+            self._w_bounds[0],
+            self._w_bounds[1],
+        ))
+        next_state = np.array([next_w, next_dw, next_pinj]).flatten()
+        obs, rew = self._form_observation_and_rew(
+            next_state, self.target, None, self.state)
+        self.state = next_state
+        if self._beta_disrupt_boundary:
+            disrupt = obs[0] > self._beta_disrupt_boundary
+        else:
+            disrupt = False
+        rew -= disrupt * 10
+        return obs, rew, disrupt, {'target': self.target}, {}
+
     def _form_observation(self, state, target, task=None, last_state=None):
         """Form the observation."""
         return self._form_observation_and_rew(state, target, task, last_state)[0]
@@ -378,8 +423,12 @@ class BetaTracking(gym.Env):
                     target.reshape(-1, 1),
                 ], axis=1)
             else:
-                obs = np.concatenate([betans[0], betan_dws[0], target])
+                obs = np.concatenate([betans[0], betan_dws[0],
+                                      np.array([state[2] * 1e-6])])
+                if self._include_target_in_obs:
+                    obs = np.concatenate([obs, target])
         else:
+            raise NotImplementedError('TODO')
             obs = np.concatenate([
                 (betans[0].reshape(-1, 1) - BETAN_MU) / BETAN_SIG,
                 (target.reshape(-1, 1) - BETAN_MU) / BETAN_SIG,
@@ -411,7 +460,7 @@ class BetaTracking(gym.Env):
         for tidx, ob in enumerate(observations):
             color = 'cornflowerblue' if num_trajs > len(colors) else colors[tidx]
             axd['w'].plot(ob[:, 0], color=color, alpha=alpha)
-            axd['p'].plot(ob[:, -2], color=color, alpha=alpha)
+            axd['p'].plot(ob[:, -1], color=color, alpha=alpha)
         axd['w'].set_xlabel('Time')
         axd['w'].set_ylabel('Stored Energy')
         axd['p'].set_xlabel('Time')

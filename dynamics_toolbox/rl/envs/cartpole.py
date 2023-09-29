@@ -123,7 +123,8 @@ class CartPole(gym.Env):
         plt.style.use('seaborn')
         colors = ['blue', 'green', 'orange', 'purple']
         theta_boundary = 12 * 2 * math.pi / 360
-        fig, axd = plt.subplot_mosaic([['x', 'th']])
+        fig, axd = plt.subplot_mosaic([['x', 'th'],
+                                       ['a', 'a']])
         if isinstance(observations, np.ndarray):
             observations = [observations]
             actions = [actions]
@@ -133,6 +134,7 @@ class CartPole(gym.Env):
             color = 'cornflowerblue' if num_trajs > len(colors) else colors[tidx]
             axd['x'].plot(ob[:, 0], color=color, alpha=alpha)
             axd['th'].plot(ob[:, 2], color=color, alpha=alpha)
+            axd['a'].plot(actions[tidx].flatten())
         axd['x'].axhline(-2.4, color='red', ls=':')
         axd['x'].axhline(2.4, color='red', ls=':')
         axd['x'].set_xlabel('Time')
@@ -143,4 +145,6 @@ class CartPole(gym.Env):
         axd['th'].axhline(theta_boundary, color='red', ls=':')
         axd['th'].set_xlabel('Time')
         axd['th'].set_ylabel('Theta')
+        axd['a'].set_xlabel('Time')
+        axd['a'].set_ylabel('Force')
         plt.show()

@@ -33,6 +33,10 @@ class RandomPolicy(Policy):
             self.action_dim = len(action_space.low)
         self.action_space = action_space
 
+    def get_action(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        act, logprob = self.get_actions(obs_np[None])
+        return act.flatten(), logprob
+
     def get_actions(self, obs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Get multiple actions.
 

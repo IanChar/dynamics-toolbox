@@ -16,6 +16,7 @@ from tqdm import tqdm
 
 from dynamics_toolbox.rl.util.misc import load_policy
 from dynamics_toolbox.rl.util.gym_util import gym_rollout_from_policy
+import dynamics_toolbox.rl.envs
 
 
 ###########################################################################

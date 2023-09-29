@@ -91,6 +91,7 @@ class BetaTracking(gym.Env):
         self._fully_observable = fully_observable
         self._include_target_in_obs = include_target_in_obs
         self._beta_disrupt_boundary = beta_disrupt_boundary
+        self._eval_mode = False
         self.state = None
         self._dt = 0.025
         self.reset_task()
@@ -126,9 +127,9 @@ class BetaTracking(gym.Env):
         if self.dynamics_model is not None:
             self.dynamics_model.reset()
             if self._include_target_in_obs:
-                self.state = obs[:-1]
+                self.beta_state = obs[:-1]
             else:
-                self.state = obs
+                self.beta_state = obs
         return obs, {}
 
     def sample_starts(self, n_starts):
@@ -197,18 +198,18 @@ class BetaTracking(gym.Env):
             The next state, the reward, whether it is terminal and info dict.
         """
         self.t += 1
-        if self.dynamics_model is None:
+        if self.dynamics_model is None or self._eval_mode:
             return self._true_transition(action)
         else:
-            pred, info = self.dynamics_model.predict(np.concatenate([self.state,
+            pred, info = self.dynamics_model.predict(np.concatenate([self.beta_state,
                                                                      action])
                                                      .reshape(1, -1))
-            self.state += pred.flatten()
+            self.beta_state += pred.flatten()
             self.state = np.array([
-                self.state[0],
-                self.state[1],
+                self.beta_state[0],
+                self.beta_state[1],
                 float(np.clip(
-                    self.state[2],
+                    self.beta_state[2],
                     self._pinj_bounds[0],
                     self._pinj_bounds[1],
                 )),
@@ -224,6 +225,10 @@ class BetaTracking(gym.Env):
                 disrupt = False
             rew -= disrupt * 10
             return obs, rew, disrupt, {'target': self.target}, {}
+
+    def eval(self, mode: bool = True):
+        """Change eval mode."""
+        self._eval_mode = mode
 
     def rollout(
         self,

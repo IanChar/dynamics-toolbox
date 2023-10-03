@@ -18,6 +18,7 @@ from dynamics_toolbox.rl.modules.policies.abstract_policy import Policy
 from dynamics_toolbox.utils.pytorch.device_utils import MANAGER as dm
 from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 
+
 class MPCPolicy(Policy):
     """Generates actions using Model Predictive Control."""
 
@@ -164,7 +165,9 @@ class MPCPolicy(Policy):
         # (num_samples * num_fs, horizon, action_dim)
         obs_np = np.repeat(obs_np[None, ...], num_samples * self.num_fs, axis=0)
         # (num_samples * num_fs, obs_dim)
-        paths = self.model_env.model_rollout_from_actions(self.num_fs*num_samples, samples, obs_np, show_progress=False)
+        paths = self.model_env.model_rollout_from_actions(self.num_fs*num_samples,
+                                                          samples, obs_np,
+                                                          show_progress=False)
         rewards = paths['rewards']
         # (num_samples * num_fs, horizon)
         rewards = rewards.sum(axis=1)

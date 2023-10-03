@@ -66,7 +66,8 @@ if args.is_ensemble:
     )
 else:
     from autocal.utils import fancy_load
-    model = fancy_load(path=args.model_path, sampling_distribution='GP')
+    model = fancy_load(path=args.model_path, sampling_distribution='GP',
+                       kernel_type='gp_rbf_recal')
     # model = load_model_from_log_dir(path=args.model_path)
     model.sample_mode = args.sampling_mode
 if args.wrapper_path is not None:

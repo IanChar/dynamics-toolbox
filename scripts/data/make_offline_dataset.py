@@ -34,11 +34,11 @@ def collect_data(args):
     env = gym.make(args.env)
     from dynamics_toolbox.rl.modules.policies.pid_policy import PID
     # policy = PID(0.1, 0.001, 0.001, ob_idx=0, target_dist=(1.5, 2.1))  # ID
-    policy = PID(0.2, 0.0, 0.25, ob_idx=0, target_dist=(1.8, 2.15))  # OOD
-    # if args.policy_path is not None:
-    #     policy = load_in_policy(args)
-    # else:
-    #     policy = RandomPolicy(action_space=env.action_space)
+    # policy = PID(0.2, 0.0, 0.25, ob_idx=0, target_dist=(1.8, 2.15))  # OOD
+    if args.policy_path is not None:
+        policy = load_in_policy(args)
+    else:
+        policy = RandomPolicy(action_space=env.action_space)
     print("Policy loaded")
     observations, actions, rewards, next_observations, terminals, timeouts =\
         [[] for _ in range(6)]

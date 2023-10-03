@@ -126,7 +126,7 @@ class BetaTracking(gym.Env):
                 for out_idx in range(output_dim):
                     mixture_params_path = os.path.join(
                         kwargs["beta_mixture_params_dir"],
-                        f"{kwargs['bmp_data_amount']}-{kwargs['bmp_seed']}-{ens_idx}",
+                        f"{kwargs['bmp_seed']}-{ens_idx}",
                         "best_bmpt_params",
                         f"bmpt_dim{out_idx}.pkl")
                     print(f"LOADING BMPT: {mixture_params_path}")

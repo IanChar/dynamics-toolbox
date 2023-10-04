@@ -9,6 +9,8 @@ from typing import Union, List
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy
+import torch
 
 
 class CartPole(gym.Env):
@@ -17,6 +19,7 @@ class CartPole(gym.Env):
         self,
         dynamics_model=None,
         uncertainty_penalty_coef=0.0,
+        **kwargs
     ):
         super().__init__()
         self._gravity = 9.8
@@ -41,6 +44,51 @@ class CartPole(gym.Env):
         self.model = dynamics_model
         self._uncertainty_penalty_coef = uncertainty_penalty_coef
         self._eval_mode = False
+
+        ### BEGIN: adding beta mixture sampling code
+        # To use bmp, we need in the kwargs:
+        # - beta_mixture_process: True
+        # - beta_mixture_params_dir: path to the directory containing the mixture params
+        # - bmp_seed: seed for the random number generator
+
+        if "beta_mixture_process" in kwargs and kwargs["beta_mixture_process"]:
+            assert "beta_mixture_params_dir" in kwargs
+
+            import scipy
+            import torch
+            import pickle as pkl
+            import os
+
+            input_dim = self.observation_space.shape[0] + self.action_space.shape[0]
+            output_dim = self.observation_space.shape[0]
+            from autocal.models.beta_mixture_process import BetaMixtureProcess
+            self.beta_mixture_process = []
+
+            num_ens_members = len(self.model.members)
+            for ens_idx in range(num_ens_members):
+                cur_ens_bmp = []
+                for out_idx in range(output_dim):
+                    mixture_params_path = os.path.join(
+                        kwargs["beta_mixture_params_dir"],
+                        f"{kwargs['bmp_seed']}-{ens_idx}",
+                        "best_bmpt_params",
+                        f"bmpt_dim{out_idx}.pkl")
+                    print(f"LOADING BMPT: {mixture_params_path}")
+                    beta_mixture_params = pkl.load(open(mixture_params_path, 'rb'))
+                    kernel_lengthscales = beta_mixture_params['kls']
+                    beta_concentration = beta_mixture_params['beta_const']
+                    softmax_temp = beta_mixture_params['softmax_temp']
+                    prior_kernel_weight = beta_mixture_params['prior_kernel_weight']
+                    cur_dim_bmp = BetaMixtureProcess(
+                        x_dim=input_dim,
+                        kernel_lengthscales=kernel_lengthscales,
+                        beta_concentration=beta_concentration,
+                        softmax_temp=softmax_temp,
+                        prior_kernel_weight=prior_kernel_weight)
+                    cur_ens_bmp.append(cur_dim_bmp)
+                self.beta_mixture_process.append(cur_ens_bmp)
+        ### END: adding beta mixture sampling code
+
         if dynamics_model is None:
             self.transition = self._true_transition
         else:
@@ -50,6 +98,12 @@ class CartPole(gym.Env):
         self.state = np.random.uniform(low=-0.05, high=0.05, size=4)
         if self.model is not None:
             self.model.reset()
+            ### BEGIN: adding beta mixture code
+            if hasattr(self, "beta_mixture_process"):
+                for ens_idx in range(len(self.beta_mixture_process)):
+                    for out_dim_bmp in self.beta_mixture_process[ens_idx]:
+                        out_dim_bmp.reset()
+            ### END: adding beta mixture code
         return self.state, {}
 
     def eval(self, mode: bool = True):
@@ -114,6 +168,44 @@ class CartPole(gym.Env):
             a = np.array([a])
         delta, info = self.model.predict(np.concatenate([s, a]).reshape(1, -1),
                                          each_input_is_different_sample=False)
+        ### BEGIN: adding beta mixture code
+        orig_delta = delta.copy()
+        if hasattr(self, "beta_mixture_process"):
+            # just need to get "pred"
+            x = np.concatenate([s, a])
+            # TODO: below only considers ensembles
+            cur_use_ens_idx = self.model._curr_sample[0]
+            # print(cur_use_ens_idx)
+            mu = info['mean_predictions'][cur_use_ens_idx, 0]
+            sigma = info['std_predictions'][cur_use_ens_idx, 0]
+            # list of bmp for each output dim
+            cur_use_bmp_list = self.beta_mixture_process[cur_use_ens_idx]
+            x_normalized = self.model.normalizer.normalize(
+                torch.from_numpy(
+                    x[np.newaxis]).to(self.model._members[0].device),
+                0).detach().cpu().numpy()
+            next_quantile_levels = []
+            for bmp in cur_use_bmp_list:
+                cur_q = bmp.sample_next_q(x_normalized)
+                next_quantile_levels.append(cur_q)
+            # print([x.shape for x in next_quantile_levels])
+            next_quantile_levels = np.stack(next_quantile_levels).reshape(*delta.shape)
+            # next_quantile_levels = np.stack(
+            #     [bmp.sample_next_q(x_normalized)
+            #      for bmp in cur_use_bmp_list]).reshape(-1, output_dim)
+            norm_sample = scipy.stats.norm(loc=mu, scale=sigma).ppf(
+                next_quantile_levels)
+            # TODO: below code for device only considers ensembles
+            delta_sample = self.model._unnormalize_prediction_output(
+                torch.from_numpy(norm_sample).to(
+                    self.model._members[0].device))
+            # pred = delta_sample.cpu().numpy().flatten() + x[:output_dim]
+            delta = delta_sample.cpu().numpy().flatten().reshape(*delta.shape)
+            print('orig_delta', orig_delta)
+            print('delta', delta)
+            breakpoint()
+        ### END: adding beta mixture code
+
         return delta.flatten() + s, info
 
     @staticmethod

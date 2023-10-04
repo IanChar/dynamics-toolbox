@@ -261,37 +261,37 @@ class BetaTracking(gym.Env):
                                                                       action])
                                                       .reshape(1, -1))
             ### BEGIN: adding beta mixture code
-            # just need to get "pred"
-            x = np.concatenate([self.beta_state, action])
-            # TODO: below only considers ensembles
-            cur_use_ens_idx = self.dynamics_model._curr_sample[0]
-            # print(cur_use_ens_idx)
-            mu = stats['mean_predictions'][cur_use_ens_idx, 0]
-            sigma = stats['std_predictions'][cur_use_ens_idx, 0]
-            # list of bmp for each output dim
-            cur_use_bmp_list = self.beta_mixture_process[cur_use_ens_idx]
-            x_normalized = self.dynamics_model.normalizer.normalize(
-                torch.from_numpy(
-                    x[np.newaxis]).to(self.dynamics_model._members[0].device),
-                0).detach().cpu().numpy()
-            next_quantile_levels = []
-            for bmp in cur_use_bmp_list:
-                cur_q = bmp.sample_next_q(x_normalized)
-                next_quantile_levels.append(cur_q)
-            # print([x.shape for x in next_quantile_levels])
-            next_quantile_levels = np.stack(next_quantile_levels).reshape(*pred.shape)
-            # next_quantile_levels = np.stack(
-            #     [bmp.sample_next_q(x_normalized)
-            #      for bmp in cur_use_bmp_list]).reshape(-1, output_dim)
-            norm_sample = scipy.stats.norm(loc=mu, scale=sigma).ppf(
-                next_quantile_levels)
-            # TODO: below code for device only considers ensembles
-            delta_sample = self.dynamics_model._unnormalize_prediction_output(
-                torch.from_numpy(norm_sample).to(
-                    self.dynamics_model._members[0].device))
-            # pred = delta_sample.cpu().numpy().flatten() + x[:output_dim]
-            pred = delta_sample.cpu().numpy().flatten().reshape(*pred.shape)
-
+            if hasattr(self, "beta_mixture_process"):
+                # just need to get "pred"
+                x = np.concatenate([self.beta_state, action])
+                # TODO: below only considers ensembles
+                cur_use_ens_idx = self.dynamics_model._curr_sample[0]
+                # print(cur_use_ens_idx)
+                mu = stats['mean_predictions'][cur_use_ens_idx, 0]
+                sigma = stats['std_predictions'][cur_use_ens_idx, 0]
+                # list of bmp for each output dim
+                cur_use_bmp_list = self.beta_mixture_process[cur_use_ens_idx]
+                x_normalized = self.dynamics_model.normalizer.normalize(
+                    torch.from_numpy(
+                        x[np.newaxis]).to(self.dynamics_model._members[0].device),
+                    0).detach().cpu().numpy()
+                next_quantile_levels = []
+                for bmp in cur_use_bmp_list:
+                    cur_q = bmp.sample_next_q(x_normalized)
+                    next_quantile_levels.append(cur_q)
+                # print([x.shape for x in next_quantile_levels])
+                next_quantile_levels = np.stack(next_quantile_levels).reshape(*pred.shape)
+                # next_quantile_levels = np.stack(
+                #     [bmp.sample_next_q(x_normalized)
+                #      for bmp in cur_use_bmp_list]).reshape(-1, output_dim)
+                norm_sample = scipy.stats.norm(loc=mu, scale=sigma).ppf(
+                    next_quantile_levels)
+                # TODO: below code for device only considers ensembles
+                delta_sample = self.dynamics_model._unnormalize_prediction_output(
+                    torch.from_numpy(norm_sample).to(
+                        self.dynamics_model._members[0].device))
+                # pred = delta_sample.cpu().numpy().flatten() + x[:output_dim]
+                pred = delta_sample.cpu().numpy().flatten().reshape(*pred.shape)
             ### END: adding beta mixture code
 
             self.beta_state += pred.flatten()

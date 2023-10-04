@@ -7,6 +7,8 @@ import random
 import gym
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
+import scipy
 
 
 BETAN_MU = 1.7797029
@@ -113,9 +115,10 @@ class BetaTracking(gym.Env):
             import scipy
             import torch
             import pickle as pkl
-
-            input_dim = self.observation_space.shape[0] + self.action_space.shape[0]
-            output_dim = self.observation_space.shape[0]
+            import os
+            
+            input_dim = self.observation_space.shape[0] + self.action_space.shape[0] - 1
+            output_dim = self.observation_space.shape[0] - 1
             from autocal.models.beta_mixture_process import BetaMixtureProcess
             self.beta_mixture_process = []
 
@@ -259,8 +262,7 @@ class BetaTracking(gym.Env):
                                                       .reshape(1, -1))
             ### BEGIN: adding beta mixture code
             # just need to get "pred"
-            breakpoint()
-            orig_pred = pred
+            x = np.concatenate([self.beta_state, action])
             # TODO: below only considers ensembles
             cur_use_ens_idx = self.dynamics_model._curr_sample[0]
             # print(cur_use_ens_idx)
@@ -277,8 +279,7 @@ class BetaTracking(gym.Env):
                 cur_q = bmp.sample_next_q(x_normalized)
                 next_quantile_levels.append(cur_q)
             # print([x.shape for x in next_quantile_levels])
-            next_quantile_levels = np.stack(
-                next_quantile_levels).reshape(-1, output_dim)
+            next_quantile_levels = np.stack(next_quantile_levels).reshape(*pred.shape)
             # next_quantile_levels = np.stack(
             #     [bmp.sample_next_q(x_normalized)
             #      for bmp in cur_use_bmp_list]).reshape(-1, output_dim)
@@ -289,10 +290,7 @@ class BetaTracking(gym.Env):
                 torch.from_numpy(norm_sample).to(
                     self.dynamics_model._members[0].device))
             # pred = delta_sample.cpu().numpy().flatten() + x[:output_dim]
-            pred = delta_sample.cpu().numpy().flatten()
-
-            # check that pred and orig_pred are in the same scale
-            breakpoint()
+            pred = delta_sample.cpu().numpy().flatten().reshape(*pred.shape)
 
             ### END: adding beta mixture code
 

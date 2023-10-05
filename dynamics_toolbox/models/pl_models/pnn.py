@@ -389,7 +389,7 @@ class PNN(AbstractPlModel):
             bm.sample_next_q_no_grad(net_in.unsqueeze(1),
                                      output_numpy=False)[0].squeeze()
             for bm in self.bmp
-        ], dim=1)
+        ], dim=1).to(self.device)
         return (
             mean_predictions
             + std_predictions * math.sqrt(2) * torch.erfinv(2 * q_preds - 1)

@@ -22,6 +22,7 @@ parser.add_argument('--data_path', type=str,
 parser.add_argument('--env', type=str)
 parser.add_argument('--xname', type=str, default='Samples')
 parser.add_argument('--yname', type=str, default='Returns/Mean')
+parser.add_argument('--ylabel', type=str, default='Average Returns')
 parser.add_argument('--diameter', type=int, default=3)
 parser.add_argument('--legend_map', type=str)
 parser.add_argument('--color_map', type=str)
@@ -105,10 +106,11 @@ for method in os.listdir(args.data_path):
         )
         ls_idx += 1
 plt.xlabel(args.xname)
-plt.ylabel(args.yname)
+plt.ylabel(args.ylabel)
+plt.xlim(XLIM)
 plt.legend()
 if args.title:
     plt.title(args.title, fontsize=16)
 else:
-    plt.title(args.data_path.split('/')[-1])
+    plt.title(args.data_path.split('/')[-1], fontsize=16)
 plt.show()

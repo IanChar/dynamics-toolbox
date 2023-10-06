@@ -38,8 +38,10 @@ else:
 EXCLUDES = args.exclude_list.split(',') if args.exclude_list else []
 INCLUDES = None if args.include_list is None else args.include_list.split(',')
 MIN_MAXS = {
-    'thruster': (-100.0, 125.0),
-    'fusion': (50.0, 90.0),
+    'z': (-100.0, 125.0),
+    'Mountain': (-100.0, 125.0),
+    'Fusion': (50.0, 90.0),
+    'CartPole': (0.0, 200.0),
 }
 
 ###########################################################################

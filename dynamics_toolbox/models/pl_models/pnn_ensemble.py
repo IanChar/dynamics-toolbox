@@ -22,7 +22,7 @@ class PNNEnsemble(AbstractPlModel):
             input_dim: int,
             output_dim: int,
             pnns: Sequence[PNN],
-            std_mode: str = 'mean',
+            std_mode: str = 'MM',
             sampling_distribution: str = 'Gaussian',
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             gp_length_scales: Union[float, str] = 3.0,
@@ -68,6 +68,7 @@ class PNNEnsemble(AbstractPlModel):
         self.bmp = None
         self._sample_mode = sample_mode
         self._std_mode = std_mode
+        self._recal_constants = None
 
     def reset(self) -> None:
         """Reset the dynamics model."""
@@ -110,12 +111,10 @@ class PNNEnsemble(AbstractPlModel):
             raise ValueError('Cannot single sample BMP')
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
-        mean_predictions = mean_predictions.mean(dim=0)
         std_predictions = (0.5 * logvar_predictions).exp()
-        if self._std_mode == 'max':
-            std_predictions = std_predictions.max(dim=0).values
-        else:
-            std_predictions = std_predictions.mean(dim=0)
+        std_predictions = self.combine_std_deviations(mean_predictions,
+                                                      std_predictions)
+        mean_predictions = mean_predictions.mean(dim=0)
         if self.recal_constants is not None:
             std_predictions *= self.recal_constants
         if self.sampling_distribution == 'Gaussian':
@@ -155,12 +154,10 @@ class PNNEnsemble(AbstractPlModel):
         if self.sampling_distribution == 'GP' or self.sampling_distribution == 'BMP':
             with torch.no_grad():
                 mean_predictions, logvar_predictions = self.forward(net_in)
-            mean_predictions = mean_predictions.mean(dim=0)
             std_predictions = (0.5 * logvar_predictions).exp()
-            if self._std_mode == 'max':
-                std_predictions = std_predictions.max(dim=0).values
-            else:
-                std_predictions = std_predictions.mean(dim=0)
+            std_predictions = self.combine_std_deviations(mean_predictions,
+                                                          std_predictions)
+            mean_predictions = mean_predictions.mean(dim=0)
             if self.recal_constants is not None:
                 std_predictions *= self.recal_constants
             if self.sampling_distribution == 'GP':
@@ -181,6 +178,24 @@ class PNNEnsemble(AbstractPlModel):
                     'std_predictions': std_predictions}
             return predictions, info
         return self.single_sample_output_from_torch(net_in)
+
+    def combine_std_deviations(self, mean_predictions, std_predictions):
+        if self._std_mode == 'max':
+            std_predictions = std_predictions.max(dim=0).values
+        elif self._std_mode == 'MM':
+            N = len(mean_predictions)
+            std_predictions = torch.sqrt(
+                std_predictions.pow(2).mean(dim=0)
+                + mean_predictions.pow(2).mean(dim=0) * (N - 1) / N
+                - 2 / (N ** 2) * torch.sum(torch.cat([
+                    torch.stack([mean_predictions[i] * mean_predictions[j]
+                                 for j in range(i)])
+                    for i in range(1, N)
+                ], dim=0), dim=0)
+            )
+        else:
+            std_predictions = std_predictions.mean(dim=0)
+        return std_predictions
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

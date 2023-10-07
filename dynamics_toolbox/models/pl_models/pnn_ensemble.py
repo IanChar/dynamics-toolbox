@@ -27,6 +27,7 @@ class PNNEnsemble(AbstractPlModel):
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             gp_length_scales: Union[float, str] = 3.0,
             gp_num_bases: int = 100,
+            use_member_recals = True,
             **kwargs,
     ):
         """
@@ -69,6 +70,7 @@ class PNNEnsemble(AbstractPlModel):
         self._sample_mode = sample_mode
         self._std_mode = std_mode
         self._recal_constants = None
+        self._use_member_recals = use_member_recals
 
     def reset(self) -> None:
         """Reset the dynamics model."""
@@ -115,8 +117,7 @@ class PNNEnsemble(AbstractPlModel):
         std_predictions = self.combine_std_deviations(mean_predictions,
                                                       std_predictions)
         mean_predictions = mean_predictions.mean(dim=0)
-        if self.recal_constants is not None:
-            std_predictions *= self.recal_constants
+        std_predictions = self.recalibrate(std_predictions)
         if self.sampling_distribution == 'Gaussian':
             if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
                 predictions = (torch.randn_like(mean_predictions) * std_predictions
@@ -158,8 +159,7 @@ class PNNEnsemble(AbstractPlModel):
             std_predictions = self.combine_std_deviations(mean_predictions,
                                                           std_predictions)
             mean_predictions = mean_predictions.mean(dim=0)
-            if self.recal_constants is not None:
-                std_predictions *= self.recal_constants
+            std_predictions = self.recalibrate(std_predictions)
             if self.sampling_distribution == 'GP':
                 predictions = self._make_gp_prediction(
                     net_in,
@@ -195,6 +195,15 @@ class PNNEnsemble(AbstractPlModel):
             )
         else:
             std_predictions = std_predictions.mean(dim=0)
+        return std_predictions
+
+    def recalibrate(self, std_predictions):
+        if self._use_member_recals:
+            if self._pnns.recal_constants:
+                recal_mat = torch.stack([pnn.recal_constants for pnn in self._pnns])
+                std_predictions = std_predictions * recal_mat
+        elif self.recal_constants is not None:
+            std_predictions = std_predictions * self.recal_constants
         return std_predictions
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:

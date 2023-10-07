@@ -271,7 +271,7 @@ class PNNEnsemble(AbstractPlModel):
         super().to(device)
         self._pnns = [pnn.to(device) for pnn in self._pnns]
         if self._recal_constants is not None:
-            self._recal_constants = self._recal_constants.to(device)
+            self._recal_constants = self._recal_constants.to(device).float()
         if self.kernel is not None:
             self.kernel = self.kernel.to(device)
         if self.bmp is not None:
@@ -329,9 +329,10 @@ class PNNEnsemble(AbstractPlModel):
             self._recal_constants = None
         else:
             if isinstance(constants, np.ndarray):
-                self._recal_constants = torch.as_tensor(constants).to(self.device)
+                self._recal_constants = torch.as_tensor(constants).to(
+                        self.device).float()
             else:
-                self._recal_constants = constants.to(self.device)
+                self._recal_constants = constants.to(self.device).float()
             self._recal_constants = self._recal_constants.reshape(1, -1)
 
     def _make_gp_prediction(

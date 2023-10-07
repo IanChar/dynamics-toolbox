@@ -114,10 +114,9 @@ class PNNEnsemble(AbstractPlModel):
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = (0.5 * logvar_predictions).exp()
-        std_predictions = self.combine_std_deviations(mean_predictions,
-                                                      std_predictions)
+        std_predictions = self.combine_and_recal_std_deviations(mean_predictions,
+                                                                std_predictions)
         mean_predictions = mean_predictions.mean(dim=0)
-        std_predictions = self.recalibrate(std_predictions)
         if self.sampling_distribution == 'Gaussian':
             if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
                 predictions = (torch.randn_like(mean_predictions) * std_predictions
@@ -156,10 +155,9 @@ class PNNEnsemble(AbstractPlModel):
             with torch.no_grad():
                 mean_predictions, logvar_predictions = self.forward(net_in)
             std_predictions = (0.5 * logvar_predictions).exp()
-            std_predictions = self.combine_std_deviations(mean_predictions,
-                                                          std_predictions)
+            std_predictions = self.combine_and_recal_std_deviations(mean_predictions,
+                                                                    std_predictions)
             mean_predictions = mean_predictions.mean(dim=0)
-            std_predictions = self.recalibrate(std_predictions)
             if self.sampling_distribution == 'GP':
                 predictions = self._make_gp_prediction(
                     net_in,
@@ -179,7 +177,9 @@ class PNNEnsemble(AbstractPlModel):
             return predictions, info
         return self.single_sample_output_from_torch(net_in)
 
-    def combine_std_deviations(self, mean_predictions, std_predictions):
+    def combine_and_recal_std_deviations(self, mean_predictions, std_predictions):
+        if self._use_member_recals:
+            std_predictions = self.recalibrate(std_predictions)
         if self._std_mode == 'max':
             std_predictions = std_predictions.max(dim=0).values
         elif self._std_mode == 'MM':
@@ -195,12 +195,15 @@ class PNNEnsemble(AbstractPlModel):
             )
         else:
             std_predictions = std_predictions.mean(dim=0)
+        if not self._use_member_recals:
+            std_predictions = self.recalibrate(std_predictions)
         return std_predictions
 
     def recalibrate(self, std_predictions):
         if self._use_member_recals:
-            if self._pnns.recal_constants:
-                recal_mat = torch.stack([pnn.recal_constants for pnn in self._pnns])
+            if self._pnns[0].recal_constants is not None:
+                recal_mat = torch.stack([pnn.recal_constants
+                                         for pnn in self._pnns]).float()
                 std_predictions = std_predictions * recal_mat
         elif self.recal_constants is not None:
             std_predictions = std_predictions * self.recal_constants

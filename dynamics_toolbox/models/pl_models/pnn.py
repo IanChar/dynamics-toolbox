@@ -155,7 +155,7 @@ class PNN(AbstractPlModel):
             raise ValueError('Cannot single sample BMP')
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
-        std_predictions = (0.5 * logvar_predictions).exp()
+        std_predictions = self.recalibrate((0.5 * logvar_predictions).exp())
         if self.recal_constants is not None:
             std_predictions *= self.recal_constants
         if self.sampling_distribution == 'Gaussian':
@@ -195,9 +195,7 @@ class PNN(AbstractPlModel):
         if self.sampling_distribution == 'GP' or self.sampling_distribution == 'BMP':
             with torch.no_grad():
                 mean_predictions, logvar_predictions = self.forward(net_in)
-            std_predictions = (0.5 * logvar_predictions).exp()
-            if self.recal_constants is not None:
-                std_predictions *= self.recal_constants
+            std_predictions = self.recalibrate((0.5 * logvar_predictions).exp())
             if self.sampling_distribution == 'GP':
                 predictions = self._make_gp_prediction(
                     net_in,
@@ -216,6 +214,11 @@ class PNN(AbstractPlModel):
                     'std_predictions': std_predictions}
             return predictions, info
         return self.single_sample_output_from_torch(net_in)
+
+    def recalibrate(self, std_predictions):
+        if self.recal_constants is not None:
+            std_predictions = std_predictions * self.recal_constants
+        return std_predictions
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.

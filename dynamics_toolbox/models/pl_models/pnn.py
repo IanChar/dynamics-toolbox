@@ -156,8 +156,6 @@ class PNN(AbstractPlModel):
         with torch.no_grad():
             mean_predictions, logvar_predictions = self.forward(net_in)
         std_predictions = self.recalibrate((0.5 * logvar_predictions).exp())
-        if self.recal_constants is not None:
-            std_predictions *= self.recal_constants
         if self.sampling_distribution == 'Gaussian':
             if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
                 predictions = (torch.randn_like(mean_predictions) * std_predictions

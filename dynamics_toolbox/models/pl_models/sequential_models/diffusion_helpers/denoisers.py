@@ -64,12 +64,14 @@ class Model_mlp_diff_embed(nn.Module):
                 self.fc1 = nn.Sequential(FCBlock(self.embed_dim * 3, n_hidden))  # no prev hist
             self.fc2 = nn.Sequential(FCBlock(n_hidden + y_dim + 1, n_hidden))  # will concat y and t at each layer
             self.fc3 = nn.Sequential(FCBlock(n_hidden + y_dim + 1, n_hidden))
+            self.fc31 = nn.Sequential(FCBlock(n_hidden + y_dim + 1, n_hidden))
+            self.fc32 = nn.Sequential(FCBlock(n_hidden + y_dim + 1, n_hidden))
             self.fc4 = nn.Sequential(nn.Linear(n_hidden + y_dim + 1, self.output_dim))
 
         # transformer layers
         elif self.net_type == "transformer":
-            self.nheads = 16  # 16
-            self.trans_emb_dim = 64
+            self.nheads = 6  # 16
+            self.trans_emb_dim = 128
             self.transformer_dim = self.trans_emb_dim * self.nheads  # embedding dim for each of q,k and v (though only k and v have to be same I think)
 
             self.t_to_input = nn.Linear(self.embed_dim, self.trans_emb_dim)
@@ -139,7 +141,9 @@ class Model_mlp_diff_embed(nn.Module):
         nn1 = self.fc1(net_input)
         nn2 = self.fc2(torch.cat((nn1 / 1.414, y, t), 1)) + nn1 / 1.414  # residual and concat inputs again
         nn3 = self.fc3(torch.cat((nn2 / 1.414, y, t), 1)) + nn2 / 1.414
-        net_output = self.fc4(torch.cat((nn3, y, t), 1))
+        nn31 = self.fc31(torch.cat((nn3 / 1.414, y, t), 1)) + nn3 / 1.414
+        nn32 = self.fc32(torch.cat((nn31 / 1.414, y, t), 1)) + nn31 / 1.414
+        net_output = self.fc4(torch.cat((nn32, y, t), 1))
         net_output = net_output.view(batch_size, seq_len, -1)
         return net_output
 

@@ -57,18 +57,15 @@ class Model_Cond_Diffusion(nn.Module):
         return self.loss_mse(noise, noise_pred_batch)
     '''
 
-    def autoregress_sample(self, x_batch, return_y_trace=False, extract_embedding=False):
+    def autoregress_sample(self, x_batch, ddpm_buffer, return_y_trace=False, extract_embedding=False):
         #x_batch shape will be (batch size, 1, x_dim)
         # also use this as a shortcut to avoid doubling batch when guide_w is zero
-        print("here inside sampling")
         is_zero = False
         if self.guide_w > -1e-3 and self.guide_w < 1e-3:
-            is_zero = True
-
+            is_zero = True 
         # how many noisy actions to begin with
-        n_sample = x_batch.shape[0]
-
-        y_shape = (n_sample, 1, self.y_dim)
+        n_sample, seq_len = x_batch.shape[0], x_batch.shape[1]
+        y_shape = (n_sample, seq_len, self._output_dim)
 
         # sample initial noise, y_0 ~ N(0, 1),
         y_i = torch.randn(y_shape).to(x_batch.device)
@@ -76,22 +73,24 @@ class Model_Cond_Diffusion(nn.Module):
         if not is_zero:
             if len(x_batch.shape) > 2:
                 # repeat x_batch twice, so can use guided diffusion
-                x_batch = x_batch.repeat(2, 1, 1, 1) #might need to change this
+                x_batch = x_batch.repeat(2, 1, 1)
             else:
                 # repeat x_batch twice, so can use guided diffusion
-                x_batch = x_batch.repeat(2, 1)
+                x_batch = x_batch.repeat(2, 1, 1)
 
             # half of context will be zero
-            context_mask = torch.zeros(x_batch.shape[0]).to(x_batch.device)
-            context_mask[n_sample:] = 1.0  # makes second half of batch context free
+            context_mask = torch.zeros(x_batch.shape[1], x_batch.shape[0]).to(x_batch.device)
+            context_mask[:, n_sample:] = 1.0  # makes second half of batch context free
         else:
-            context_mask = torch.zeros(x_batch.shape[0]).to(x_batch.device)
+            context_mask = torch.zeros(x_batch.shape[1], x_batch.shape[0]).to(x_batch.device)
+
 
         # run denoising chain
         y_i_store = []  # if want to trace how y_i evolved
+        return_y_trace = True
         for i in range(self.n_T, 0, -1):
             t_is = torch.tensor([i / self.n_T]).to(x_batch.device)
-            t_is = t_is.repeat(n_sample, 1, 1) #CHECK IF THIS IS RIGHT
+            t_is = t_is.repeat(n_sample, seq_len, 1)
 
             if not is_zero:
                 # double batch
@@ -107,15 +106,14 @@ class Model_Cond_Diffusion(nn.Module):
                 eps2 = eps[n_sample:]
                 eps = (1 + self.guide_w) * eps1 - self.guide_w * eps2
                 y_i = y_i[:n_sample]
-            y_i = self.oneover_sqrta[i] * (y_i - eps * self.mab_over_sqrtmab[i]) + self.sqrt_beta_t[i] * z
-            if return_y_trace and (i % 20 == 0 or i == self.n_T or i < 8):
+            y_i = ddpm_buffer["oneover_sqrta"].to(x_batch.device)[i] * (y_i - eps * ddpm_buffer["mab_over_sqrtmab"].to(x_batch.device)[i]) + ddpm_buffer["sqrt_beta_t"].to(x_batch.device)[i] * z
+            if return_y_trace and (i % 20 == 0 or i == self._diff_model.n_T or i < 8):
                 y_i_store.append(y_i.detach().cpu().numpy())
 
         if return_y_trace:
-            return y_i, y_i_store
+            return {'y_i': y_i.squeeze(dim = 1), 'y_i_store': y_i_store}
         else:
-            return y_i, []
-
+            return {'y_i': y_i.squeeze(dim = 1)}
 
     '''
     def sample_update(self, x_batch, betas, n_T, return_y_trace=False):

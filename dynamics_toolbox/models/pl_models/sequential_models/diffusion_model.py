@@ -311,8 +311,8 @@ class DiffusionTransformer(AbstractSequentialModel):
             
             #encode and memout are of shape (batch size, 1, dim)
             ################## CHANGE FROM HERE ON FOR DIFFUSION MODEL ####################
-            print("encoded, mem_out", encoded.shape, mem_out.shape)
-            predictions, denoised_pred_trace = self._diff_model.sample(torch.cat([encoded, mem_out], dim=-1), return_y_trace = True)
+            #print("encoded, mem_out", encoded.shape, mem_out.shape)
+            predictions, denoised_pred_trace = self._diff_model.autoregress_sample(torch.cat([encoded, mem_out], dim=-1), self.ddpm_buffer, return_y_trace = True)
         info = {'predictions': predictions, 'denoised_pred_trace': denoised_pred_trace}
         return predictions, info
 

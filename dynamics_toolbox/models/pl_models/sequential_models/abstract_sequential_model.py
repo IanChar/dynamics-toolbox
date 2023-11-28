@@ -53,6 +53,8 @@ class AbstractSequentialModel(AbstractPlModel, metaclass=abc.ABCMeta):
         to_return = {}
         if 'prediction' in net_out:
             pred = net_out['prediction']
+        elif 'y_i' in net_out:
+            pred = net_out['y_i']
         elif 'mean' in net_out:
             pred = net_out['mean']
         else:

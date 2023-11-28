@@ -10,15 +10,16 @@ import hydra.utils
 import torch
 from omegaconf import DictConfig
 
+
 from dynamics_toolbox.constants import losses, sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
 from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
+from dynamics_toolbox.models.pl_models.sequential_models.diffusion_helpers.utils import ddpm_schedules
 
-
-class RPNN(AbstractSequentialModel):
-    """RPNN network."""
+class DiffusionTransformer(AbstractSequentialModel):
+    """Transformer-based Diffusion Model"""
 
     def __init__(
             self,
@@ -27,8 +28,9 @@ class RPNN(AbstractSequentialModel):
             encode_dim: int,
             rnn_num_layers: int,
             rnn_hidden_size: int,
+            diffusion: bool,
+            diffusion_denoiser_cfg: DictConfig,
             encoder_cfg: DictConfig,
-            pnn_decoder_cfg: DictConfig,
             rnn_type: str = 'gru',
             warm_up_period: int = 0,
             learning_rate: float = 1e-3,
@@ -38,7 +40,6 @@ class RPNN(AbstractSequentialModel):
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
-            diffusion: bool = False,
             **kwargs,
     ):
         """Constructor.
@@ -66,19 +67,15 @@ class RPNN(AbstractSequentialModel):
             use_layer_norm: Whether to use layer norm.
         """
         super().__init__(input_dim, output_dim, **kwargs)
-        self.diffusion = diffusion
         self._encoder = hydra.utils.instantiate(
             encoder_cfg,
             input_dim=input_dim,
             output_dim=encode_dim,
             _recursive_=False,
         )
-        self._decoder = hydra.utils.instantiate(
-            pnn_decoder_cfg,
-            input_dim=encode_dim + rnn_hidden_size,
-            output_dim=output_dim,
-            _recursive_=False,
-        )
+        self.diffusion = diffusion
+        self._diff_model = hydra.utils.instantiate(diffusion_denoiser_cfg, input_dim = encode_dim + rnn_hidden_size, output_dim = output_dim, 
+                                                  x_dim = encode_dim + rnn_hidden_size, y_dim = output_dim)
         self.rnn_type = rnn_type.lower()
         if rnn_type.lower() == 'gru':
             rnn_class = torch.nn.GRU
@@ -90,6 +87,9 @@ class RPNN(AbstractSequentialModel):
                                       num_layers=rnn_num_layers,
                                       batch_first=True)
         self._memory_unit = self._memory_unit.to(self.device)
+        self.ddpm_buffer = {}
+        for k, v in ddpm_schedules(self._diff_model.beta1, self._diff_model.beta2, self._diff_model.n_T).items():
+            self.ddpm_buffer[k] = v.to(self.device)
         if use_layer_norm:
             self._layer_norm = torch.nn.LayerNorm(encode_dim)
         self._input_dim = input_dim
@@ -104,20 +104,7 @@ class RPNN(AbstractSequentialModel):
         self._record_history = True
         self._hidden_state = None
         self._use_layer_norm = use_layer_norm
-        # Set up variance pinning.
-        self._var_pinning = (logvar_lower_bound is not None
-                             and logvar_upper_bound is not None)
-        if self._var_pinning:
-            self._min_logvar = torch.nn.Parameter(
-                torch.Tensor([logvar_lower_bound])
-                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
-            self._max_logvar = torch.nn.Parameter(
-                torch.Tensor([logvar_upper_bound])
-                * torch.ones(1, output_dim, dtype=torch.float32, requires_grad=True))
-        else:
-            self._min_logvar = None
-            self._max_logvar = None
-        self._logvar_bound_loss_coef = logvar_bound_loss_coef
+
         # TODO: In the future we may want to pass this in as an argument.
         self._metrics = {
             'EV': SequentialExplainedVariance(),
@@ -136,12 +123,98 @@ class RPNN(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
+        
+        _ts = torch.randint(1, self._diff_model.n_T + 1, (batch[1].shape[0], batch[1].shape[1], 1)).to(batch[0].device)
+        context_mask = torch.bernoulli(torch.zeros(batch[0].shape[1], batch[0].shape[0]) + self._diff_model.drop_prob).to(batch[0].device)
+
+        noise = torch.randn_like(batch[1]).to(batch[0].device)
+        y_t = self.ddpm_buffer["sqrtab"].to(batch[1].device)[_ts] *  batch[1] + self.ddpm_buffer["sqrtmab"].to(batch[1].device)[_ts] * noise
+
+        
         encoded = self._encoder(batch[0])
         if self._use_layer_norm:
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
-        mean, logvar = self._decoder(torch.cat([encoded, mem_out], dim=-1))
-        return {'mean': mean, 'logvar': logvar}
+        #print("ts, context mask, noise, encoded, mem_out", _ts.shape, context_mask.shape, noise.shape, encoded.shape, mem_out.shape)
+        noise_pred_batch = self._diff_model.nn_model(y_t, torch.cat([encoded, mem_out], dim = -1), _ts / self._diff_model.n_T, context_mask)
+
+        return {'noise_pred_batch': noise_pred_batch, 'noise': noise}
+
+    def sample(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Get the output of the network and organize into dictionary.
+
+        Args:
+            batch: The batch passed into the network. This is expected to be a tuple
+                * x: (Batch_size, Sequence Length, dim)
+                * y: (Batch_size, Sequence Length, dim)
+                * mask: (Batch_size, Sequence Length, 1)
+
+        Returns:
+            Dictionary of name to tensor.
+        """
+        is_zero = False
+        if self._diff_model.guide_w > -1e-3 and self._diff_model.guide_w < 1e-3:
+            is_zero = True   
+        
+        encoded = self._encoder(batch[0])
+        if self._use_layer_norm:
+            encoded = self._layer_norm(encoded)
+        mem_out = self._memory_unit(encoded)[0]
+        x_batch = torch.cat([encoded, mem_out], dim = -1)
+
+        # how many noisy actions to begin with
+        n_sample, seq_len = x_batch.shape[0], x_batch.shape[1]
+        y_shape = (n_sample, seq_len, self._output_dim)
+
+        # sample initial noise, y_0 ~ N(0, 1),
+        y_i = torch.randn(y_shape).to(x_batch.device)
+
+        if not is_zero:
+            if len(x_batch.shape) > 2:
+                # repeat x_batch twice, so can use guided diffusion
+                x_batch = x_batch.repeat(2, 1, 1)
+            else:
+                # repeat x_batch twice, so can use guided diffusion
+                x_batch = x_batch.repeat(2, 1, 1)
+
+            # half of context will be zero
+            context_mask = torch.zeros(x_batch.shape[1], x_batch.shape[0]).to(x_batch.device)
+            context_mask[:, n_sample:] = 1.0  # makes second half of batch context free
+        else:
+            context_mask = torch.zeros(x_batch.shape[1], x_batch.shape[0]).to(x_batch.device)
+
+
+        # run denoising chain
+        y_i_store = []  # if want to trace how y_i evolved
+        return_y_trace = True
+        for i in range(self._diff_model.n_T, 0, -1):
+            t_is = torch.tensor([i / self._diff_model.n_T]).to(x_batch.device)
+            t_is = t_is.repeat(n_sample, seq_len, 1)
+
+            if not is_zero:
+                # double batch
+                y_i = y_i.repeat(2, 1, 1)
+                t_is = t_is.repeat(2, 1, 1)
+
+            z = torch.randn(y_shape).to(x_batch.device) if i > 1 else 0
+
+            # split predictions and compute weighting
+            eps = self._diff_model.nn_model(y_i, x_batch, t_is, context_mask)
+            if not is_zero:
+                eps1 = eps[:n_sample]
+                eps2 = eps[n_sample:]
+                eps = (1 + self.guide_w) * eps1 - self.guide_w * eps2
+                y_i = y_i[:n_sample]
+            y_i = self.ddpm_buffer["oneover_sqrta"].to(x_batch.device)[i] * (y_i - eps * self.ddpm_buffer["mab_over_sqrtmab"].to(x_batch.device)[i]) + self.ddpm_buffer["sqrt_beta_t"].to(x_batch.device)[i] * z
+            if return_y_trace and (i % 20 == 0 or i == self._diff_model.n_T or i < 8):
+                y_i_store.append(y_i.detach().cpu().numpy())
+
+        if return_y_trace:
+            return {'y_i': y_i, 'y_i_store': y_i_store}
+        else:
+            return {'y_i': y_i}
+
+
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
             Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -157,30 +230,49 @@ class RPNN(AbstractSequentialModel):
         Returns:
             The loss and a dictionary of other statistics.
         """
-        mean = net_out['mean']
-        logvar = net_out['logvar']
+
+        noise_pred_batch = net_out['noise_pred_batch']
+        noise = net_out['noise']
+        mask = batch[-1]
+        mask[:, :self._warm_up_period, :] = 0
+        loss = self._diff_model.loss_mse(noise * mask, noise_pred_batch * mask)
+        stats = dict(
+            nll=0,
+            mse=loss.item(),
+        )
+        stats['noise_pred/mean'] = (noise_pred_batch * mask).mean().item()
+        stats['loss'] = loss.item()
+        #print("loss:", stats['loss'])
+        return loss, stats
+
+    def loss_eval(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
+            Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+        """Compute the loss function.
+
+        Args:
+            net_out: The output of the network.
+            batch: The batch passed into the network. This is expected to be a tuple
+                * x: (Batch_size, Sequence Length, dim)
+                * y: (Batch_size, Sequence Length, dim)
+                * mask: (Batch_size, Sequence Length, 1)
+
+        Returns:
+            The loss and a dictionary of other statistics.
+        """
+        
+        pred = net_out['y_i']
         y, mask = batch[1:]
         mask[:, :self._warm_up_period, :] = 0
-        sq_diffs = (mean * mask - y * mask).pow(2)
+        sq_diffs = (pred * mask - y * mask).pow(2)
         mse = torch.mean(sq_diffs)
-        loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+        loss = mse
         stats = dict(
-            nll=loss.item(),
             mse=mse.item(),
         )
-        stats['logvar/mean'] = (logvar * mask).mean().item()
-        if self._var_pinning:
-            bound_loss = self._logvar_bound_loss_coef * \
-                         torch.abs(self._max_logvar - self._min_logvar).mean()
-            stats['bound_loss'] = bound_loss.item()
-            stats['logvar_lower_bound/mean'] = self._min_logvar.mean().item()
-            stats['logvar_upper_bound/mean'] = self._max_logvar.mean().item()
-            stats['logvar_bound_difference'] = (
-                        self._max_logvar - self._min_logvar).mean().item()
-            loss += bound_loss
         stats['loss'] = loss.item()
-        #print("loss", stats['mse'])
+        #print("eval loss", stats['mse'])
         return loss, stats
+
 
     def single_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[
             torch.Tensor, Dict[str, Any]]:
@@ -192,14 +284,15 @@ class RPNN(AbstractSequentialModel):
         Returns:
             The predictions for a single function sample.
         """
+        print("here inside single sample output")
         if self._hidden_state is None:
             if self.rnn_type == 'gru':
                 self._hidden_state = torch.zeros(self._num_layers, net_in.shape[0],
-                                                 self._hidden_size, device=self.device)
+                                                 self._hidden_size, device=net_in.device)
             else:
                 self._hidden_state = tuple(
                     torch.zeros(self._num_layers, net_in.shape[0],
-                                self._hidden_size, device=self.device)
+                                self._hidden_size, device=net_in.device)
                     for _ in range(2))
         else:
             tocompare = (self._hidden_state if self.rnn_type == 'gru'
@@ -215,18 +308,12 @@ class RPNN(AbstractSequentialModel):
             mem_out, hidden_out = self._memory_unit(encoded, self._hidden_state)
             if self._record_history:
                 self._hidden_state = hidden_out
-            mean_predictions, logvar_predictions =\
-                (output.squeeze(1) for output in
-                 self._decoder(torch.cat([encoded, mem_out], dim=-1)))
-        std_predictions = (0.5 * logvar_predictions).exp()
-        if self._sample_mode == sampling_modes.SAMPLE_FROM_DIST:
-            predictions = (torch.randn_like(mean_predictions) * std_predictions
-                           + mean_predictions)
-        else:
-            predictions = mean_predictions
-        info = {'predictions': predictions,
-                'mean_predictions': mean_predictions,
-                'std_predictions': std_predictions}
+            
+            #encode and memout are of shape (batch size, 1, dim)
+            ################## CHANGE FROM HERE ON FOR DIFFUSION MODEL ####################
+            print("encoded, mem_out", encoded.shape, mem_out.shape)
+            predictions, denoised_pred_trace = self._diff_model.sample(torch.cat([encoded, mem_out], dim=-1), return_y_trace = True)
+        info = {'predictions': predictions, 'denoised_pred_trace': denoised_pred_trace}
         return predictions, info
 
     def multi_sample_output_from_torch(self, net_in: torch.Tensor) -> Tuple[

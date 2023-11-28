@@ -1,0 +1,30 @@
+_target_: dynamics_toolbox.models.pl_models.sequential_models.diffusion_model.DiffusionTransformer
+encode_dim: 128
+rnn_num_layers: 1
+rnn_hidden_size: 32
+diffusion: True
+encoder_cfg:
+   _target_: dynamics_toolbox.models.pl_models.mlp.MLP
+   num_layers: 1
+   layer_size: 128
+   hidden_activation: "relu"
+diffusion_denoiser_cfg:
+    _target_: dynamics_toolbox.models.pl_models.sequential_models.diffusion_helpers.conditional_diffusion.Model_Cond_Diffusion
+    n_hidden: 128
+    embed_dim: 128
+    is_dropout: False
+    is_batch: False
+    activation: "relu"
+    net_type: "fc"
+    use_prev: False
+    beta1: 0.0001
+    beta2: 0.02
+    n_T: 100
+    drop_prob: 0.0
+    guide_w: 0.0
+
+dim_name_map:
+  - "Rewards"
+  - "X Position"
+  - "Y Position"
+  - "Angular Velocity"

@@ -56,7 +56,12 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     ) -> torch.Tensor:
         """Training step for pytorch lightning. Returns the loss."""
         batch = self.normalizer.normalize_batch(batch)
-        net_out = self.get_net_out(batch)
+        
+        #if(batch[0].device != self._diff_model.register_buffer['alpha_t'].device):
+        #  for key, val in self._diff_model.register_buffer.items():
+        #    val = val.to(batch[0].device)
+        #    print(val.device)
+        net_out = self.get_net_out(batch)    
         loss, loss_dict = self.loss(net_out, batch)
         self._log_stats(loss_dict, prefix='train')
         return loss
@@ -64,17 +69,21 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
     def validation_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
         """Training step for pytorch lightning. Returns the loss."""
         batch = self.normalizer.normalize_batch(batch)
+
         net_out = self.get_eval_net_out(batch)
-        loss, loss_dict = self.loss(net_out, batch)
+        loss, loss_dict = self.loss_eval(net_out, batch) if self.diffusion else self.loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
+        #print(loss_dict)
         self._log_stats(loss_dict, prefix='val')
 
-    def test_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None:
+    def test_step(self, batch: Sequence[torch.Tensor], batch_idx: int) -> None: #TODO CHANGE HERE
         """Training step for pytorch lightning. Returns the loss."""
         batch = self.normalizer.normalize_batch(batch)
+
         net_out = self.get_eval_net_out(batch)
-        loss, loss_dict = self.loss(net_out, batch)
+        loss, loss_dict = self.loss_eval(net_out, batch) if self.diffusion else self.loss(net_out, batch)
         loss_dict.update(self._get_test_and_validation_metrics(net_out, batch))
+        #print(loss_dict)
         self._log_stats(loss_dict, prefix='test')
 
     def predict(
@@ -119,7 +128,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
         Returns:
             Dictionary of name to tensor.
         """
-        return self.get_net_out(batch=batch)
+        return self.sample(batch=batch) if self.diffusion else self.get_net_out(batch=batch)
 
     @property
     def normalize_inputs(self) -> bool:

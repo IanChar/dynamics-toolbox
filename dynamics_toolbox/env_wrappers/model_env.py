@@ -173,6 +173,7 @@ class ModelEnv(gym.Env):
                 acts = np.zeros((starts.shape[0], horizon, act.shape[1]))
             acts[:, h, :] = act
             model_out, infos = self._dynamics.predict(np.hstack([state, act]))
+            model_out = model_out[:, 1:] if self._reward_is_first_dim else model_out #added Rohit -- for pendulum
             nxts = state + model_out if self._model_output_are_deltas else model_out
             obs[:, h + 1, :] = nxts
             rewards[:, h] = self._compute_reward(state, act, nxts, infos)[0]

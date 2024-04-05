@@ -1,10 +1,10 @@
 name: "example_rnn"
-save_path: "trained_models"
+save_path: "/home/scratch/rsonker/trained_models"
 data_source: "data/pendulum_100k.hdf5"
 seed: 1
 logger: tensorboard
 normalization: "standardize"
-cuda_device: null
+cuda_device: 0
 defaults:
     - model: rpnn
     - trainer: pl_trainer

@@ -6,7 +6,6 @@ Date: January 31, 2023
 """
 import argparse
 import os
-
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,7 +20,7 @@ from dynamics_toolbox.env_wrappers.model_env import ModelEnv
 # %% Load in the arguments.
 ###########################################################################
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, required=True)
+# parser.add_argument('--model_path', type=str, required=True)
 parser.add_argument('--save_path', type=str, default='gifs/pendulum/gpt')
 parser.add_argument('--data_path', type=str, default='data/pendulum_holdout.hdf5')
 parser.add_argument('--path_len', type=int, default=200)
@@ -33,10 +32,14 @@ plt.style.use('seaborn')
 ###########################################################################
 # %% Make the GIFs
 ###########################################################################
+args.model_path = "/home/scratch/rsonker/trained_models/example_rnn"
+
 model = load_model_from_log_dir(args.model_path)
 model_env = ModelEnv(model)
 os.makedirs(args.save_path, exist_ok=True)
 os.makedirs('gif_scratch', exist_ok=True)
+
+print(os.getcwd())
 data = load_from_hdf5(args.data_path)
 num_paths = len(data['observations']) // args.path_len
 if args.max_paths is not None and args.max_paths < num_paths:

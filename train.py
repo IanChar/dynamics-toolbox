@@ -14,7 +14,8 @@ from dynamics_toolbox.utils.lightning.constructors import\
         construct_all_pl_components_for_training
 
 
-@hydra.main(config_path='./example_configs', config_name='example_rnn')
+@hydra.main(config_path='./example_configs',
+             config_name='config_ysc')
 def train(cfg: DictConfig) -> None:
     """Train the model."""
     if cfg.get('debug', False):
@@ -36,7 +37,8 @@ def train(cfg: DictConfig) -> None:
         cfg['data_module']['data_source'] = cfg['data_source']
         if 'smote' in cfg:
             cfg['smote'] = bool(cfg['smote'])
-        cfg['save_dir'] = os.getcwd()
+        if 'save_dir' not in cfg:
+            cfg['save_dir'] = os.path.join(os.getcwd(), 'model')
         if 'gpus' in cfg:
             cfg['gpus'] = str(cfg['gpus'])
     model, data, trainer, logger, cfg = construct_all_pl_components_for_training(cfg)

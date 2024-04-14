@@ -11,7 +11,9 @@ import numpy
 import tf_keras as keras
 
 class PPPLTearingProbabilityModel():
-    def __init__(self, is_ensemble:bool = True, model_path:str = "/zfsauton2/home/rsonker/TearingAvoidance/tm_prediction_model"):
+    def __init__(self, is_ensemble:bool = True, 
+                 model_path:str = "/zfsauton2/home/rsonker/TearingAvoidance/tm_prediction_model",
+                 use_model_seed = 0):
         self.is_ensemble = is_ensemble
         self.model_path = model_path
 
@@ -22,7 +24,7 @@ class PPPLTearingProbabilityModel():
                                                 compile=False)
                 self.model.append(model)
         else:
-            self.model = keras.saving.load_model(f'{self.model_path}/best_model_2', compile = False)
+            self.model = keras.saving.load_model(f'{self.model_path}/best_model_{use_model_seed}', compile = False)
 
     
     def predict(self, x0: numpy.ndarray, x1:numpy.ndarray, combine_predictions = 'mean') -> numpy.ndarray:

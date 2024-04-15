@@ -1,6 +1,6 @@
 """
 Data module for training autoregressive timeseries models
- # multiple steps are given in a batch.
+where multiple steps are given in a batch.
 
 Author: Youngseog Chung
 """
@@ -129,8 +129,6 @@ class TimeseriesDataModule(LightningDataModule):
                 drop_last=False,
                 pin_memory=self._pin_memory,
             )
-        else:
-            None
 
     def test_dataloader(
             self,
@@ -145,8 +143,6 @@ class TimeseriesDataModule(LightningDataModule):
                 drop_last=False,
                 pin_memory=self._pin_memory,
             )
-        else:
-            None
 
     @property
     def data(self) -> Sequence[np.array]:

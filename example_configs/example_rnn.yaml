@@ -1,6 +1,6 @@
-name: "example_rnn_walker_obs_noise_0.1_action_noise_0"
+name: ???
 save_path: "trained_models"
-data_source: "/home/scratch/rohans2/auto-recal/Walker2d-v3/obs_noise_0.1_action_noise_0.h5"
+data_source: ???
 seed: 1
 logger: tensorboard
 normalization: "standardize"

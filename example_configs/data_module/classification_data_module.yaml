@@ -1,8 +1,0 @@
-_target_: dynamics_toolbox.data.pl_data_modules.classification_data_module.ClassificationDataModule
-batch_size: 256
-val_proportion: 0.1
-test_proportion: 0.1
-pin_memory: True
-num_workers: 1
-# num_classes: 3
-num_classes: 2

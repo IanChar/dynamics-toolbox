@@ -1,5 +1,6 @@
 name: "example_mlp"
-data_source: "/home/scratch/rohans2/d4rl/data/halfcheetah_medium-v2.hdf5"
+save_path: "trained_models"
+data_source: ???
 seed: 1
 logger: tensorboard
 normalization: "standardize"
@@ -13,4 +14,4 @@ hydra:
     job:
         name: ${name}
     run:
-        dir: trained_models/${name}/${seed}
+        dir: ${save_path}/${name}

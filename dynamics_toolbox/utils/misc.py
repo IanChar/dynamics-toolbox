@@ -3,7 +3,9 @@ Misc helper functions.
 
 Author: Ian Char
 """
-from typing import Sequence, Optional, NoReturn, List, Union
+from typing import Sequence, Optional, NoReturn, List, Union, Iterable
+
+import torch.nn as nn
 
 
 def get_architecture(
@@ -37,3 +39,15 @@ def s2i(string: str) -> Sequence[int]:
         else:
             return []
     return [int(s) for s in string.split('_')]
+
+
+def get_parameters(modules: Iterable[nn.Module]):
+    """
+    Given a list of torch modules, returns a list of their parameters.
+    :param modules: iterable of modules
+    :returns: a list of parameters
+    """
+    model_parameters = []
+    for module in modules:
+        model_parameters += list(module.parameters())
+    return model_parameters

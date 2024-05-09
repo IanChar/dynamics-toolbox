@@ -23,6 +23,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             output_dim: int,
             normalizer: Optional[Normalizer] = None,
             dim_name_map: Optional[Sequence[str]] = None,
+            automatic_optimization: Optional[bool] = True,
             **kwargs
     ):
         """Constructor.
@@ -33,6 +34,7 @@ class AbstractPlModel(LightningModule, AbstractModel, metaclass=abc.ABCMeta):
             normalizer: Normalizer for the model.
         """
         super().__init__()
+        self.automatic_optimization = automatic_optimization
         self._input_dim = input_dim
         self._output_dim = output_dim
         if normalizer is None:

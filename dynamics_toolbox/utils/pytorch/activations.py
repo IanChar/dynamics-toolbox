@@ -27,6 +27,7 @@ ALL_ACTIVATIONS = {
     activations.RELU: F.relu,
     activations.SWISH: swish,
     activations.TANH: torch.tanh,
+    activations.LeakyRELU: F.leaky_relu
 }
 
 

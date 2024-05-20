@@ -26,7 +26,7 @@ def load_model_from_log_dir(
     Args:
         path: The path to the log directory.
         epoch: Epoch of the checkpoint to load in. If not specified, load the
-            last checkpoint recorded.
+            last checkpoint recorded. The checkpoint usually refers to the best epoch. 
 
     Returns:
         The loaded dynamics model.

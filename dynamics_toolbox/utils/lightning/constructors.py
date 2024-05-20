@@ -45,6 +45,15 @@ def construct_all_pl_components_for_training(
         if 'member_config' in cfg['model']:
             cfg['model']['member_config']['input_dim'] = data_module.input_dim
             cfg['model']['member_config']['output_dim'] = data_module.output_dim
+
+        # adjust for dropped features in the data module
+        states_to_remove = cfg.get('data_module').get('remove_states',[])
+        for state in states_to_remove:
+            cfg['model']['dim_name_map'].remove(state)
+        # actuators_to_remove = cfg.get('data_module').get('remove_actuators',[]) #it doesnt have actuator names
+        # for actuator in actuators_to_remove:
+        #     cfg['model']['dim_name_map'].remove(actuator)
+
     if 'normalization' not in cfg:
         normalizer = None
     elif cfg['normalization'] == 'standardize':

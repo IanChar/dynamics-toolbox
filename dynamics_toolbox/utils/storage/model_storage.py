@@ -50,8 +50,10 @@ def load_model_from_log_dir(
     else:
         epidx = np.argmax(epochs)
     model_path = os.path.join(checkpoint_path, checkpoints[epidx])
+    mask_scalar_states = cfg.get('mask_dim_name', [])
+    mask_indices = [cfg['model']['dim_name_map'].index(state) for state in mask_scalar_states]
     model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
-    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'])
+    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'], mask_indices=mask_indices)
 
 
 def load_ensemble_from_list_of_log_dirs(

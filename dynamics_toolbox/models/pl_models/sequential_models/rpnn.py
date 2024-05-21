@@ -38,6 +38,7 @@ class RPNN(AbstractSequentialModel):
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
+            mask_indices: Optional[Sequence[int]] = [],
             **kwargs,
     ):
         """Constructor.
@@ -63,6 +64,7 @@ class RPNN(AbstractSequentialModel):
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
             use_layer_norm: Whether to use layer norm.
+            mask_indices: The indices to mask.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self._encoder = hydra.utils.instantiate(
@@ -121,6 +123,12 @@ class RPNN(AbstractSequentialModel):
             'EV': SequentialExplainedVariance(),
             'IndvEV': SequentialExplainedVariance('raw_values'),
         }
+        # create mask tensor based on mask indices
+        self._mask = torch.ones(input_dim).to(self.device)
+        self._input_mask = False
+        if len(mask_indices)>0:
+            self._mask[mask_indices] = 0
+            self._input_mask = True
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -134,7 +142,11 @@ class RPNN(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        encoded = self._encoder(batch[0])
+        if self._input_mask:
+            input_batch = batch[0]*self._mask.to(self.device)
+        else:
+            input_batch = batch[0]
+        encoded = self._encoder(input_batch)
         if self._use_layer_norm:
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
@@ -206,6 +218,8 @@ class RPNN(AbstractSequentialModel):
                                  f'number. Expected {tocompare.shape[1]} but received'
                                  f' {net_in.shape[0]}.')
         with torch.no_grad():
+            if self._input_mask:
+                net_in = net_in * self._mask.to(self.device)
             encoded = self._encoder(net_in).unsqueeze(1)
             if self._use_layer_norm:
                 encoded = self._layer_norm(encoded)

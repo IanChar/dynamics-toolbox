@@ -71,8 +71,11 @@ def construct_all_pl_components_for_training(
         )
     else:
         raise ValueError(f'Normalization scheme {cfg["normalization"]} not found.')
+
+    mask_scalar_states = cfg.get('mask_dim_name', [])
+    mask_indices = [cfg['model']['dim_name_map'].index(state) for state in mask_scalar_states]
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
-                                    _recursive_=False)
+                                    _recursive_=False, mask_indices = mask_indices)
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))

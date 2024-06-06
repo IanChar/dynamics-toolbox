@@ -7,6 +7,7 @@ Author: Namrata Deka
 from cProfile import label
 from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
+import numpy as np
 import hydra.utils
 import torch
 import torch.nn.functional as F
@@ -35,6 +36,8 @@ class IFactor(AbstractSequentialModel):
         obs_decoder_cfg: DictConfig,
         sa_decoder_cfg: DictConfig,
         sac_decoder_cfg: DictConfig,
+        action_ft_dim: Optional[int] = None,
+        action_encoder_cfg: Optional[DictConfig] = None,
         rnn_num_layers: int = 1,
         rnn_type: str = 'gru',
         mi_steps: int = 3,
@@ -76,6 +79,16 @@ class IFactor(AbstractSequentialModel):
         # self.automatic_optimization = False
         self.sa_dim, self.sac_dim = sa_dim, sac_dim
         state_dim = sa_dim + sac_dim
+        # action encoder (MLP):
+        if action_encoder_cfg is not None:
+            self.action_encoder = hydra.utils.instantiate(
+                action_encoder_cfg,
+                input_dim = action_dim,
+                output_dim = action_ft_dim,
+                _recursive_=False,
+            )
+        else:
+            self.action_encoder = None
         # observation encoder (PNN): o_t -> s_t
         self.obs_encoder = hydra.utils.instantiate(
             obs_encoder_cfg,
@@ -98,7 +111,8 @@ class IFactor(AbstractSequentialModel):
         else:
             raise ValueError(f'Cannot recognize RNN type {rnn_type}')
         # rnn for actionable states: (sa_t, a_t) -> sa_{t+1}
-        self.sa_memory_unit = rnn_class(sa_dim + action_dim, 
+        sa_mem_input_dim = sa_dim + action_dim if self.action_encoder is None else sa_dim + action_ft_dim
+        self.sa_memory_unit = rnn_class(sa_mem_input_dim, 
             sa_dim,
             rnn_num_layers,
             batch_first=True).to(self.device)
@@ -123,21 +137,22 @@ class IFactor(AbstractSequentialModel):
             _recursive_ = False
         )
         # mutual information neural estimator (MINE): (sa_t, a_t, s_{t-1}) -> I(sa_t;a_t|s_{t-1})
+        mine_y_dim = action_dim if self.action_encoder is None else action_ft_dim
         self.mine_sa = MINE(
             x_dim = sa_dim + state_dim,
-            y_dim = action_dim,
+            y_dim = mine_y_dim,
             hidden_dim = mine_hidden_size,
             alpha = mine_alpha
         )
         # mutual information neural estimator (MINE): (sac_t, a_t, s_{t-1}) -> I(sac_t;a_t|s_{t-1})
         self.mine_sac = MINE(
             x_dim = sac_dim + state_dim,
-            y_dim = action_dim,
+            y_dim = mine_y_dim,
             hidden_dim = mine_hidden_size,
             alpha = mine_alpha
         )
 
-        self.world_list = [
+        self.world_modules = [
             self.obs_encoder,
             self.obs_decoder,
             self.sa_memory_unit,
@@ -145,8 +160,10 @@ class IFactor(AbstractSequentialModel):
             self.sa_decoder,
             self.sac_decoder
         ]
+        if self.action_encoder is not None:
+            self.world_modules.append(self.action_encoder)
 
-        self.mine_list = [
+        self.mine_modules = [
             self.mine_sa,
             self.mine_sac
         ]
@@ -174,13 +191,15 @@ class IFactor(AbstractSequentialModel):
             batch: The batch passed into the network. This is expected to be a tuple
                 * o_t: (Batch_size, Sequence Length, obs_dim)
                 * a_t: (Batch_size, Sequence Length, action_dim)
-                * o_{t+1}: (Batch_size, Sequence Length, obs_dim)
+                * delta_o_{t+1}: (Batch_size, Sequence Length, obs_dim)
                 * mask: (Batch_size, Sequence Length)
 
         Returns:
             Dictionary of name to tensor.
         """
         obs, action, _, _ = batch
+        if self.action_encoder is not None:
+            action = self.action_encoder(action)
         state_mean, state_logvar = self.obs_encoder(obs)
 
         sa_mean, sac_mean = torch.split(state_mean, [self.sa_dim, self.sac_dim], dim=-1)
@@ -216,7 +235,7 @@ class IFactor(AbstractSequentialModel):
             batch: The batch passed into the network. This is expected to be a tuple
                 * o_t: (Batch_size, Sequence Length, obs_dim)
                 * a_t: (Batch_size, Sequence Length, action_dim)
-                * o_{t+1}: (Batch_size, Sequence Length, obs_dim)
+                * delta_o_{t+1}: (Batch_size, Sequence Length, obs_dim)
                 * mask: (Batch_size, Sequence Length, 1)
         """
         # prediction loss
@@ -230,9 +249,14 @@ class IFactor(AbstractSequentialModel):
                                       net_out['sac_posterior'])
 
         # MI loss
-        mi_sa, mi_sac = self._mi_loss(net_out['sa_posterior'][0], net_out['sac_posterior'][0], batch[1])
+        if self.action_encoder is not None:
+            action = self.action_encoder(batch[1])
+        else:
+            action = batch[1]
+        mi_sa, mi_sac = self._mi_loss(net_out['sa_posterior'][0], net_out['sac_posterior'][0], action)
 
         loss = self.obs_weight*obs_loss + bound_loss \
+            + self.obs_weight*obs_mse_loss \
             + self.kl_weight*(kl_sa + kl_sac) \
             + self.mi_weight*(torch.clamp(mi_sac,min=0) - torch.clamp(mi_sa,min=0))
 
@@ -258,7 +282,7 @@ class IFactor(AbstractSequentialModel):
 
         obs_dist = Normal(pred_mean, (0.5*pred_logvar[1]).exp())
         obs_loss = -torch.mean(obs_dist.log_prob(true))
-        obs_mse_loss = F.mse_loss(obs_dist.mean.detach(), true)
+        obs_mse_loss = F.mse_loss(pred_mean, true)
 
         return obs_loss, obs_mse_loss
 
@@ -286,12 +310,12 @@ class IFactor(AbstractSequentialModel):
 
     def configure_optimizers(self) -> Sequence[torch.optim.Optimizer]:
         world_opt = torch.optim.AdamW(
-            get_parameters(self.world_list),
+            get_parameters(self.world_modules),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
         mi_opt = torch.optim.AdamW(
-            get_parameters(self.mine_list),
+            get_parameters(self.mine_modules),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
         )
@@ -309,12 +333,16 @@ class IFactor(AbstractSequentialModel):
 
         # train the MI estimator
         for _ in range(self.mi_steps):
+            if self.action_encoder is not None:
+                action = self.action_encoder(batch[1]).detach()
+            else:
+                action = batch[1]
             mi_sa, mi_sac = self._mi_loss(net_out['sa_posterior'][0].detach(), 
                                           net_out['sac_posterior'][0].detach(), 
-                                          batch[1])
+                                          action)
             mi_opt.zero_grad()
             self.manual_backward(mi_sac - mi_sa)
-            torch.nn.utils.clip_grad_norm_(get_parameters(self.mine_list), self.grad_clip_norm)
+            torch.nn.utils.clip_grad_norm_(get_parameters(self.mine_modules), self.grad_clip_norm)
             mi_opt.step()
 
         # train the world model
@@ -322,7 +350,7 @@ class IFactor(AbstractSequentialModel):
 
         world_opt.zero_grad()
         self.manual_backward(loss)
-        torch.nn.utils.clip_grad_norm_(get_parameters(self.world_list), self.grad_clip_norm)
+        torch.nn.utils.clip_grad_norm_(get_parameters(self.world_modules), self.grad_clip_norm)
         world_opt.step()
 
         self._log_stats(loss_dict, prefix='train')
@@ -362,6 +390,9 @@ class IFactor(AbstractSequentialModel):
                     for _ in range(2))
         with torch.no_grad():
             state_mean, state_logvar = self.obs_encoder(obs)
+            if self.action_encoder is not None:
+                action = self.action_encoder(action)
+
             sa_mean, sac_mean = torch.split(state_mean, [self.sa_dim, self.sac_dim], dim=-1)
             sa_logvar, sac_logvar = torch.split(state_logvar, [self.sa_dim, self.sac_dim], dim=-1)
 
@@ -369,8 +400,8 @@ class IFactor(AbstractSequentialModel):
             # sac_sample = (torch.randn_like(sac_mean) * ((0.5 * sac_logvar).exp()) + sac_mean)
 
             sa_mem_out, sa_hidden_out = self.sa_memory_unit(
-                torch.cat([sa_mean, action], dim=-1),
-                self._hidden_state_sa
+                    torch.cat([sa_mean, action], dim=-1),
+                    self._hidden_state_sa
             )
             sac_mem_out, sac_hidden_out = self.sac_memory_unit(
                 sac_mean,
@@ -387,7 +418,8 @@ class IFactor(AbstractSequentialModel):
             # sac_next_sample = (torch.randn_like(sac_next_mean) * ((0.5 * sac_next_logvar).exp()) + sac_next_mean)
 
             obs_decoder_in = torch.cat([sa_next_mean, sac_next_mean], dim=-1)
-            obs_next_mean, obs_next_logvar = self.obs_decoder(obs_decoder_in)
+            obs_next_mean, obs_next_logvar = \
+                (output.squeeze(1) for output in self.obs_decoder(obs_decoder_in))
         
         std_predictions = (0.5 * obs_next_logvar).exp()
         predictions = torch.randn_like(obs_next_mean)*std_predictions + obs_next_mean
@@ -447,6 +479,62 @@ class IFactor(AbstractSequentialModel):
                 to_return[metric_name] = metric_value
         return to_return
 
+    def _normalize_prediction_input(self, model_input: torch.Tensor) -> torch.Tensor:
+        """Normalize the input for prediction.
+
+        Args:
+            model_input: The input tuple to the model (o_t, a_t)
+                o_t : observation at time step t
+                a_t : action at time step t
+
+        Returns:
+            The normalized input.
+        """
+        if self.normalize_inputs:
+            normed_obs = self.normalizer.normalize(model_input[0], 0)
+            normed_action = self.normalizer.normalize(model_input[1], 1)
+            return (normed_obs, normed_action)
+        return model_input
+
+    def _unnormalize_prediction_output(self, output: torch.Tensor) -> torch.Tensor:
+        """Unnormalize the output (next-state) of the model.
+
+        Args:
+            output: The output of the model.
+
+        Returns:
+            The unnormalized output.
+        """
+        if self.unnormalize_outputs:
+            return self.normalizer.unnormalize(output, 0)
+        return output
+
+    def predict(
+            self,
+            model_input: Tuple[np.ndarray],
+            each_input_is_different_sample: Optional[bool] = True,
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Make predictions using the currently set sampling method.
+
+        Args:
+            model_input: The input to be given to the model.
+            each_input_is_different_sample: Whether each input should be treated
+                as being drawn from a different sample of the model. Note that this
+                may not have an effect on all models (e.g. PNN)
+
+        Returns:
+            The output of the model and give a dictionary of related quantities.
+        """
+        model_input = (torch.Tensor(model_input[0]).to(self.device),
+                       torch.Tensor(model_input[1]).to(self.device))
+        model_input = self._normalize_prediction_input(model_input)
+        if each_input_is_different_sample:
+            output, infos = self.multi_sample_output_from_torch(model_input)
+        else:
+            output, infos = self.single_sample_output_from_torch(model_input)
+        output = self._unnormalize_prediction_output(output)
+        return output.cpu().numpy(), infos
+    
     @property
     def metrics(self) -> Dict[str, Callable[[torch.Tensor], torch.Tensor]]:
         return self._metrics

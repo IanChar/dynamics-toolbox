@@ -4,11 +4,14 @@ Utility for loading a model.
 Author: Ian Char
 """
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict
 
+import torch
 import hydra
 from omegaconf import OmegaConf
 import numpy as np
+
+from pytorch_lightning import LightningModule
 
 from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.abstract_model import\
@@ -32,6 +35,7 @@ def load_model_from_log_dir(
         The loaded dynamics model.
     """
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
+    cfg['model']['checkpoint_model'] = None
     checkpoint_path = None
     for root, dirs, files in os.walk(path):
         if 'checkpoints' in dirs:
@@ -135,3 +139,25 @@ def load_model_from_tensorboard_log(
     else:
         path = os.path.join(path, f'version_{max(versions)}')
     return load_model_from_log_dir(path, epoch=epoch)
+
+def load_partial_state_dict(
+        new_model: LightningModule, 
+        load_checkpoint: str
+) -> Dict:
+    """
+    Load state dict when the loaded model has missing keys.
+
+    Args:
+        new_model: LightningModule object.
+        load_checkpoint: path to checkpoint.
+    
+    Returns:
+        The target state dict with weights from loaded model.
+    """
+    new_weights = new_model.state_dict()
+    load_weights = torch.load(load_checkpoint)['state_dict']
+
+    for k, _ in load_weights.items():
+        new_weights[k] = load_weights[k]
+
+    return new_weights

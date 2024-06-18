@@ -39,6 +39,9 @@ class RPNN(AbstractSequentialModel):
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
             mask_indices: Optional[Sequence[int]] = [],
+            add_mse_to_loss: bool=False,
+            mse_wt = 1.0,
+            nll_wt = 1.0,
             **kwargs,
     ):
         """Constructor.
@@ -129,6 +132,9 @@ class RPNN(AbstractSequentialModel):
         if len(mask_indices)>0:
             self._mask[mask_indices] = 0
             self._input_mask = True
+        self.add_mse_to_loss = add_mse_to_loss
+        self.mse_wt = mse_wt
+        self.nll_wt = nll_wt
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -173,12 +179,16 @@ class RPNN(AbstractSequentialModel):
         mask[:, :self._warm_up_period, :] = 0
         sq_diffs = (mean * mask - y * mask).pow(2)
         mse = torch.mean(sq_diffs)
-        loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+        if self.add_mse_to_loss:
+            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)*self.nll_wt + mse*self.mse_wt
+        else:
+            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
         stats = dict(
             nll=loss.item(),
             mse=mse.item(),
         )
         stats['logvar/mean'] = (logvar * mask).mean().item()
+        stats['nll/mean'] = torch.mean(torch.exp(-logvar) * sq_diffs).item()
         if self._var_pinning:
             bound_loss = self._logvar_bound_loss_coef * \
                          torch.abs(self._max_logvar - self._min_logvar).mean()

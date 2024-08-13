@@ -39,6 +39,7 @@ class RPNN(AbstractSequentialModel):
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
             mask_indices: Optional[Sequence[int]] = [],
+            loss_fn_str: str = "NLL",
             add_mse_to_loss: bool=False,
             mse_wt = 1.0,
             nll_wt = 1.0,
@@ -135,6 +136,7 @@ class RPNN(AbstractSequentialModel):
         self.add_mse_to_loss = add_mse_to_loss
         self.mse_wt = mse_wt
         self.nll_wt = nll_wt
+        self.loss_fn_str = loss_fn_str
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -179,10 +181,18 @@ class RPNN(AbstractSequentialModel):
         mask[:, :self._warm_up_period, :] = 0
         sq_diffs = (mean * mask - y * mask).pow(2)
         mse = torch.mean(sq_diffs)
-        if self.add_mse_to_loss:
+        if self.loss_fn_str == "NLL":
+            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+        elif self.loss_fn_str == "MSE":
+            loss = mse
+        elif self.loss_fn_str == "NLL+MSE":
             loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)*self.nll_wt + mse*self.mse_wt
         else:
-            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+            raise ValueError(f'Cannot recognize loss function {self.loss_fn_str} , select from NLL, MSE, NLL+MSE')
+        # if self.add_mse_to_loss:
+        #     loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)*self.nll_wt + mse*self.mse_wt
+        # else:
+        #     loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
         stats = dict(
             nll=loss.item(),
             mse=mse.item(),

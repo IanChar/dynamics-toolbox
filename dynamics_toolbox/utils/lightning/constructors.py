@@ -75,7 +75,9 @@ def construct_all_pl_components_for_training(
     mask_scalar_states = cfg.get('mask_dim_name', [])
     mask_indices = [cfg['model']['dim_name_map'].index(state) for state in mask_scalar_states]
     model = hydra.utils.instantiate(cfg['model'], normalizer=normalizer,
-                                    _recursive_=False, mask_indices = mask_indices)
+                                    _recursive_=False, mask_indices = mask_indices, 
+                                    seed = cfg.get('seed'),
+                                    freeze_all_but = cfg.get('model').get('freeze_all_but',None))
     callbacks = []
     if 'early_stopping' in cfg:
         callbacks.append(get_early_stopping_for_val_loss(cfg['early_stopping']))

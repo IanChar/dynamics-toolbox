@@ -20,6 +20,7 @@ from dynamics_toolbox.models.pl_models.abstract_pl_model import AbstractPlModel
 def load_model_from_log_dir(
     path: str,
     epoch: Optional[int] = None,
+    eval_mode: bool = True,
 ) -> AbstractPlModel:
     """Load a model from a log directory.
 
@@ -32,6 +33,10 @@ def load_model_from_log_dir(
         The loaded dynamics model.
     """
     cfg = OmegaConf.load(os.path.join(path, 'config.yaml'))
+    if eval_mode:
+        print("Eval mode, setting config load dir to None")
+        cfg["model"]["load_dir"] = None
+        cfg["model"]["freeze_all_but"] = None
     checkpoint_path = None
     for root, dirs, files in os.walk(path):
         if 'checkpoints' in dirs:
@@ -61,6 +66,7 @@ def load_ensemble_from_list_of_log_dirs(
         epochs: Optional[List[int]] = None,
         sample_mode: Optional[str] = sampling_modes.SAMPLE_MEMBER_EVERY_TRAJECTORY,
         member_sample_mode: Optional[str] = None,
+        eval_mode: bool = True,
 ) -> Ensemble:
     """Load several models into an ensemble.
 
@@ -72,7 +78,7 @@ def load_ensemble_from_list_of_log_dirs(
     """
     paths.sort()
     epochs = [None for _ in paths] if epochs is None else epochs
-    ensemble = Ensemble([load_model_from_log_dir(path, epoch)
+    ensemble = Ensemble([load_model_from_log_dir(path, epoch, eval_mode=eval_mode)
                          for path, epoch in zip(paths, epochs)],
                         sample_mode=sample_mode)
     if member_sample_mode is not None:

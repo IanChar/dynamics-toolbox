@@ -1,0 +1,68 @@
+# Configuration for TPNN (Transformer Probabilistic Neural Network)
+# This is a transformer-based alternative to RPNN
+
+_target_: dynamics_toolbox.models.pl_models.sequential_models.tpnn.TPNN
+
+# Input/Output dimensions (to be set by data module typically)
+input_dim: ???
+output_dim: ???
+
+# Encoder configuration
+encode_dim: 128  # Dimension of encoder output (must be divisible by num_heads)
+encoder_cfg:
+  _target_: dynamics_toolbox.utils.pytorch.modules.simple_mlps.MLP
+  hidden_sizes: [256, 256]
+  hidden_activation: torch.nn.functional.relu
+  output_activation: torch.nn.functional.relu
+
+# Transformer architecture
+num_transformer_blocks: 4  # Number of transformer blocks
+num_heads: 8  # Number of attention heads (encode_dim must be divisible by this)
+block_size: 100  # Maximum sequence length
+dropout: 0.1  # Dropout probability
+
+# Decoder configuration (PNN-style with mean and logvar heads)
+pnn_decoder_cfg:
+  _target_: dynamics_toolbox.models.pl_models.pnn.PNN
+  encoder_output_dim: 128  # Should match encode_dim
+  encoder_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.modules.simple_mlps.MLP
+    hidden_sizes: [256, 256]
+    hidden_activation: torch.nn.functional.relu
+    output_activation: torch.nn.functional.relu
+  mean_net_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.modules.simple_mlps.MLP
+    hidden_sizes: []
+    output_activation: null
+  logvar_net_cfg:
+    _target_: dynamics_toolbox.utils.pytorch.modules.simple_mlps.MLP
+    hidden_sizes: []
+    output_activation: null
+
+# Training parameters
+warm_up_period: 0
+learning_rate: 1e-4
+weight_decay: 0.0
+
+# Variance bounds (optional)
+logvar_lower_bound: -10.0
+logvar_upper_bound: 0.5
+logvar_bound_loss_coef: 1e-3
+
+# Sampling and loss
+sample_mode: sample_from_dist
+loss_fn_str: "NLL"  # Options: "NLL", "MSE", "NLL+MSE"
+nll_wt: 1.0
+mse_wt: 1.0
+
+# Additional features
+use_layer_norm: true
+use_positional_encoding: true
+mask_indices: []
+
+# Model loading (optional)
+load_dir: null
+seed: null
+
+# Fine-tuning options (optional)
+# freeze_all_but: null  # Options: null, "logvar_net", "output_layer", "output_layer_block_4"

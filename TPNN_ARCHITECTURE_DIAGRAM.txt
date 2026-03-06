@@ -1,0 +1,193 @@
+# TPNN Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           TPNN ARCHITECTURE                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+INPUT: (batch_size, seq_length, input_dim)
+  │
+  │  [Optional: Input Masking]
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  ENCODER (MLP)                                                               │
+│  - Shared across all timesteps                                              │
+│  - Projects input to encode_dim                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LAYER NORMALIZATION (optional)                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  POSITIONAL ENCODING (optional)                                             │
+│  - Learnable position embeddings                                            │
+│  - Added to encoded representations                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TRANSFORMER BLOCK 1                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer Norm                                                          │   │
+│  │    ↓                                                                 │   │
+│  │  Multi-Head Causal Self-Attention                                   │   │
+│  │  ┌────────┬────────┬─────────┬────────┐                            │   │
+│  │  │ Head 1 │ Head 2 │   ...   │ Head N │                            │   │
+│  │  └────────┴────────┴─────────┴────────┘                            │   │
+│  │    ↓                                                                 │   │
+│  │  Residual Connection (+)  ←─────────────────────────────────────┐  │   │
+│  │    ↓                                                             │  │   │
+│  │  Layer Norm                                                      │  │   │
+│  │    ↓                                                             │  │   │
+│  │  Feed-Forward Network (4x expansion)                            │  │   │
+│  │    ↓                                                             │  │   │
+│  │  Residual Connection (+)  ←──────────────────────────────────────┘  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TRANSFORMER BLOCK 2                                                         │
+│  [Same structure as Block 1]                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+  ... (num_transformer_blocks total)
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  TRANSFORMER BLOCK N                                                         │
+│  [Same structure as Block 1]                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  PNN DECODER                                                                 │
+│  ┌──────────────────────┐         ┌──────────────────────┐                 │
+│  │   Mean Head          │         │   LogVar Head        │                 │
+│  │   (MLP)              │         │   (MLP)              │                 │
+│  └──────────────────────┘         └──────────────────────┘                 │
+│           │                                    │                            │
+│           ▼                                    ▼                            │
+│     ┌─────────┐                         ┌─────────┐                        │
+│     │  Mean   │                         │ LogVar  │                        │
+│     └─────────┘                         └─────────┘                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+  │                                        │
+  ▼                                        ▼
+OUTPUT: mean (batch, seq_len, output_dim), logvar (batch, seq_len, output_dim)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   COMPARISON: RPNN vs TPNN                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+RPNN:                                TPNN:
+Input                                Input
+  ↓                                    ↓
+Encoder                              Encoder
+  ↓                                    ↓
+LayerNorm                            LayerNorm
+  ↓                                    ↓
+RNN/GRU/LSTM ──→ Hidden State        Positional Encoding
+  ↓                                    ↓
+Concat [encoded, hidden]             Transformer Blocks
+  ↓                                  (Self-Attention)
+PNN Decoder                            ↓
+  ↓                                  PNN Decoder
+(mean, logvar)                         ↓
+                                     (mean, logvar)
+
+Key Differences:
+- RPNN: Sequential, O(n) complexity, compressed state
+- TPNN: Parallel, O(n²) complexity, full attention
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│               SELF-ATTENTION MECHANISM (Causal)                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Input Sequence: [x₁, x₂, x₃, ..., xₜ]
+
+For each position t:
+  
+  Query (Q) = Linear(xₜ)
+  Key (K)   = Linear(xᵢ) for i ≤ t  [Only past and current]
+  Value (V) = Linear(xᵢ) for i ≤ t
+  
+  Attention(Q, K, V) = softmax(Q·Kᵀ / √d) · V
+  
+  Attention Mask (Causal):
+  ┌─────────────┐
+  │ 1 0 0 0 0 0 │  Position 1 can only see position 1
+  │ 1 1 0 0 0 0 │  Position 2 can see positions 1-2
+  │ 1 1 1 0 0 0 │  Position 3 can see positions 1-3
+  │ 1 1 1 1 0 0 │  Position 4 can see positions 1-4
+  │ 1 1 1 1 1 0 │  Position 5 can see positions 1-5
+  │ 1 1 1 1 1 1 │  Position 6 can see positions 1-6
+  └─────────────┘
+  
+Multi-Head Attention:
+  - Run attention in parallel with different learned projections
+  - Each head can focus on different aspects
+  - Concatenate and project all heads together
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SEQUENTIAL INFERENCE                                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+History Buffer (size = block_size):
+
+Step 1:  [x₁, ∅, ∅, ∅, ∅] → Predict at position 0
+Step 2:  [x₁, x₂, ∅, ∅, ∅] → Predict at position 1
+Step 3:  [x₁, x₂, x₃, ∅, ∅] → Predict at position 2
+...
+Step N:  [x₁, x₂, x₃, x₄, x₅] → Predict at position 4
+
+When buffer is full:
+Step N+1: [x₂, x₃, x₄, x₅, x₆] → Shift and add new
+                              → Predict at last position
+
+At each step:
+  1. Add observation to buffer
+  2. Run transformer over full buffer
+  3. Extract prediction at current position
+  4. Return (prediction, mean, std)
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        PARAMETER COUNT                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+For TPNN with:
+  - input_dim = 10
+  - output_dim = 5
+  - encode_dim = 128
+  - num_heads = 8
+  - num_transformer_blocks = 4
+
+Approximate parameters:
+  - Encoder: ~140K
+  - Positional Encoding: 12.8K (if block_size=100)
+  - Each Transformer Block: ~265K
+    * Self-Attention: ~132K
+    * Feed-Forward: ~131K
+  - All Transformer Blocks: ~1.06M (4 blocks)
+  - Decoder: ~70K
+  
+  Total: ~1.28M parameters
+
+Compare to RPNN with similar capacity:
+  - Similar encoder/decoder
+  - GRU hidden_size=256, num_layers=2: ~530K
+  
+  Total RPNN: ~740K parameters
+
+TPNN has ~1.7x more parameters for comparable performance,
+but trains faster due to parallelization.
+```

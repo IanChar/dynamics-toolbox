@@ -8,21 +8,14 @@ from typing import Dict, Callable, Tuple, Any, Sequence, Optional
 
 import hydra.utils
 import torch
+import torch.nn.functional as F
 from omegaconf import DictConfig
 
-from dynamics_toolbox.constants import losses, sampling_modes
+from dynamics_toolbox.constants import sampling_modes
 from dynamics_toolbox.models.pl_models.sequential_models.abstract_sequential_model \
         import AbstractSequentialModel
-from dynamics_toolbox.utils.pytorch.losses import get_regression_loss
 from dynamics_toolbox.utils.pytorch.metrics import SequentialExplainedVariance
 
-from dynamics_toolbox.utils.storage.model_storage import (
-    load_model_from_log_dir,
-    load_ensemble_from_parent_dir,
-)
-
-import os
-import numpy as np
 
 class RPNN(AbstractSequentialModel):
     """RPNN network."""
@@ -45,13 +38,6 @@ class RPNN(AbstractSequentialModel):
             sample_mode: str = sampling_modes.SAMPLE_FROM_DIST,
             weight_decay: Optional[float] = 0.0,
             use_layer_norm: bool = True,
-            mask_indices: Optional[Sequence[int]] = [],
-            loss_fn_str: str = "NLL",
-            # add_mse_to_loss: bool=False,
-            mse_wt = 1.0,
-            nll_wt = 1.0,
-            load_dir: Optional[str] = None,
-            seed: Optional[int] = None,
             **kwargs,
     ):
         """Constructor.
@@ -77,7 +63,6 @@ class RPNN(AbstractSequentialModel):
             sample_mode: The method to use for sampling.
             weight_decay: The weight decay for the optimizer.
             use_layer_norm: Whether to use layer norm.
-            mask_indices: The indices to mask.
         """
         super().__init__(input_dim, output_dim, **kwargs)
         self._encoder = hydra.utils.instantiate(
@@ -136,109 +121,6 @@ class RPNN(AbstractSequentialModel):
             'EV': SequentialExplainedVariance(),
             'IndvEV': SequentialExplainedVariance('raw_values'),
         }
-        # create mask tensor based on mask indices
-        self._mask = torch.ones(input_dim).to(self.device)
-        self._input_mask = False
-        if len(mask_indices)>0:
-            self._mask[mask_indices] = 0
-            self._input_mask = True
-        # self.add_mse_to_loss = add_mse_to_loss
-        self.mse_wt = mse_wt
-        self.nll_wt = nll_wt
-        self.loss_fn_str = loss_fn_str
-
-        # if load_dir is given then load the model weights
-        if load_dir is not None:
-            #code taken from load_model_from_log_dir
-            path = os.path.join(load_dir, str(seed))
-            checkpoint_path = None
-            for root, dirs, files in os.walk(path):
-                if 'checkpoints' in dirs:
-                    checkpoint_path = os.path.join(root, 'checkpoints')
-                    break
-            if checkpoint_path is None:
-                raise ValueError(f'Checkpoint directory not found in {path}')
-            checkpoints = os.listdir(checkpoint_path)
-            if not len(checkpoints):
-                raise ValueError(f'No checkpoints found in {checkpoint_path}')
-            epochs = [int(ck.split('-')[0].split('=')[1]) for ck in checkpoints]
-            # if epoch is not None:
-            #     if epoch not in epochs:
-            #         raise ValueError(f'Did not find epoch {epoch} in checkpoints.')
-            #     epidx = epochs.index(epoch)
-            # else:
-            epidx = np.argmax(epochs)
-            model_path = os.path.join(checkpoint_path, checkpoints[epidx])
-            print("\n ---Loading model from ",model_path,"\n")
-
-            checkpoint = torch.load(model_path, map_location=self.device)
-            self.load_state_dict(checkpoint['state_dict'])
-            # self.load_from_checkpoint(checkpoint_path=model_path)
-
-
-        self.freeze_all_but = kwargs.get('freeze_all_but', None)
-        if self.freeze_all_but == "logvar_net":
-        # freeze all layers except for logvar_net layer
-            for param in self._encoder.parameters():
-                param.requires_grad = False
-
-            for param in self._memory_unit.parameters():
-                param.requires_grad = False
-            
-            for param in self._layer_norm.parameters():
-                param.requires_grad = False
-
-            for param in self._decoder.parameters():
-                param.requires_grad = False
-
-            # set the logvar_net layer to be trainable
-            for param in self._decoder._logvar_head.parameters():
-                param.requires_grad = True
-
-        elif self.freeze_all_but == "output_layer_block_4":
-        # freeze all layers except for decoder layer
-            for param in self._encoder.parameters():
-                param.requires_grad = False
-
-            for param in self._memory_unit.parameters():
-                param.requires_grad = False
-            
-            for param in self._layer_norm.parameters():
-                param.requires_grad = False
-
-            # set the decoder last to be trainable
-            for param in self._decoder._mean_head.parameters():
-                param.requires_grad = True
-            
-            for param in self._decoder._logvar_head.parameters():
-                param.requires_grad = True
-        
-            for param in self._decoder._encoder.block_4.parameters():
-                param.requires_grad = True
-        
-        elif self.freeze_all_but == "output_layer":
-        # freeze all layers except for decoder layer
-            for param in self._encoder.parameters():
-                param.requires_grad = False
-
-            for param in self._memory_unit.parameters():
-                param.requires_grad = False
-            
-            for param in self._layer_norm.parameters():
-                param.requires_grad = False
-
-            # set the decoder last to be trainable
-            for param in self._decoder._mean_head.parameters():
-                param.requires_grad = True
-            
-            for param in self._decoder._logvar_head.parameters():
-                param.requires_grad = True
-        # print("Layer norm is : ", self._use_layer_norm)
-        #print what is trainable what is not
-        # print("\n Layer status:")
-        # for name, param in self.named_parameters():
-        #     status = "Trainable" if param.requires_grad else "Frozen"
-        #     print(f"Layer: {name} | Status: {status}")
 
     def get_net_out(self, batch: Sequence[torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get the output of the network and organize into dictionary.
@@ -252,15 +134,14 @@ class RPNN(AbstractSequentialModel):
         Returns:
             Dictionary of name to tensor.
         """
-        if self._input_mask:
-            input_batch = batch[0]*self._mask.to(self.device)
-        else:
-            input_batch = batch[0]
-        encoded = self._encoder(input_batch)
+        encoded = self._encoder(batch[0])
         if self._use_layer_norm:
             encoded = self._layer_norm(encoded)
         mem_out = self._memory_unit(encoded)[0]
         mean, logvar = self._decoder(torch.cat([encoded, mem_out], dim=-1))
+        if self._var_pinning:
+            logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
+            logvar = self._min_logvar + F.softplus(logvar - self._min_logvar)
         return {'mean': mean, 'logvar': logvar}
 
     def loss(self, net_out: Dict[str, torch.Tensor], batch: Sequence[torch.Tensor]) -> \
@@ -283,27 +164,13 @@ class RPNN(AbstractSequentialModel):
         mask[:, :self._warm_up_period, :] = 0
         sq_diffs = (mean * mask - y * mask).pow(2)
         mse = torch.mean(sq_diffs)
-        if self.loss_fn_str == "NLL":
-            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
-        elif self.loss_fn_str == "MSE":
-            loss = mse
-        elif self.loss_fn_str == "NLL+MSE":
-            loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)*self.nll_wt + mse*self.mse_wt
-        else:
-            raise ValueError(f'Cannot recognize loss function {self.loss_fn_str} , select from NLL, MSE, NLL+MSE')
-        # if self.add_mse_to_loss:
-        #     loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)*self.nll_wt + mse*self.mse_wt
-        # else:
-        #     loss = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+        nll = torch.mean(torch.exp(-logvar) * sq_diffs + logvar * mask)
+        loss = nll
         stats = dict(
-            # nll=loss.item(),
-            # mean=mean.mean().item(),
-            # mse=torch.mean((mask*mse).item()),
+            nll=nll.item(),
+            mse=mse.item(),
         )
-        stats['mean/mean'] = (mean * mask).mean().item()
         stats['logvar/mean'] = (logvar * mask).mean().item()
-        stats['nll/mean'] = torch.mean(torch.exp(-logvar) * sq_diffs).item()
-        stats['mse/mean'] = torch.mean((mask*mse)).item()
         if self._var_pinning:
             bound_loss = self._logvar_bound_loss_coef * \
                          torch.abs(self._max_logvar - self._min_logvar).mean()
@@ -343,8 +210,6 @@ class RPNN(AbstractSequentialModel):
                                  f'number. Expected {tocompare.shape[1]} but received'
                                  f' {net_in.shape[0]}.')
         with torch.no_grad():
-            if self._input_mask:
-                net_in = net_in * self._mask.to(self.device)
             encoded = self._encoder(net_in).unsqueeze(1)
             if self._use_layer_norm:
                 encoded = self._layer_norm(encoded)

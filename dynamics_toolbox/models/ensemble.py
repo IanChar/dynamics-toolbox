@@ -104,6 +104,7 @@ class Ensemble(AbstractModel):
                 ensemble_idxs = self._curr_sample[:len(model_input)]
             else:
                 ensemble_idxs = [self._curr_sample[0] for _ in range(len(model_input))]
+            info_dict['ensemble_idxs'] = ensemble_idxs
             return nxts[ensemble_idxs, np.arange(len(model_input))], info_dict
 
     def set_sample(self, sample: np.ndarray) -> None:
@@ -163,6 +164,13 @@ class Ensemble(AbstractModel):
     def output_dim(self) -> int:
         """The sample mode is the method that in which we get next state."""
         return self.members[0].output_dim
+
+    @property
+    def hidden_state_dim(self) -> int:
+        """Get hidden state dimension from the first member if available."""
+        if hasattr(self.members[0], '_hidden_size'):
+            return self.members[0]._hidden_size
+        raise AttributeError('Ensemble members do not have hidden state dimension.')
 
     def draw_from_categorical(self, num_samples) -> np.ndarray:
         """Draw from categorical distribution.

@@ -91,19 +91,47 @@ def construct_all_pl_components_for_training(
         # Only do progress bar if we are not doing multi-GPU. This is because
         # tqdm is not able to be pickled.
         callbacks.append(SingleProgressBar(max_epochs))
+    # Generate unique run name with seed for ensemble training
+    experiment = cfg.get('experiment_name', 'experiment')
+    if 'run_name' in cfg:
+        base_run_name = cfg['run_name']
+    else:
+        base_run_name = cfg.get('name', 'temp')
+    
+    # Append seed to run name if available (crucial for ensemble training)
+    if 'seed' in cfg:
+        run_name = f"{base_run_name}_seed{cfg['seed']}"
+    else:
+        run_name = base_run_name
+    
     if cfg['logger'] == 'mlflow':
         from pytorch_lightning.loggers.mlflow import MLFlowLogger
-        experiment = cfg.get('experiment_name', 'experiment')
-        if 'run_name' in cfg:
-            run_name = cfg['run_name']
-        else:
-            run_name = cfg.get('name', 'temp')
         logger = MLFlowLogger(
             experiment_name=experiment,
             tracking_uri=cfg.get('tracking_uri', None),
             save_dir=cfg['save_dir'],
             run_name=run_name,
         )
+    elif cfg['logger'] == 'wandb':
+        from pytorch_lightning.loggers.wandb import WandbLogger
+        # Additional wandb-specific config
+        wandb_kwargs = {
+            'project': experiment,
+            'name': run_name,
+            'save_dir': cfg['save_dir'],
+        }
+        # Add optional wandb config
+        if 'wandb_entity' in cfg:
+            wandb_kwargs['entity'] = cfg['wandb_entity']
+        if 'wandb_tags' in cfg:
+            wandb_kwargs['tags'] = cfg['wandb_tags']
+        if 'wandb_group' in cfg:
+            wandb_kwargs['group'] = cfg['wandb_group']
+        else:
+            # Auto-group ensemble runs together
+            wandb_kwargs['group'] = experiment
+        
+        logger = WandbLogger(**wandb_kwargs)
     else:
         logger = TensorBoardLogger(save_dir=cfg['save_dir'], name='logs')
     trainer = pl.Trainer(

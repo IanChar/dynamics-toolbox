@@ -222,6 +222,9 @@ class TPNN(AbstractSequentialModel):
             # Freeze all layers except for logvar_net layer
             for param in self._encoder.parameters():
                 param.requires_grad = False
+
+            if self._use_positional_encoding:
+                self._positional_encoding.requires_grad = False
             
             for block in self._transformer_blocks:
                 for param in block.parameters():
@@ -242,6 +245,9 @@ class TPNN(AbstractSequentialModel):
             # Freeze all layers except for decoder layer and last transformer block
             for param in self._encoder.parameters():
                 param.requires_grad = False
+
+            if self._use_positional_encoding:
+                self._positional_encoding.requires_grad = False
             
             # Freeze all but last transformer block
             for i, block in enumerate(self._transformer_blocks):
@@ -266,6 +272,9 @@ class TPNN(AbstractSequentialModel):
             # Freeze all layers except for decoder output layer
             for param in self._encoder.parameters():
                 param.requires_grad = False
+
+            if self._use_positional_encoding:
+                self._positional_encoding.requires_grad = False
             
             for block in self._transformer_blocks:
                 for param in block.parameters():

@@ -13,6 +13,32 @@ import torch.nn as nn
 import numpy as np
 
 
+class EncoderModule(nn.Module):
+    """Simple MLP encoder whose layers are stored in a ModuleDict.
+
+    Each layer applies a linear transform; ReLU is applied after all layers
+    except the final one.
+    """
+
+    def __init__(self, layer_sizes: list):
+        """
+        Args:
+            layer_sizes: List of (in_features, out_features) pairs for each Linear layer.
+        """
+        super().__init__()
+        self._net = nn.ModuleDict()
+        for i, (in_f, out_f) in enumerate(layer_sizes):
+            self._net[f'linear_{i}'] = nn.Linear(in_f, out_f)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n = len(self._net)
+        for i in range(n):
+            x = self._net[f'linear_{i}'](x)
+            if i < n - 1:
+                x = torch.relu(x)
+        return x
+
+
 class RPNNEncoderGRU(nn.Module):
     """Encoder-GRU network that outputs hidden states only."""
 
@@ -27,6 +53,7 @@ class RPNNEncoderGRU(nn.Module):
             mask_indices: Optional[list] = None,
             load_from_rpnn: Optional[str] = None,  # Path to trained RPNN checkpoint
             load_from_checkpoint: Optional[str] = None,  # Path to saved encoder-gru checkpoint
+            encoder_hidden_sizes: Optional[list] = None,  # Hidden layer sizes for scratch init
             seed: Optional[int] = None,
             device: str = 'cpu',
     ):
@@ -42,6 +69,10 @@ class RPNNEncoderGRU(nn.Module):
             mask_indices: The indices to mask.
             load_from_rpnn: Path to trained RPNN model directory to load weights from.
             load_from_checkpoint: Path to saved RPNNEncoderGRU checkpoint (faster loading).
+            encoder_hidden_sizes: Hidden layer sizes for the encoder MLP when initializing
+                from scratch (i.e., neither load_from_rpnn nor load_from_checkpoint is given).
+                E.g. [256, 256] creates input_dim->256->256->encode_dim.
+                Defaults to [256] when None.
             seed: Random seed for loading specific model checkpoint (only for load_from_rpnn).
             device: Device to run the model on ('cpu' or 'cuda').
         """
@@ -86,7 +117,7 @@ class RPNNEncoderGRU(nn.Module):
             self._mask[mask_indices] = 0
             self._input_mask = True
         
-        # Load weights from trained RPNN model or saved checkpoint
+        # Build encoder / load weights
         if load_from_rpnn is not None and load_from_checkpoint is not None:
             raise ValueError(
                 "Cannot specify both load_from_rpnn and load_from_checkpoint. "
@@ -97,11 +128,26 @@ class RPNNEncoderGRU(nn.Module):
         elif load_from_checkpoint is not None:
             self._load_from_checkpoint(load_from_checkpoint)
         else:
-            raise ValueError(
-                "RPNNEncoderGRU must be initialized with either load_from_rpnn or "
-                "load_from_checkpoint parameter. This model is designed to load "
-                "weights from a trained model."
+            # Scratch initialization: build encoder from provided (or default) sizes.
+            self._init_from_scratch(
+                encoder_hidden_sizes if encoder_hidden_sizes is not None else [256]
             )
+
+    def _init_from_scratch(self, encoder_hidden_sizes: list):
+        """Build encoder and layer norm with random initial weights.
+
+        Args:
+            encoder_hidden_sizes: Hidden layer widths for the encoder MLP.
+                The full size sequence is [input_dim, *encoder_hidden_sizes, encode_dim].
+        """
+        dims = [self._input_dim] + list(encoder_hidden_sizes) + [self._encode_dim]
+        layer_sizes = [(dims[i], dims[i + 1]) for i in range(len(dims) - 1)]
+        print(f"Building encoder from scratch with layer sizes: {dims}")
+        self._encoder = EncoderModule(layer_sizes).to(self.device)
+        if self._use_layer_norm:
+            self._layer_norm = nn.LayerNorm(self._encode_dim).to(self.device)
+        else:
+            self._layer_norm = None
 
     def _load_weights_from_rpnn(self, load_dir: str, seed: Optional[int] = None):
         """Load encoder and GRU weights from a trained RPNN model.
@@ -267,36 +313,17 @@ class RPNNEncoderGRU(nn.Module):
         max_layer_idx = max(layer_indices)
         print(f"Detected MLP encoder with {max_layer_idx + 1} layers")
         
-        # Build the MLP
-        layers = nn.ModuleDict()
+        # Build the MLP using layer sizes inferred from weights
+        layer_sizes = []
         for i in range(max_layer_idx + 1):
-            # Try _net.linear_X first
             weight_key = f'_encoder._net.linear_{i}.weight'
             if weight_key not in encoder_weights:
-                # Try _layers.X
                 weight_key = f'_encoder._layers.{i}.weight'
-            
             if weight_key in encoder_weights:
                 out_features, in_features = encoder_weights[weight_key].shape
-                layers[str(i)] = nn.Linear(in_features, out_features)
-        
-        # Create a simple sequential wrapper that matches the structure
-        class EncoderModule(nn.Module):
-            def __init__(self, layers_dict):
-                super().__init__()
-                self._net = nn.ModuleDict()
-                for i, (key, layer) in enumerate(layers_dict.items()):
-                    self._net[f'linear_{i}'] = layer
-                
-            def forward(self, x):
-                for i in range(len(self._net)):
-                    x = self._net[f'linear_{i}'](x)
-                    # Apply ReLU to all but last layer
-                    if i < len(self._net) - 1:
-                        x = torch.relu(x)
-                return x
-        
-        return EncoderModule(layers)
+                layer_sizes.append((in_features, out_features))
+
+        return EncoderModule(layer_sizes)
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -386,7 +413,8 @@ class RPNNEncoderGRU(nn.Module):
             # Squeeze to remove sequence dimension
             hidden_state_output = mem_out.squeeze(1)
         
-        info = {'hidden_state_output': hidden_state_output}
+        # info = {'hidden_state_output': hidden_state_output}
+        info = {}
         if return_history:
             info['hidden_state'] = self._hidden_state
             
@@ -587,9 +615,46 @@ class RPNNEncoderGRU(nn.Module):
         if not os.path.exists(weights_path):
             raise ValueError(f"Weights file not found: {weights_path}")
         
-        # Load config
+        # Load config and weights metadata
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
+        checkpoint = torch.load(weights_path, map_location='cpu')
+
+        # Infer dimensions from saved tensors to guard against stale/mismatched config.
+        inferred = {}
+
+        memory_weights = checkpoint.get('memory_weights', {})
+        weight_ih_l0 = memory_weights.get('_memory_unit.weight_ih_l0')
+        weight_hh_l0 = memory_weights.get('_memory_unit.weight_hh_l0')
+        if weight_ih_l0 is not None:
+            # For GRU/LSTM, second dim is input size to recurrent cell == encode_dim.
+            inferred['encode_dim'] = int(weight_ih_l0.shape[1])
+        if weight_hh_l0 is not None:
+            # First dim is gate_dim * hidden_size (3 for GRU, 4 for LSTM).
+            rnn_type = str(config.get('rnn_type', 'gru')).lower()
+            gate_dim = 4 if rnn_type == 'lstm' else 3
+            inferred_hidden = int(weight_hh_l0.shape[0]) // gate_dim
+            inferred['rnn_hidden_size'] = inferred_hidden
+
+        encoder_weights = checkpoint.get('encoder_weights', {})
+        enc_l0 = encoder_weights.get('_encoder._net.linear_0.weight')
+        if enc_l0 is None:
+            enc_l0 = encoder_weights.get('_encoder._layers.0.weight')
+        if enc_l0 is not None:
+            inferred['input_dim'] = int(enc_l0.shape[1])
+
+        # Apply inferred values if config disagrees.
+        for key, inferred_value in inferred.items():
+            current_value = config.get(key, None)
+            if current_value is None:
+                config[key] = inferred_value
+            elif int(current_value) != int(inferred_value):
+                print(
+                    f"Warning: checkpoint config mismatch for '{key}': "
+                    f"config={current_value}, weights={inferred_value}. "
+                    f"Using weights value."
+                )
+                config[key] = inferred_value
         
         print(f"\n--- Loading from checkpoint: {checkpoint_dir} ---\n")
         print(f"Configuration:")
@@ -600,7 +665,7 @@ class RPNNEncoderGRU(nn.Module):
             print(f"  source_rpnn_path: {config['source_rpnn_path']}")
         print()
         
-        # Create model with loaded config
+        # Create model with corrected config
         model = cls(
             input_dim=config['input_dim'],
             encode_dim=config['encode_dim'],

@@ -58,7 +58,13 @@ def load_model_from_log_dir(
     mask_scalar_states = cfg.get('mask_dim_name', [])
     mask_indices = [cfg['model']['dim_name_map'].index(state) for state in mask_scalar_states]
     model = hydra.utils.instantiate(cfg['model'], _recursive_=False)
-    return model.load_from_checkpoint(checkpoint_path=model_path, **cfg['model'], mask_indices=mask_indices)
+    # `load_from_checkpoint` is a classmethod; PL 2.x forbids calling it on an
+    # instance, so dispatch on the class instead. weights_only=False is needed
+    # because PL-1.x checkpoints pickle full callback objects (e.g.
+    # EarlyStopping), which torch>=2.6's default weights_only=True rejects.
+    return type(model).load_from_checkpoint(
+        checkpoint_path=model_path, weights_only=False,
+        **cfg['model'], mask_indices=mask_indices)
 
 
 def load_ensemble_from_list_of_log_dirs(
